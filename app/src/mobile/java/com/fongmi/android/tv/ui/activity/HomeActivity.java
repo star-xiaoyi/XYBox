@@ -37,6 +37,7 @@ import com.fongmi.android.tv.ui.fragment.SettingFragment;
 import com.fongmi.android.tv.ui.fragment.VodFragment;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.net.OkHttp;
 import com.google.android.material.navigation.NavigationBarView;
@@ -49,6 +50,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     private FragmentStateManager mManager;
     private ActivityHomeBinding mBinding;
     private int orientation;
+    private int windowWidthDp;
 
     @Override
     protected ViewBinding getBinding() {
@@ -76,6 +78,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         com.fongmi.android.tv.utils.Notify.createChannel();
         
         orientation = getResources().getConfiguration().orientation;
+        windowWidthDp = ResUtil.getWindowWidthDp(this);
         // Updater.create().release().start(this); // 移除自动检查更新，只在点击版本号时检查
         initFragment(savedInstanceState);
         Server.get().start();
@@ -203,14 +206,15 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        App.post(() -> checkOrientation(newConfig), 100);
+        App.post(() -> checkWindow(newConfig), 100);
     }
 
-    private void checkOrientation(Configuration newConfig) {
-        if (orientation != newConfig.orientation) {
-            orientation = newConfig.orientation;
-            RefreshEvent.video();
-        }
+    private void checkWindow(Configuration newConfig) {
+        int newWindowWidthDp = ResUtil.getWindowWidthDp(this);
+        if (orientation == newConfig.orientation && windowWidthDp == newWindowWidthDp) return;
+        orientation = newConfig.orientation;
+        windowWidthDp = newWindowWidthDp;
+        RefreshEvent.video();
     }
 
     protected boolean handleBack() {

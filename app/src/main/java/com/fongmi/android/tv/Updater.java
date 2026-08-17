@@ -134,8 +134,8 @@ public class Updater implements Download.Callback {
                 return;
             }
 
-            String mode = BuildConfig.FLAVOR_mode;
-            String abi = BuildConfig.FLAVOR_abi;
+            String mode = BuildConfig.MODE;
+            String abi = BuildConfig.ABI;
             
             // 兼容多种ABI格式：arm64_v8a -> arm64, armeabi_v7a -> armv7
             String abiShort = abi.replace("arm64_v8a", "arm64").replace("armeabi_v7a", "armv7");

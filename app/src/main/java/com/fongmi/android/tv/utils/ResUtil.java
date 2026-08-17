@@ -45,7 +45,7 @@ public class ResUtil {
     public static int getScreenWidth(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Rect rect = getWindowManager(context).getCurrentWindowMetrics().getBounds();
-            return isLand(context) ? Math.max(rect.width(), rect.height()) : Math.min(rect.width(), rect.height());
+            return rect.width();
         } else {
             return getDisplayMetrics(context).widthPixels;
         }
@@ -58,7 +58,7 @@ public class ResUtil {
     public static int getScreenHeight(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Rect rect = getWindowManager(context).getCurrentWindowMetrics().getBounds();
-            return isLand(context) ? Math.min(rect.width(), rect.height()) : Math.max(rect.width(), rect.height());
+            return rect.height();
         } else {
             return getDisplayMetrics(context).heightPixels;
         }
@@ -74,6 +74,16 @@ public class ResUtil {
 
     public static boolean isPad() {
         return App.get().getResources().getConfiguration().smallestScreenWidthDp >= 600;
+    }
+
+    public static int getWindowWidthDp(Context context) {
+        Configuration configuration = context.getResources().getConfiguration();
+        if (configuration.screenWidthDp > 0) return configuration.screenWidthDp;
+        return (int) (getScreenWidth(context) / getDisplayMetrics(context).density);
+    }
+
+    public static boolean isExpanded(Context context) {
+        return getWindowWidthDp(context) >= 600;
     }
 
     public static int sp2px(int sp) {
