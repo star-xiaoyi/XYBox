@@ -28,4 +28,4 @@ include ':jianpian'
 include ':thunder'
 include ':tvbus'
 include ':zlive'
-rootProject.name = "XMBOX"
+rootProject.name = "XYBox"

@@ -41,7 +41,7 @@ public class Notify {
 
     public static void createChannel() {
         NotificationManagerCompat notifyMgr = NotificationManagerCompat.from(App.get());
-        notifyMgr.createNotificationChannel(new NotificationChannelCompat.Builder(DEFAULT, NotificationManagerCompat.IMPORTANCE_LOW).setName("XMBOX").build());
+        notifyMgr.createNotificationChannel(new NotificationChannelCompat.Builder(DEFAULT, NotificationManagerCompat.IMPORTANCE_LOW).setName(ResUtil.getString(R.string.app_name)).build());
     }
 
     public static String getError(int resId, Throwable e) {

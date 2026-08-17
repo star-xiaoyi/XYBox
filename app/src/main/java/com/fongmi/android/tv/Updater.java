@@ -38,7 +38,7 @@ public class Updater implements Download.Callback {
     private String fallbackApkUrl;
 
     private File getFile() {
-        return Path.cache("XMBOX-update.apk");
+        return Path.cache("XYBox-update.apk");
     }
 
     private String getApk() {
