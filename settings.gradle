@@ -1,0 +1,31 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        google()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+        google()
+        flatDir { dirs "$rootDir/app/libs" }
+        maven { url "https://jitpack.io" }
+        maven {
+            url "http://4thline.org/m2"
+            allowInsecureProtocol = true
+        }
+    }
+}
+include ':app'
+include ':catvod'
+// include ':chaquo' // 已移除Python支持
+include ':quickjs'
+include ':forcetech'
+include ':hook'
+include ':jianpian'
+include ':thunder'
+include ':tvbus'
+include ':zlive'
+rootProject.name = "XMBOX"

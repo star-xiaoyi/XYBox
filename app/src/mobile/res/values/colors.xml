@@ -1,0 +1,15 @@
+<resources>
+
+    <color name="primary">#FFEB3B</color>
+    <color name="primaryDark">#FDD835</color>
+    <color name="accent">#FFEB3B</color>
+    <color name="indicator">@color/white_80</color>
+    <color name="yellow_50">#4DFFEB3B</color>
+    <color name="white_50">#80FFFFFF</color>
+    <color name="black_50">#80000000</color>
+    <color name="white_30">#4DFFFFFF</color>
+
+    <!-- Button text colors -->
+    <color name="button_text">#FFFFFF</color>
+
+</resources>

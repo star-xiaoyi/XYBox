@@ -1,0 +1,19 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.forcetech'
+
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 21
+        targetSdk 28
+        ndk { abiFilters "armeabi-v7a" }
+    }
+}
+
+dependencies {
+    implementation project(':catvod')
+}

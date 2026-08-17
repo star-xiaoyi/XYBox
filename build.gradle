@@ -1,0 +1,15 @@
+plugins {
+    id 'com.android.application' version '8.12.0' apply false
+    id 'com.android.library' version '8.12.0' apply false
+    id 'com.chaquo.python' version '16.1.0' apply false
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}
+
+project.ext {
+    gsonVersion = '2.11.0'
+    media3Version = '1.4.1'
+    okhttpVersion = '4.12.0'
+}

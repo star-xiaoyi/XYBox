@@ -1,0 +1,8 @@
+<resources>
+
+    <color name="primary">#FDD835</color>
+    <color name="primaryDark">#FBC02D</color>
+    <color name="accent">#FDD835</color>
+    <color name="indicator">@color/black_50</color>
+
+</resources>

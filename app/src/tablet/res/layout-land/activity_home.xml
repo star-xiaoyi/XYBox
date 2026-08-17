@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:fitsSystemWindows="true">
+
+    <!-- 左侧导航栏 -->
+    <com.google.android.material.navigationrail.NavigationRailView
+        android:id="@+id/navigation"
+        style="@style/NavigationRail"
+        android:layout_width="80dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="center_vertical"
+        android:background="@color/transparent"
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp"
+        app:elevation="0dp"
+        app:itemIconSize="24dp"
+        app:itemIconTint="@color/nav"
+        app:itemTextColor="@color/nav"
+        app:labelVisibilityMode="unlabeled"
+        app:menuGravity="center"
+        app:itemActiveIndicatorStyle="@style/Indicator"
+        app:menu="@menu/menu_nav" />
+
+    <!-- 内容区域 -->
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/container"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1" />
+
+</LinearLayout>

@@ -1,0 +1,28 @@
+gradle.beforeProject { project ->
+    File localProperties = new File(project.projectDir, 'gradle.properties.local')
+    if (localProperties.exists()) {
+        Properties props = new Properties()
+        localProperties.withInputStream { props.load(it) }
+        props.each { key, val -> project.ext[key] = val }
+    }
+}
+
+allprojects {
+    // 强制使用阿里云镜像
+    buildscript {
+        repositories {
+            maven { url 'https://maven.aliyun.com/repository/public' }
+            maven { url 'https://maven.aliyun.com/repository/google' }
+            maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+            google()
+            mavenCentral()
+        }
+    }
+    
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        google()
+        mavenCentral()
+    }
+} 
