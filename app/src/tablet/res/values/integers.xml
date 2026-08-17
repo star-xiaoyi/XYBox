@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 平板版本网格列数配置 -->
+    <!-- 竖屏：3 列 -->
+    <integer name="vod_span_count">3</integer>
+    <integer name="grid_span_count">3</integer>
+</resources>

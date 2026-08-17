@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 平板版本尺寸配置 -->
+    
+    <!-- 网格间距 -->
+    <dimen name="grid_spacing">16dp</dimen>
+    <dimen name="grid_spacing_large">20dp</dimen>
+    
+    <!-- 卡片边距 -->
+    <dimen name="card_margin">12dp</dimen>
+    <dimen name="card_margin_horizontal">16dp</dimen>
+    <dimen name="card_margin_vertical">12dp</dimen>
+    
+    <!-- 最小触摸目标尺寸 -->
+    <dimen name="min_touch_target">48dp</dimen>
+    
+    <!-- 对话框尺寸 -->
+    <dimen name="dialog_width_percent">70%</dimen>
+    <dimen name="dialog_max_width">600dp</dimen>
+    <dimen name="dialog_corner_radius">16dp</dimen>
+    
+    <!-- 内容边距 -->
+    <dimen name="content_padding">24dp</dimen>
+    <dimen name="content_padding_horizontal">32dp</dimen>
+    <dimen name="content_padding_vertical">24dp</dimen>
+    
+    <!-- 列表项高度 -->
+    <dimen name="list_item_height">64dp</dimen>
+    <dimen name="list_item_height_large">72dp</dimen>
+</resources>

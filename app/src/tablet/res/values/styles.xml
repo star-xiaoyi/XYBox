@@ -1,0 +1,140 @@
+<resources>
+
+    <style name="AppTheme" parent="BaseTheme">
+        <item name="android:windowTranslucentStatus">true</item>
+    </style>
+
+    <style name="AppTheme.Live" parent="AppTheme">
+        <item name="android:windowBackground">@color/black</item>
+    </style>
+
+    <style name="AppTheme.Detail" parent="AppTheme">
+        <item name="android:statusBarColor">@color/black</item>
+        <item name="android:windowTranslucentStatus">false</item>
+    </style>
+
+    <style name="BaseTheme" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primaryDark</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="colorControlHighlight">@color/white_20</item>
+        <item name="android:windowBackground">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:navigationBarColor">@color/transparent</item>
+        <item name="bottomSheetDialogTheme">@style/BottomSheetDialog</item>
+        <item name="bottomNavigationStyle">@style/BottomNavigation</item>
+        <item name="textInputStyle">@style/Widget.App.TextInputLayout</item>
+        <!-- AlertDialog 按钮颜色 -->
+        <item name="materialAlertDialogTheme">@style/MaterialAlertDialog</item>
+    </style>
+
+    <style name="Control" />
+
+    <style name="Control.Action">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/shape_action_background</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="BottomSheetDialog" parent="Theme.Material3.Dark.BottomSheetDialog">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primaryDark</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="bottomSheetStyle">@style/ModalBottomSheetDialog</item>
+    </style>
+
+    <style name="ModalBottomSheetDialog" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="shapeAppearance">@style/ShapeAppearance.App.LargeComponent</item>
+        <item name="android:paddingTop">24dp</item>
+        <item name="android:paddingBottom">24dp</item>
+    </style>
+
+    <style name="ShapeAppearance.App.LargeComponent" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerSize">16dp</item>
+    </style>
+
+    <style name="Indicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/primary</item>
+        <item name="android:height">56dp</item>
+        <item name="android:width">56dp</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.App.NavigationRail.Indicator</item>
+    </style>
+    
+    <!-- 矩形选择指示器形状 -->
+    <style name="ShapeAppearance.App.NavigationRail.Indicator" parent="ShapeAppearance.Material3.Corner.Medium">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">8dp</item>
+    </style>
+    
+    <style name="BottomNavigationView.TextAppearance" parent="TextAppearance.AppCompat">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">normal</item>
+    </style>
+    
+    <style name="BottomNavigation" parent="Widget.Material3.BottomNavigationView">
+        <item name="itemPaddingTop">4dp</item>
+        <item name="itemPaddingBottom">4dp</item>
+        <item name="itemTextAppearanceActive">@style/BottomNavigationView.TextAppearance</item>
+        <item name="itemTextAppearanceInactive">@style/BottomNavigationView.TextAppearance</item>
+        <item name="itemRippleColor">@android:color/transparent</item>
+        <item name="android:background">@null</item>
+    </style>
+    
+    <!-- NavigationRail 样式 - 增加 item 间距 -->
+    <style name="NavigationRail" parent="Widget.Material3.NavigationRailView">
+        <item name="itemPaddingTop">12dp</item>
+        <item name="itemPaddingBottom">12dp</item>
+        <item name="itemRippleColor">@android:color/transparent</item>
+    </style>
+
+    <!-- M3 Switch Style (Material Design) - 使用CustomSwitch完全自定义 -->
+    <style name="M3SwitchStyle" parent="Widget.AppCompat.CompoundButton.CheckBox">
+        <item name="android:button">@null</item>
+        <item name="android:background">@drawable/custom_switch_bg</item>
+        <item name="android:minHeight">30dp</item>
+        <item name="android:minWidth">50dp</item>
+    </style>
+    
+    <!-- 自定义数据源按钮样式 -->
+    <style name="Widget.App.Button.OutlinedButton.SiteDialog" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">14dp</item>
+        <item name="cornerRadius">14dp</item>
+        <item name="iconPadding">8dp</item>
+        <item name="android:gravity">center</item>
+        <item name="iconGravity">textStart</item>
+        <item name="strokeColor">@color/white_10</item>
+    </style>
+    
+    <!-- 自定义TextInputLayout样式 -->
+    <style name="Widget.App.TextInputLayout" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.App.TextInputLayout</item>
+    </style>
+    
+    <style name="ShapeAppearance.App.TextInputLayout" parent="ShapeAppearance.Material3.SmallComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">14dp</item>
+    </style>
+
+    <!-- MaterialAlertDialog 样式 -->
+    <style name="MaterialAlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <item name="colorSurface">@color/black</item>
+        <item name="colorOnSurface">@color/white</item>
+        <item name="android:textColorPrimary">@color/white</item>
+        <item name="android:textColorSecondary">@color/white</item>
+        <item name="buttonBarPositiveButtonStyle">@style/AlertDialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/AlertDialogButton</item>
+    </style>
+
+    <style name="AlertDialogButton" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/primary</item>
+    </style>
+
+</resources>
