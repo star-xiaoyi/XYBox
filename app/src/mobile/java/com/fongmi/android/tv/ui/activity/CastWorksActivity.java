@@ -88,7 +88,7 @@ public class CastWorksActivity extends BaseActivity implements VodAdapter.OnClic
         });
         
         // 设置 RecyclerView
-        GridLayoutManager layoutManager = new GridLayoutManager(this, 3);
+        GridLayoutManager layoutManager = new GridLayoutManager(this, Product.getColumn(this));
         mBinding.recycler.setLayoutManager(layoutManager);
         mBinding.recycler.setHasFixedSize(true);
         mBinding.recycler.setItemAnimator(null);

@@ -146,11 +146,11 @@ public class Util {
     }
 
     public static boolean isLeanback() {
-        return "leanback".equals(BuildConfig.FLAVOR_mode);
+        return "leanback".equals(BuildConfig.MODE);
     }
 
     public static boolean isMobile() {
-        return "mobile".equals(BuildConfig.FLAVOR_mode);
+        return "mobile".equals(BuildConfig.MODE);
     }
 
     public static String format(StringBuilder builder, Formatter formatter, long timeMs) {

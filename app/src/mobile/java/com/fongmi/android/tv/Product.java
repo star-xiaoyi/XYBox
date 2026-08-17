@@ -12,13 +12,12 @@ public class Product {
     }
 
     public static int getColumn(Context context) {
-        int count = ResUtil.isLand(context) ? 7 : 5;
-        count = count + (ResUtil.isPad() ? 1 : 0);
-        return Math.abs(Setting.getSize() - count);
+        int count = ResUtil.isLand(context) ? 7 : ResUtil.isExpanded(context) ? 6 : 5;
+        return Math.max(1, count - Setting.getSize());
     }
 
     public static int getColumn(Context context, Style style) {
-        return style.isLand() ? getColumn(context) - 1 : getColumn(context);
+        return Math.max(1, style.isLand() ? getColumn(context) - 1 : getColumn(context));
     }
 
     public static int[] getSpec(Context context) {
@@ -37,8 +36,8 @@ public class Product {
     }
 
     private static int[] getSpec(Context context, int space, int column, Style style) {
-        int base = ResUtil.getScreenWidth(context) - space;
-        int width = base / column;
+        int base = Math.max(1, ResUtil.getScreenWidth(context) - space);
+        int width = Math.max(1, base / Math.max(1, column));
         int height = (int) (width / style.getRatio());
         return new int[]{width, height};
     }
