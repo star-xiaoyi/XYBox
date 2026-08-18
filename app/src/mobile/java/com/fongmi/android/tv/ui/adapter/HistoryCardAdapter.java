@@ -1,7 +1,7 @@
 package com.fongmi.android.tv.ui.adapter;
 
 import android.graphics.Bitmap;
-import android.graphics.drawable.Drawable;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -9,6 +9,7 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
@@ -43,13 +44,16 @@ public class HistoryCardAdapter extends RecyclerView.Adapter<HistoryCardAdapter.
     }
 
     public void setItems(List<History> items) {
-        mItems.clear();
+        List<History> nextItems = new ArrayList<>();
         if (items != null) {
             // 限制最多显示15条记录
             int count = Math.min(items.size(), 15);
-            mItems.addAll(items.subList(0, count));
+            nextItems.addAll(items.subList(0, count));
         }
-        notifyDataSetChanged();
+        DiffUtil.DiffResult result = DiffUtil.calculateDiff(new HistoryDiff(new ArrayList<>(mItems), nextItems));
+        mItems.clear();
+        mItems.addAll(nextItems);
+        result.dispatchUpdatesTo(this);
     }
 
     public void clear() {
@@ -114,7 +118,6 @@ public class HistoryCardAdapter extends RecyclerView.Adapter<HistoryCardAdapter.
                 .load(ImgUtil.getUrl(url))
                 .placeholder(R.drawable.ic_img_loading)
                 .override(width, height)  // 明确指定加载尺寸
-                .skipMemoryCache(true)  // 跳过内存缓存
                 .dontAnimate()  // 不使用动画
                 .signature(new ObjectKey(url + "_90x132"))  // 添加签名以区分不同尺寸
                 .listener(new RequestListener<Bitmap>() {
@@ -164,6 +167,43 @@ public class HistoryCardAdapter extends RecyclerView.Adapter<HistoryCardAdapter.
         ViewHolder(@NonNull AdapterHistoryCardBinding binding) {
             super(binding.getRoot());
             this.binding = binding;
+        }
+    }
+
+    private static final class HistoryDiff extends DiffUtil.Callback {
+
+        private final List<History> oldItems;
+        private final List<History> newItems;
+
+        private HistoryDiff(List<History> oldItems, List<History> newItems) {
+            this.oldItems = oldItems;
+            this.newItems = newItems;
+        }
+
+        @Override
+        public int getOldListSize() {
+            return oldItems.size();
+        }
+
+        @Override
+        public int getNewListSize() {
+            return newItems.size();
+        }
+
+        @Override
+        public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
+            return TextUtils.equals(oldItems.get(oldItemPosition).getKey(), newItems.get(newItemPosition).getKey());
+        }
+
+        @Override
+        public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
+            History oldItem = oldItems.get(oldItemPosition);
+            History newItem = newItems.get(newItemPosition);
+            return TextUtils.equals(oldItem.getVodName(), newItem.getVodName())
+                    && TextUtils.equals(oldItem.getVodPic(), newItem.getVodPic())
+                    && TextUtils.equals(oldItem.getVodRemarks(), newItem.getVodRemarks())
+                    && oldItem.getPosition() == newItem.getPosition()
+                    && oldItem.getDuration() == newItem.getDuration();
         }
     }
 }
