@@ -56,6 +56,7 @@ public class KeepAdapter extends RecyclerView.Adapter<KeepAdapter.ViewHolder> {
     }
 
     public void clear() {
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().markKeepsDeleted(new ArrayList<>(mItems));
         mItems.clear();
         setDelete(false);
         notifyDataSetChanged();

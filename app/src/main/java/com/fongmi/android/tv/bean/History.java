@@ -278,10 +278,8 @@ public class History {
 
     public void update() {
         try {
-            com.github.catvod.utils.Logger.d("History.update: 开始更新观看记录 key=" + getKey());
             merge(find(), false);
             save();
-            com.github.catvod.utils.Logger.d("History.update: 更新成功");
         } catch (Exception e) {
             com.github.catvod.utils.Logger.e("History.update: 更新失败 - " + e.getMessage());
             Logger.e("Error", e);
@@ -299,12 +297,13 @@ public class History {
     }
 
     public History save() {
-        com.github.catvod.utils.Logger.d("History.save: key=" + getKey() + ", vodName=" + getVodName());
         AppDatabase.get().getHistoryDao().insertOrUpdate(this);
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().requestSync();
         return this;
     }
 
     public History delete() {
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().markHistoryDeleted(this);
         AppDatabase.get().getHistoryDao().delete(VodConfig.getCid(), getKey());
         AppDatabase.get().getTrackDao().delete(getKey());
         return this;

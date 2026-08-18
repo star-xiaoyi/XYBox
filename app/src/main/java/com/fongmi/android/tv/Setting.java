@@ -6,6 +6,7 @@ import android.provider.Settings;
 
 import com.fongmi.android.tv.player.Players;
 import com.github.catvod.utils.Prefers;
+import com.fongmi.android.tv.utils.WebDAVCredentialStore;
 
 public class Setting {
 
@@ -461,11 +462,11 @@ public class Setting {
     }
 
     public static String getWebDAVPassword() {
-        return Prefers.getString("webdav_password", "");
+        return WebDAVCredentialStore.getPassword();
     }
 
     public static void putWebDAVPassword(String password) {
-        Prefers.put("webdav_password", password);
+        WebDAVCredentialStore.putPassword(password);
     }
 
     public static String getWebDAVSyncMode() {

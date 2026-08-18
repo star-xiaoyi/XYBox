@@ -30,7 +30,7 @@ public class WebDAVDialog {
     };
     
     private static final String[] PROVIDER_URLS = {
-        "https://dav.jianguoyun.com/dav/XMBOX/",  // 坚果云（添加XMBOX子目录，方便在网页版查看）
+        "https://dav.jianguoyun.com/dav/XYBox/",
         "",  // Nextcloud（需要用户输入）
         "",  // ownCloud（需要用户输入）
         ""   // 自定义（需要用户输入）
@@ -111,6 +111,7 @@ public class WebDAVDialog {
         
         // 根据自动同步开关显示/隐藏同步间隔
         updateSyncIntervalVisibility(autoSync);
+        showStatus(syncManager.getLastStatus(), true);
         
         isInitializing = false;  // 初始化完成
     }
@@ -252,18 +253,14 @@ public class WebDAVDialog {
 
         // 在后台线程测试连接
         App.execute(() -> {
-            boolean success = syncManager.testConnection();
+            WebDAVSyncManager.TestResult result = syncManager.testConnectionWithMessage();
             App.post(() -> {
                 // 检查对话框是否还存在
                 if (binding == null || dialog == null || !dialog.isShowing()) {
                     return;
                 }
                 binding.testButton.setEnabled(true);
-                if (success) {
-                    showStatus("连接成功！", true);
-                } else {
-                    showStatus("连接失败，请检查配置", false);
-                }
+                showStatus(result.message, result.success);
             });
         });
     }
@@ -305,10 +302,7 @@ public class WebDAVDialog {
         // 在后台线程执行同步
         App.execute(() -> {
             try {
-                // 先上传本地记录
-                syncManager.uploadHistory();
-                // 再下载远程记录并合并
-                boolean downloadSuccess = syncManager.downloadHistory();
+                WebDAVSyncManager.SyncResult result = syncManager.syncNow();
                 
                 App.post(() -> {
                     // 检查对话框是否还存在
@@ -316,13 +310,8 @@ public class WebDAVDialog {
                         return;
                     }
                     binding.syncButton.setEnabled(true);
-                    if (downloadSuccess) {
-                        showStatus("同步完成", true);
-                        Notify.show("同步完成");
-                    } else {
-                        showStatus("同步完成（本地数据已上传）", true);
-                        Notify.show("同步完成");
-                    }
+                    showStatus(result.message, result.success);
+                    Notify.show(result.message);
                 });
             } catch (Exception e) {
                 App.post(() -> {
@@ -432,16 +421,9 @@ public class WebDAVDialog {
             Notify.show("WebDAV配置已保存，正在同步数据...");
             App.execute(() -> {
                 try {
-                    // 先上传本地记录
-                    syncManager.uploadHistory();
-                    // 再下载远程记录并合并
-                    boolean downloadSuccess = syncManager.downloadHistory();
+                    WebDAVSyncManager.SyncResult result = syncManager.syncNow();
                     App.post(() -> {
-                        if (downloadSuccess) {
-                            Notify.show("同步完成，已获取远程观看记录");
-                        } else {
-                            Notify.show("同步完成（本地数据已上传）");
-                        }
+                        Notify.show(result.message);
                     });
                 } catch (Exception e) {
                     App.post(() -> {

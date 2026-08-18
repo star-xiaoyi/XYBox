@@ -59,6 +59,7 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
     }
 
     public void clear() {
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().markHistoriesDeleted(new ArrayList<>(mItems));
         mItems.clear();
         setDelete(false);
         notifyDataSetChanged();

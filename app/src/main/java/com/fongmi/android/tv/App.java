@@ -5,6 +5,8 @@ import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,6 +22,7 @@ import com.fongmi.android.tv.utils.CacheCleaner;
 import com.fongmi.android.tv.utils.UpdateInstaller;
 import com.fongmi.android.tv.utils.AutoSyncManager;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.WebDAVSyncManager;
 import com.fongmi.hook.Hook;
 import com.github.catvod.Init;
 import com.github.catvod.bean.Doh;
@@ -48,7 +51,9 @@ public class App extends Application {
     private Hook hook;
     private final Runnable cleanTask;
     private final Runnable syncTask;
+    private final Runnable webdavSyncTask;
     private boolean appJustLaunched;
+    private boolean webdavStartupSyncPending;
 
     public App() {
         instance = this;
@@ -69,7 +74,9 @@ public class App extends Application {
                 .create();
         cleanTask = this::checkCacheClean;
         syncTask = this::doAutoSync;
+        webdavSyncTask = this::doWebDAVAutoSync;
         appJustLaunched = true;
+        webdavStartupSyncPending = true;
     }
 
     public static App get() {
@@ -144,6 +151,7 @@ public class App extends Application {
         
         // 初始化自动缓存清理
         initCacheCleaner();
+        registerWebDAVNetworkCallback();
         
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override
@@ -165,6 +173,8 @@ public class App extends Application {
                 checkPendingInstall();
                 // 检查局域网自动同步
                 checkAutoSync();
+                // WebDAV 是持久云同步，不依赖另一台设备同时在线
+                checkWebDAVAutoSync();
                 // 自动检查更新（如果启用）
                 checkAutoUpdate(activity);
             }
@@ -280,6 +290,41 @@ public class App extends Application {
                 post(syncTask, interval * 60 * 1000L);
             }
         });
+    }
+
+    private void checkWebDAVAutoSync() {
+        removeCallbacks(webdavSyncTask);
+        if (!Setting.isWebDAVAutoSync()) return;
+        WebDAVSyncManager manager = WebDAVSyncManager.get();
+        if (webdavStartupSyncPending) {
+            webdavStartupSyncPending = false;
+            execute(manager::syncNow);
+        } else {
+            execute(manager::performAutoSync);
+        }
+        post(webdavSyncTask, manager.getAutoSyncIntervalMillis());
+    }
+
+    private void doWebDAVAutoSync() {
+        if (!Setting.isWebDAVAutoSync()) return;
+        WebDAVSyncManager manager = WebDAVSyncManager.get();
+        execute(manager::performAutoSync);
+        post(webdavSyncTask, manager.getAutoSyncIntervalMillis());
+    }
+
+    private void registerWebDAVNetworkCallback() {
+        ConnectivityManager manager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (manager == null) return;
+        try {
+            manager.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(@NonNull Network network) {
+                    if (Setting.isWebDAVAutoSync()) execute(() -> WebDAVSyncManager.get().syncNow());
+                }
+            });
+        } catch (Exception e) {
+            Logger.w("App: 无法监听网络恢复事件: " + e.getMessage());
+        }
     }
     
 

@@ -141,13 +141,16 @@ public class Keep {
     public void save(int cid) {
         setCid(cid);
         AppDatabase.get().getKeepDao().insertOrUpdate(this);
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().requestSync();
     }
 
     public void save() {
         AppDatabase.get().getKeepDao().insertOrUpdate(this);
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().requestSync();
     }
 
     public Keep delete() {
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().markKeepDeleted(this);
         AppDatabase.get().getKeepDao().delete(getCid(), getKey());
         return this;
     }
