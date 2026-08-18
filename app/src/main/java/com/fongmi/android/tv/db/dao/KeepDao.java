@@ -31,6 +31,9 @@ public abstract class KeepDao extends BaseDao<Keep> {
     @Query("DELETE FROM Keep WHERE type = 0 AND cid = :cid AND `key` = :key")
     public abstract void delete(int cid, String key);
 
+    @Query("DELETE FROM Keep WHERE `key` = :key")
+    public abstract void deleteByKey(String key);
+
     @Query("DELETE FROM Keep WHERE type = 0 AND cid = :cid")
     public abstract void delete(int cid);
 

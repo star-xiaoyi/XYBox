@@ -28,6 +28,9 @@ public abstract class HistoryDao extends BaseDao<History> {
     @Query("DELETE FROM History WHERE cid = :cid AND `key` = :key")
     public abstract void delete(int cid, String key);
 
+    @Query("DELETE FROM History WHERE `key` = :key")
+    public abstract void deleteByKey(String key);
+
     @Query("DELETE FROM History WHERE cid = :cid")
     public abstract void delete(int cid);
 
