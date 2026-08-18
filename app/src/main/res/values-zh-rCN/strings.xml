@@ -2,6 +2,7 @@
 
     <!-- App -->
     <string name="app_name">XYBox</string>
+    <string name="back">返回</string>
 
     <!-- Vod -->
     <string name="vod_last">上次看到<xliff:g name="name">%s</xliff:g></string>
@@ -115,6 +116,14 @@
     <string name="player_tunnel">隧道模式</string>
     <string name="player_buffer">缓冲时间</string>
     <string name="player_speed">长按倍速</string>
+    <string name="player_gesture_title">播放器手势</string>
+    <string name="player_gesture_double_tap_play">双击播放/暂停</string>
+    <string name="player_gesture_double_tap_seek">双击左右快退/快进</string>
+    <string name="player_gesture_seek_seconds">快退/快进时长</string>
+    <string name="player_gesture_seek_seconds_value">%1$d 秒</string>
+    <string name="player_gesture_brightness">左侧滑动调节亮度</string>
+    <string name="player_gesture_volume">右侧滑动调节音量</string>
+    <string name="player_gesture_progress">水平滑动调节进度</string>
     <string name="player_ua">User-Agent</string>
 
     <!-- Search -->

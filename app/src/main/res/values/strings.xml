@@ -2,6 +2,7 @@
 
     <!-- App -->
     <string name="app_name">XYBox</string>
+    <string name="back">Back</string>
 
     <!-- Vod -->
     <string name="vod_last">Last seen <xliff:g name="name">%s</xliff:g></string>
@@ -117,6 +118,14 @@
     <string name="player_tunnel">Tunnel mode</string>
     <string name="player_buffer">Buffer time</string>
     <string name="player_speed">Press speed</string>
+    <string name="player_gesture_title">Player gestures</string>
+    <string name="player_gesture_double_tap_play">Double tap to play or pause</string>
+    <string name="player_gesture_double_tap_seek">Double tap sides to rewind or fast-forward</string>
+    <string name="player_gesture_seek_seconds">Rewind / fast-forward step</string>
+    <string name="player_gesture_seek_seconds_value">%1$d sec</string>
+    <string name="player_gesture_brightness">Swipe left side for brightness</string>
+    <string name="player_gesture_volume">Swipe right side for volume</string>
+    <string name="player_gesture_progress">Swipe horizontally to seek</string>
     <string name="player_ua">User-Agent</string>
 
     <!-- Search -->

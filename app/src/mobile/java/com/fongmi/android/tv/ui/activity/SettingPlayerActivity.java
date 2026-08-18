@@ -24,6 +24,8 @@ import java.text.DecimalFormat;
 
 public class SettingPlayerActivity extends BaseActivity implements UaCallback, BufferCallback, SpeedCallback {
 
+    private static final int[] GESTURE_SEEK_SECONDS = {5, 10, 15, 30};
+
     private ActivitySettingPlayerBinding mBinding;
     private DecimalFormat format;
     private String[] background;
@@ -52,6 +54,13 @@ public class SettingPlayerActivity extends BaseActivity implements UaCallback, B
         mBinding.audioDecodeSwitch.setChecked(Setting.isAudioPrefer());
         mBinding.aacSwitch.setChecked(Setting.isPreferAAC());
         mBinding.danmakuLoadSwitch.setChecked(Setting.isDanmakuLoad());
+        mBinding.gestureDoubleTapPlaySwitch.setChecked(Setting.isGestureDoubleTapPlay());
+        mBinding.gestureDoubleTapSeekSwitch.setChecked(Setting.isGestureDoubleTapSeek());
+        mBinding.gestureBrightnessSwitch.setChecked(Setting.isGestureBrightness());
+        mBinding.gestureVolumeSwitch.setChecked(Setting.isGestureVolume());
+        mBinding.gestureProgressSwitch.setChecked(Setting.isGestureProgress());
+        updateGestureSeekSeconds();
+        updateGestureSeekVisibility();
         mBinding.speedText.setText(format.format(Setting.getSpeed()));
         mBinding.bufferText.setText(String.valueOf(Setting.getBuffer()));
         mBinding.caption.setVisibility(Setting.hasCaption() ? View.VISIBLE : View.GONE);
@@ -87,6 +96,17 @@ public class SettingPlayerActivity extends BaseActivity implements UaCallback, B
         mBinding.audioDecodeSwitch.setOnClickListener(this::setAudioDecode);
         mBinding.aacSwitch.setOnClickListener(this::setAAC);
         mBinding.danmakuLoadSwitch.setOnClickListener(this::setDanmakuLoad);
+        mBinding.gestureDoubleTapPlaySwitch.setOnClickListener(this::setGestureDoubleTapPlay);
+        mBinding.gestureDoubleTapSeekSwitch.setOnClickListener(this::setGestureDoubleTapSeek);
+        mBinding.gestureBrightnessSwitch.setOnClickListener(this::setGestureBrightness);
+        mBinding.gestureVolumeSwitch.setOnClickListener(this::setGestureVolume);
+        mBinding.gestureProgressSwitch.setOnClickListener(this::setGestureProgress);
+        mBinding.gestureDoubleTapPlay.setOnClickListener(view -> mBinding.gestureDoubleTapPlaySwitch.performClick());
+        mBinding.gestureDoubleTapSeek.setOnClickListener(view -> mBinding.gestureDoubleTapSeekSwitch.performClick());
+        mBinding.gestureBrightness.setOnClickListener(view -> mBinding.gestureBrightnessSwitch.performClick());
+        mBinding.gestureVolume.setOnClickListener(view -> mBinding.gestureVolumeSwitch.performClick());
+        mBinding.gestureProgress.setOnClickListener(view -> mBinding.gestureProgressSwitch.performClick());
+        mBinding.gestureSeekSeconds.setOnClickListener(this::setGestureSeekSeconds);
     }
 
     private void onUa(View view) {
@@ -197,4 +217,47 @@ public class SettingPlayerActivity extends BaseActivity implements UaCallback, B
         Setting.putDanmakuLoad(isChecked);
         // 不需要再次调用 setChecked，因为点击已经触发了状态变化
     }
-} 
+
+    private void setGestureDoubleTapPlay(View view) {
+        Setting.putGestureDoubleTapPlay(!Setting.isGestureDoubleTapPlay());
+    }
+
+    private void setGestureDoubleTapSeek(View view) {
+        Setting.putGestureDoubleTapSeek(!Setting.isGestureDoubleTapSeek());
+        updateGestureSeekVisibility();
+    }
+
+    private void setGestureBrightness(View view) {
+        Setting.putGestureBrightness(!Setting.isGestureBrightness());
+    }
+
+    private void setGestureVolume(View view) {
+        Setting.putGestureVolume(!Setting.isGestureVolume());
+    }
+
+    private void setGestureProgress(View view) {
+        Setting.putGestureProgress(!Setting.isGestureProgress());
+    }
+
+    private void setGestureSeekSeconds(View view) {
+        String[] labels = new String[GESTURE_SEEK_SECONDS.length];
+        int checked = 0;
+        for (int i = 0; i < GESTURE_SEEK_SECONDS.length; i++) {
+            labels[i] = getString(R.string.player_gesture_seek_seconds_value, GESTURE_SEEK_SECONDS[i]);
+            if (GESTURE_SEEK_SECONDS[i] == Setting.getGestureSeekSeconds()) checked = i;
+        }
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle(R.string.player_gesture_seek_seconds).setNegativeButton(R.string.dialog_negative, null).setSingleChoiceItems(labels, checked, (dialog, which) -> {
+            Setting.putGestureSeekSeconds(GESTURE_SEEK_SECONDS[which]);
+            updateGestureSeekSeconds();
+            dialog.dismiss();
+        }).show();
+    }
+
+    private void updateGestureSeekSeconds() {
+        mBinding.gestureSeekSecondsText.setText(getString(R.string.player_gesture_seek_seconds_value, Setting.getGestureSeekSeconds()));
+    }
+
+    private void updateGestureSeekVisibility() {
+        mBinding.gestureSeekSeconds.setVisibility(Setting.isGestureDoubleTapSeek() ? View.VISIBLE : View.GONE);
+    }
+}

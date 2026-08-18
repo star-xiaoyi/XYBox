@@ -13,6 +13,7 @@ import android.content.res.Configuration;
 import androidx.annotation.NonNull;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
 
@@ -133,16 +134,12 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         if (isEdge(e) || changeScale || e.getPointerCount() > 1) return true;
         if (lock) return true;
         int screenWidth = ResUtil.getScreenWidth(activity);
-        // 双击区域划分：左侧20% → 快退，中间60% → 播放/暂停，右侧20% → 快进
         float leftBoundary = screenWidth * 0.2f;
         float rightBoundary = screenWidth * 0.8f;
-        if (e.getX() < leftBoundary) {
-            listener.onDoubleTapLeft();
-        } else if (e.getX() > rightBoundary) {
-            listener.onDoubleTapRight();
-        } else {
-            listener.onDoubleTap();
-        }
+        boolean seekEnabled = Setting.isGestureDoubleTapSeek();
+        if (seekEnabled && e.getX() < leftBoundary) listener.onDoubleTapLeft();
+        else if (seekEnabled && e.getX() > rightBoundary) listener.onDoubleTapRight();
+        else if (Setting.isGestureDoubleTapPlay()) listener.onDoubleTap();
         return true;
     }
 
@@ -180,7 +177,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
                 checkSide(e2);
             }
             // 横屏模式下，降低触发进度条调整的阈值
-            if (Math.abs(distanceX) >= Math.abs(distanceY) * 0.7f) {
+            if (Setting.isGestureProgress() && Math.abs(distanceX) >= Math.abs(distanceY) * 0.7f) {
                 changeTime = true;
             }
         } else {
@@ -190,7 +187,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
             } else if (Math.abs(distanceX) < Math.abs(distanceY)) {
                 checkSide(e2);
             }
-            if (Math.abs(distanceX) >= Math.abs(distanceY)) {
+            if (Setting.isGestureProgress() && Math.abs(distanceX) >= Math.abs(distanceY)) {
                 changeTime = true;
             }
         }
@@ -207,8 +204,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
 
     private void checkSide(MotionEvent e2) {
         int half = ResUtil.getScreenWidth(activity) / 2;
-        if (e2.getX() > half) changeVolume = true;
-        else changeBright = true;
+        if (e2.getX() > half) changeVolume = Setting.isGestureVolume();
+        else changeBright = Setting.isGestureBrightness();
     }
 
     private void setBright(float deltaY) {
