@@ -15,7 +15,8 @@ import java.util.concurrent.TimeUnit;
 /** Best-effort fallback for pending WebDAV changes after the task leaves Recents. */
 public class WebDAVSyncJobService extends JobService {
 
-    private static final int JOB_ID = 0x58594258;
+    private static final int DELAYED_JOB_ID = 0x58594258;
+    private static final int URGENT_JOB_ID = 0x58594259;
     private static final long DELAY = TimeUnit.MINUTES.toMillis(5);
     private static final long URGENT_DEADLINE = TimeUnit.MINUTES.toMillis(1);
 
@@ -30,8 +31,15 @@ public class WebDAVSyncJobService extends JobService {
     private static void schedule(boolean immediate) {
         if (!Setting.isWebDAVAutoSync()) return;
         JobScheduler scheduler = (JobScheduler) App.get().getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        if (scheduler == null || (!immediate && scheduler.getPendingJob(JOB_ID) != null)) return;
-        JobInfo.Builder builder = new JobInfo.Builder(JOB_ID, new ComponentName(App.get(), WebDAVSyncJobService.class))
+        if (scheduler == null) return;
+        if (immediate) {
+            if (scheduler.getPendingJob(URGENT_JOB_ID) != null) return;
+            scheduler.cancel(DELAYED_JOB_ID);
+        } else if (scheduler.getPendingJob(DELAYED_JOB_ID) != null || scheduler.getPendingJob(URGENT_JOB_ID) != null) {
+            return;
+        }
+        int jobId = immediate ? URGENT_JOB_ID : DELAYED_JOB_ID;
+        JobInfo.Builder builder = new JobInfo.Builder(jobId, new ComponentName(App.get(), WebDAVSyncJobService.class))
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY);
         if (immediate) {
             builder.setOverrideDeadline(URGENT_DEADLINE);
@@ -43,14 +51,22 @@ public class WebDAVSyncJobService extends JobService {
 
     public static void cancel() {
         JobScheduler scheduler = (JobScheduler) App.get().getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        if (scheduler != null) scheduler.cancel(JOB_ID);
+        if (scheduler == null) return;
+        scheduler.cancel(DELAYED_JOB_ID);
+        scheduler.cancel(URGENT_JOB_ID);
     }
 
     @Override
     public boolean onStartJob(JobParameters params) {
         App.execute(() -> {
-            WebDAVSyncManager.SyncResult result = WebDAVSyncManager.get().syncNow();
-            jobFinished(params, !result.success);
+            WebDAVSyncManager manager = WebDAVSyncManager.get();
+            WebDAVSyncManager.SyncResult result = null;
+            for (int attempt = 0; attempt < 3; attempt++) {
+                result = manager.syncNow();
+                if (!result.success || !manager.hasPendingSync()) break;
+            }
+            boolean retry = result == null || !result.success || manager.hasPendingSync();
+            jobFinished(params, retry);
         });
         return true;
     }

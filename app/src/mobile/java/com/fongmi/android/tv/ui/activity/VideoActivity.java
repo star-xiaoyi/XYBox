@@ -1288,12 +1288,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void updateHistory(Episode item, boolean replay) {
+        boolean firstSave = mHistory.getCreateTime() <= 0;
         replay = replay || !item.equals(mHistory.getEpisode());
         mHistory.setEpisodeUrl(item.getUrl());
         mHistory.setVodRemarks(item.getName());
         mHistory.setVodFlag(getFlag().getFlag());
         mHistory.setCreateTime(System.currentTimeMillis());
         mHistory.setPosition(replay ? C.TIME_UNSET : mHistory.getPosition());
+        // Persist a new title before player preparation. This gives the first cloud upload
+        // enough time to finish even when the user watches briefly and removes the task.
+        if (firstSave && !Setting.isIncognito()) mHistory.update();
     }
 
     private void checkControl() {
@@ -1960,12 +1964,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void savePlaybackProgress() {
-        if (mHistory == null || mPlayers == null || mPlayers.isEmpty() || Setting.isIncognito()) return;
-        long position = mPlayers.getPosition();
-        long duration = mPlayers.getDuration();
-        if (position < 0 || duration <= 0) return;
-        mHistory.setPosition(position);
-        mHistory.setDuration(duration);
+        if (mHistory == null || mHistory.getCreateTime() <= 0 || Setting.isIncognito()) return;
+        if (mPlayers != null && !mPlayers.isEmpty()) {
+            long position = mPlayers.getPosition();
+            long duration = mPlayers.getDuration();
+            if (position >= 0) mHistory.setPosition(position);
+            if (duration > 0) mHistory.setDuration(duration);
+        }
         mHistory.update();
     }
 
