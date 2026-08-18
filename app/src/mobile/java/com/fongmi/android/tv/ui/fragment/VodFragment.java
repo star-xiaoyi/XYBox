@@ -87,6 +87,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private Runnable mRunnable;
     private List<String> mHots;
     private Result mResult;
+    private int mAppBarOffset;
 
     public static VodFragment newInstance() {
         return new VodFragment();
@@ -94,6 +95,13 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     private TypeFragment getFragment() {
         return (TypeFragment) mBinding.pager.getAdapter().instantiateItem(mBinding.pager, mBinding.pager.getCurrentItem());
+    }
+
+    @Nullable
+    private TypeFragment getFragmentOrNull() {
+        if (mBinding == null || mBinding.pager.getAdapter() == null || mBinding.pager.getAdapter().getCount() == 0) return null;
+        Object item = mBinding.pager.getAdapter().instantiateItem(mBinding.pager, mBinding.pager.getCurrentItem());
+        return item instanceof TypeFragment ? (TypeFragment) item : null;
     }
 
     private Site getSite() {
@@ -160,12 +168,11 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.history.setOnClickListener(this::onHistory);
         mBinding.historyMore.setOnClickListener(this::onHistory);
         mBinding.swipeLayout.setOnRefreshListener(this::onPullRefresh);
+        mBinding.appBar.addOnOffsetChangedListener((appBarLayout, verticalOffset) -> mAppBarOffset = verticalOffset);
         mBinding.swipeLayout.setOnChildScrollUpCallback((parent, child) -> {
-            try {
-                return getFragment().canScrollUp();
-            } catch (Exception e) {
-                return false;
-            }
+            if (mAppBarOffset != 0) return true;
+            TypeFragment fragment = getFragmentOrNull();
+            return fragment != null && fragment.canScrollUp();
         });
         mBinding.filter.setOnLongClickListener(this::onLink);
         mBinding.pager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
@@ -481,13 +488,19 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void onPullRefresh() {
-        getFragment().refreshContent();
+        TypeFragment fragment = getFragmentOrNull();
+        if (fragment != null) fragment.refreshContent();
         WebDAVSyncManager manager = WebDAVSyncManager.get();
-        if (!manager.isConfigured()) return;
+        if (!manager.isConfigured()) {
+            if (fragment == null) setRefreshing(false);
+            return;
+        }
         App.execute(() -> {
             WebDAVSyncManager.SyncResult result = manager.syncNow();
             App.post(() -> {
+                if (mBinding == null) return;
                 loadHistory();
+                setRefreshing(false);
                 Notify.show(result.message);
             });
         });
@@ -520,6 +533,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         if (!Setting.isHistoryVisible()) {
             mBinding.historySection.setVisibility(View.GONE);
             mBinding.historyRecycler.setVisibility(View.GONE);
+            updateRefreshIndicatorOffset();
             return;
         }
         
@@ -542,6 +556,18 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
                 }
             }
         }
+        updateRefreshIndicatorOffset();
+    }
+
+    private void updateRefreshIndicatorOffset() {
+        if (mBinding == null) return;
+        mBinding.swipeLayout.post(() -> {
+            if (mBinding == null) return;
+            View anchor = mBinding.historySection.getVisibility() == View.VISIBLE ? mBinding.historySection : mBinding.headerBar;
+            int edge = anchor.getBottom();
+            if (edge <= 0) return;
+            mBinding.swipeLayout.setProgressViewOffset(false, Math.max(0, edge - ResUtil.dp2px(40)), edge + ResUtil.dp2px(24));
+        });
     }
 
     private void showProgress() {
