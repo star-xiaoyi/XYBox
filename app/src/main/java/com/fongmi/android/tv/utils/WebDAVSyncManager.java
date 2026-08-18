@@ -15,6 +15,7 @@ import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.service.WebDAVSyncService;
 import com.github.catvod.utils.Logger;
 import com.github.catvod.utils.Prefers;
 import com.google.gson.Gson;
@@ -68,6 +69,9 @@ public final class WebDAVSyncManager {
     private static final String PREF_LAST_SUCCESS = "webdav_last_success_v2";
     private static final String PREF_LAST_ATTEMPT = "webdav_last_attempt_v2";
     private static final String PREF_LAST_STATUS = "webdav_last_status_v2";
+    private static final String PREF_PENDING_SYNC = "webdav_pending_sync_v2";
+    private static final String PREF_ATOMIC_REPLACE = "webdav_atomic_replace_v2";
+    private static final String PREF_REMOTE_COPY = "webdav_remote_copy_v2";
     private static final String HISTORY_PREFIX = "history:";
     private static final String KEEP_PREFIX = "keep:";
     private static final String CONFIG_PREFIX = "config:";
@@ -98,6 +102,7 @@ public final class WebDAVSyncManager {
     private String baseUrl;
     private String username;
     private String password;
+    private boolean directoryReady;
     private long dirtyGeneration;
     private boolean dirtySyncScheduled;
     private boolean flushAfterSync;
@@ -117,9 +122,14 @@ public final class WebDAVSyncManager {
     }
 
     private synchronized void loadConfig() {
-        baseUrl = normalizeBaseUrl(Setting.getWebDAVUrl());
-        username = Setting.getWebDAVUsername();
-        password = Setting.getWebDAVPassword();
+        String newBaseUrl = normalizeBaseUrl(Setting.getWebDAVUrl());
+        String newUsername = Setting.getWebDAVUsername();
+        String newPassword = Setting.getWebDAVPassword();
+        if (!Objects.equals(baseUrl, newBaseUrl) || !Objects.equals(username, newUsername)
+                || !Objects.equals(password, newPassword)) directoryReady = false;
+        baseUrl = newBaseUrl;
+        username = newUsername;
+        password = newPassword;
         sardine = null;
         if (!TextUtils.isEmpty(baseUrl) && !TextUtils.isEmpty(username) && !TextUtils.isEmpty(password)) {
             Sardine client = new OkHttpSardine();
@@ -236,7 +246,7 @@ public final class WebDAVSyncManager {
 
     public void performAutoSync() {
         if (!Setting.isWebDAVAutoSync() || !isConfigured()) return;
-        if (System.currentTimeMillis() - getLong(PREF_LAST_SUCCESS) < ACTIVE_SYNC_DELAY) return;
+        if (!hasPendingSync() && System.currentTimeMillis() - getLong(PREF_LAST_SUCCESS) < ACTIVE_SYNC_DELAY) return;
         syncNow();
     }
 
@@ -245,6 +255,7 @@ public final class WebDAVSyncManager {
             if (generation != dirtyGeneration) return;
             dirtyGeneration = 0;
             dirtySyncScheduled = false;
+            Prefers.getPrefers().edit().putBoolean(PREF_PENDING_SYNC, false).commit();
         }
         App.removeCallbacks(dirtySyncTask);
         WebDAVSyncJobService.cancel();
@@ -254,6 +265,9 @@ public final class WebDAVSyncManager {
         if (!Setting.isWebDAVAutoSync() || !isConfigured()) return;
         synchronized (this) {
             dirtyGeneration++;
+            if (!Prefers.getBoolean(PREF_PENDING_SYNC)) {
+                Prefers.getPrefers().edit().putBoolean(PREF_PENDING_SYNC, true).commit();
+            }
             WebDAVSyncJobService.schedule();
             if (dirtySyncScheduled) return;
             dirtySyncScheduled = true;
@@ -263,12 +277,17 @@ public final class WebDAVSyncManager {
 
     public void flushPendingSync() {
         synchronized (this) {
-            if (dirtyGeneration == 0) return;
+            if (dirtyGeneration == 0 && !Prefers.getBoolean(PREF_PENDING_SYNC)) return;
             dirtySyncScheduled = false;
             if (syncing) flushAfterSync = true;
         }
         App.removeCallbacks(dirtySyncTask);
         WebDAVSyncJobService.scheduleImmediate();
+        WebDAVSyncService.start();
+    }
+
+    public synchronized boolean hasPendingSync() {
+        return dirtyGeneration != 0 || Prefers.getBoolean(PREF_PENDING_SYNC);
     }
 
     private void dispatchDirtySync() {
@@ -333,13 +352,14 @@ public final class WebDAVSyncManager {
 
     private RemoteSnapshot downloadSnapshot() throws Exception {
         String url = fileUrl(SYNC_FILE);
-        if (remoteExists(SYNC_FILE)) {
+        DavResource resource = findResource(SYNC_FILE);
+        if (resource != null) {
             SyncEnvelope envelope = SYNC_GSON.fromJson(readText(url), SyncEnvelope.class);
             if (envelope == null || envelope.schemaVersion > SCHEMA_VERSION) {
                 throw new IllegalStateException("云端同步文件版本不受支持");
             }
             normalize(envelope);
-            return new RemoteSnapshot(true, false, getEtag(SYNC_FILE), envelope);
+            return new RemoteSnapshot(true, false, resource.getEtag(), envelope);
         }
 
         SyncEnvelope legacy = new SyncEnvelope();
@@ -720,31 +740,36 @@ public final class WebDAVSyncManager {
         String tempName = ".xybox-sync-temp-" + getDeviceId().substring(0, 8);
         String tempUrl = fileUrl(tempName);
         byte[] bytes = SYNC_GSON.toJson(merged).getBytes(StandardCharsets.UTF_8);
+        verifyRemoteUnchanged(expected);
+        if (!shouldTryAtomicReplace()) {
+            sardine.put(finalUrl, bytes, "application/json; charset=utf-8");
+            return;
+        }
         try {
-            verifyRemoteUnchanged(expected);
             createRemoteBackup(expected, finalUrl);
             if (remoteExists(tempName)) sardine.delete(tempUrl);
             sardine.put(tempUrl, bytes, "application/json; charset=utf-8");
             sardine.move(tempUrl, finalUrl, true);
+            Prefers.put(PREF_ATOMIC_REPLACE, "true");
         } catch (Exception e) {
             try {
-                if (remoteExists(tempName)) sardine.delete(tempUrl);
+                sardine.delete(tempUrl);
             } catch (Exception ignored) {
             }
             if (e instanceof SyncConflictException || !isAtomicReplaceUnsupported(e)) throw e;
+            Prefers.put(PREF_ATOMIC_REPLACE, "false");
             Logger.w("WebDAV: 服务器不支持临时文件替换，改用兼容写入");
             verifyRemoteUnchanged(expected);
-            createRemoteBackup(expected, finalUrl);
             sardine.put(finalUrl, bytes, "application/json; charset=utf-8");
         }
-        verifyUploadedSnapshot(merged);
     }
 
     private void verifyRemoteUnchanged(RemoteSnapshot expected) throws Exception {
-        boolean existsNow = remoteExists(SYNC_FILE);
+        DavResource resource = findResource(SYNC_FILE);
+        boolean existsNow = resource != null;
         if (expected.exists != existsNow) throw new SyncConflictException();
         if (!expected.exists) return;
-        String currentEtag = getEtag(SYNC_FILE);
+        String currentEtag = resource.getEtag();
         if (!TextUtils.isEmpty(expected.etag) && !Objects.equals(expected.etag, currentEtag)) {
             throw new SyncConflictException();
         }
@@ -757,11 +782,26 @@ public final class WebDAVSyncManager {
     }
 
     private void createRemoteBackup(RemoteSnapshot expected, String finalUrl) {
-        if (!expected.exists) return;
+        if (!expected.exists || isJianguoyun() || "false".equals(Prefers.getString(PREF_REMOTE_COPY, ""))) return;
         try {
             sardine.copy(finalUrl, fileUrl(BACKUP_FILE), true);
+            Prefers.put(PREF_REMOTE_COPY, "true");
         } catch (Exception e) {
+            if (isAtomicReplaceUnsupported(e)) Prefers.put(PREF_REMOTE_COPY, "false");
             Logger.w("WebDAV: 创建云端回滚副本失败，继续写入: " + e.getMessage());
+        }
+    }
+
+    private boolean shouldTryAtomicReplace() {
+        return !isJianguoyun() && !"false".equals(Prefers.getString(PREF_ATOMIC_REPLACE, ""));
+    }
+
+    private boolean isJianguoyun() {
+        try {
+            String host = URI.create(baseUrl).getHost();
+            return host != null && host.toLowerCase().endsWith("jianguoyun.com");
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -851,6 +891,7 @@ public final class WebDAVSyncManager {
     }
 
     private void ensureDirectory() throws Exception {
+        if (directoryReady) return;
         try {
             List<DavResource> resources = sardine.list(baseUrl, 0);
             String requested = trimPath(URI.create(baseUrl).getPath());
@@ -862,9 +903,13 @@ public final class WebDAVSyncManager {
                 }
             }
             if (!matched) sardine.createDirectory(baseUrl);
+            directoryReady = true;
         } catch (Exception e) {
             String message = String.valueOf(e.getMessage()).toLowerCase();
-            if (message.contains("404") || message.contains("not found")) sardine.createDirectory(baseUrl);
+            if (message.contains("404") || message.contains("not found")) {
+                sardine.createDirectory(baseUrl);
+                directoryReady = true;
+            }
             else throw e;
         }
     }

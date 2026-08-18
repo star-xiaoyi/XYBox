@@ -297,8 +297,11 @@ public class History {
     }
 
     public History save() {
+        boolean isNew = AppDatabase.get().getHistoryDao().find(getCid(), getKey()) == null;
         AppDatabase.get().getHistoryDao().insertOrUpdate(this);
-        com.fongmi.android.tv.utils.WebDAVSyncManager.get().requestSync();
+        com.fongmi.android.tv.utils.WebDAVSyncManager manager = com.fongmi.android.tv.utils.WebDAVSyncManager.get();
+        manager.requestSync();
+        if (isNew) manager.flushPendingSync();
         return this;
     }
 

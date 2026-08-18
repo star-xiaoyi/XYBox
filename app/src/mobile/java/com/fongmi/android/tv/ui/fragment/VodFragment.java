@@ -538,14 +538,11 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         }
         
         List<History> histories = History.get();
-        
-        if (histories == null || histories.isEmpty()) {
-            mBinding.historySection.setVisibility(View.GONE);
-            mBinding.historyRecycler.setVisibility(View.GONE);
-        } else {
-            mBinding.historySection.setVisibility(View.VISIBLE);
-            mBinding.historyRecycler.setVisibility(View.VISIBLE);
-            boolean firstItemChanged = mHistoryAdapter.setItems(histories);
+        boolean hasHistory = histories != null && !histories.isEmpty();
+        mBinding.historySection.setVisibility(View.VISIBLE);
+        mBinding.historyRecycler.setVisibility(hasHistory ? View.VISIBLE : View.GONE);
+        boolean firstItemChanged = mHistoryAdapter.setItems(histories);
+        if (hasHistory) {
             if (firstItemChanged) {
                 mBinding.historyRecycler.stopScroll();
                 androidx.recyclerview.widget.RecyclerView.LayoutManager manager = mBinding.historyRecycler.getLayoutManager();
