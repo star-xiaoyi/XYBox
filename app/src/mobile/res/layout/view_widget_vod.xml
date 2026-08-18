@@ -96,6 +96,18 @@
         android:src="@drawable/ic_widget_forward"
         android:visibility="gone" />
 
+    <ImageView
+        android:id="@+id/gestureFeedback"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="center"
+        android:background="@drawable/shape_control"
+        android:importantForAccessibility="no"
+        android:padding="16dp"
+        android:src="@drawable/exo_icon_play"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
     <LinearLayout
         android:id="@+id/bright"
         android:layout_width="wrap_content"

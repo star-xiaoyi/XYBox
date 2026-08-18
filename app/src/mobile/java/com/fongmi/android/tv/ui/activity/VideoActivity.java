@@ -165,6 +165,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private Runnable mR2;
     private Runnable mR3;
     private Runnable mR4;
+    private Runnable mHideGestureFeedback;
     private Clock mClock;
     private String tag;
     private PiP mPiP;
@@ -333,6 +334,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         showDanmaku();
         checkId();
         mHandler = new Handler(Looper.getMainLooper());
+        mHideGestureFeedback = () -> mBinding.widget.gestureFeedback.animate().alpha(0f).setDuration(150).withEndAction(() -> mBinding.widget.gestureFeedback.setVisibility(View.GONE)).start();
         initTimeBatteryUpdate();
     }
 
@@ -478,7 +480,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.setting.setOnClickListener(view -> onSetting());
         mBinding.control.pip.setOnClickListener(view -> enterPiP());
         mBinding.control.title.setOnLongClickListener(view -> onChange());
-        mBinding.control.right.back.setOnClickListener(view -> onFull());
+        mBinding.control.back.setOnClickListener(view -> onFull());
         mBinding.control.right.lock.setOnClickListener(view -> onLock());
         mBinding.control.right.rotate.setOnClickListener(view -> onRotate());
         mBinding.control.danmaku.setOnClickListener(view -> onDanmakuShow());
@@ -1176,7 +1178,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.setting.setVisibility(mHistory == null || isFullscreen() ? View.GONE : View.VISIBLE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.keep.setVisibility(mHistory == null || isFullscreen() ? View.GONE : View.VISIBLE);
-        mBinding.control.right.back.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
+        mBinding.control.back.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.parse.setVisibility(isFullscreen() && isUseParse() ? View.VISIBLE : View.GONE);
         mBinding.control.action.getRoot().setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
         mBinding.control.right.lock.setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
@@ -1570,10 +1572,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mPlayers.pause();
         checkPlayImg();
-        // 暂停时显示黑色遮罩降低画面亮度，但不影响控制按钮
-        if (mBinding.dim != null) {
-            mBinding.dim.setVisibility(View.VISIBLE);
-        }
     }
 
     private void onPlay() {
@@ -1582,10 +1580,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (!mPlayers.isEmpty() && mPlayers.isIdle()) mPlayers.prepare();
         mPlayers.play();
         checkPlayImg();
-        // 播放时隐藏遮罩
-        if (mBinding.dim != null) {
-            mBinding.dim.setVisibility(View.GONE);
-        }
     }
 
     private boolean isFullscreen() {
@@ -1841,32 +1835,44 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onDoubleTap() {
-        // 双击中间区域：播放/暂停切换
+        if (mPlayers.isEmpty()) {
+            checkPlay();
+            return;
+        }
+        boolean wasPlaying = mPlayers.isPlaying();
         checkPlay();
-        showControl();
+        showGestureFeedback(wasPlaying ? R.drawable.exo_icon_play : R.drawable.exo_icon_pause);
     }
 
     @Override
     public void onDoubleTapLeft() {
-        // 双击左侧：快退10秒
-        long seekTime = -10000;
+        long seekTime = -TimeUnit.SECONDS.toMillis(Setting.getGestureSeekSeconds());
         long newPosition = Math.max(0, mPlayers.getPosition() + seekTime);
         mPlayers.seekTo(newPosition);
         onSeek(seekTime);
-        showControl();
         App.post(() -> mBinding.widget.seek.setVisibility(View.GONE), 800);
     }
 
     @Override
     public void onDoubleTapRight() {
-        // 双击右侧：快进10秒
-        long seekTime = 10000;
+        long seekTime = TimeUnit.SECONDS.toMillis(Setting.getGestureSeekSeconds());
         long duration = mPlayers.getDuration();
         long newPosition = Math.min(duration > 0 ? duration : Long.MAX_VALUE, mPlayers.getPosition() + seekTime);
         mPlayers.seekTo(newPosition);
         onSeek(seekTime);
-        showControl();
         App.post(() -> mBinding.widget.seek.setVisibility(View.GONE), 800);
+    }
+
+    private void showGestureFeedback(int icon) {
+        mHandler.removeCallbacks(mHideGestureFeedback);
+        mBinding.widget.gestureFeedback.animate().cancel();
+        mBinding.widget.gestureFeedback.setImageResource(icon);
+        mBinding.widget.gestureFeedback.setVisibility(View.VISIBLE);
+        mBinding.widget.gestureFeedback.setAlpha(0f);
+        mBinding.widget.gestureFeedback.setScaleX(0.8f);
+        mBinding.widget.gestureFeedback.setScaleY(0.8f);
+        mBinding.widget.gestureFeedback.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(120).start();
+        mHandler.postDelayed(mHideGestureFeedback, 500);
     }
 
     @Override
@@ -1957,10 +1963,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (mPlayers != null && !mPlayers.isEmpty()) {
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    // 左方向键：快退10秒
                     if (mPlayers.isPlaying() || mPlayers.getPosition() > 0) {
                         long currentPosition = mPlayers.getPosition();
-                        long seekTime = -10000; // 快退10秒
+                        long seekTime = -TimeUnit.SECONDS.toMillis(Setting.getGestureSeekSeconds());
                         long newPosition = Math.max(0, currentPosition + seekTime);
                         mPlayers.seekTo(newPosition);
                         // 显示快退提示
@@ -1972,11 +1977,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                     }
                     break;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    // 右方向键：快进10秒
                     if (mPlayers.isPlaying() || mPlayers.getPosition() > 0) {
                         long currentPosition = mPlayers.getPosition();
                         long duration = mPlayers.getDuration();
-                        long seekTime = 10000; // 快进10秒
+                        long seekTime = TimeUnit.SECONDS.toMillis(Setting.getGestureSeekSeconds());
                         long newPosition = Math.min(duration > 0 ? duration : Long.MAX_VALUE, currentPosition + seekTime);
                         mPlayers.seekTo(newPosition);
                         // 显示快进提示

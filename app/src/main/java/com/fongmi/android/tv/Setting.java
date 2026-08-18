@@ -265,6 +265,55 @@ public class Setting {
         Prefers.put("danmaku_load", danmakuLoad);
     }
 
+    public static boolean isGestureDoubleTapPlay() {
+        return Prefers.getBoolean("gesture_double_tap_play", true);
+    }
+
+    public static void putGestureDoubleTapPlay(boolean enabled) {
+        Prefers.put("gesture_double_tap_play", enabled);
+    }
+
+    public static boolean isGestureDoubleTapSeek() {
+        return Prefers.getBoolean("gesture_double_tap_seek", false);
+    }
+
+    public static void putGestureDoubleTapSeek(boolean enabled) {
+        Prefers.put("gesture_double_tap_seek", enabled);
+    }
+
+    public static int getGestureSeekSeconds() {
+        int seconds = Prefers.getInt("gesture_seek_seconds", 10);
+        return seconds == 5 || seconds == 10 || seconds == 15 || seconds == 30 ? seconds : 10;
+    }
+
+    public static void putGestureSeekSeconds(int seconds) {
+        Prefers.put("gesture_seek_seconds", seconds);
+    }
+
+    public static boolean isGestureBrightness() {
+        return Prefers.getBoolean("gesture_brightness", true);
+    }
+
+    public static void putGestureBrightness(boolean enabled) {
+        Prefers.put("gesture_brightness", enabled);
+    }
+
+    public static boolean isGestureVolume() {
+        return Prefers.getBoolean("gesture_volume", true);
+    }
+
+    public static void putGestureVolume(boolean enabled) {
+        Prefers.put("gesture_volume", enabled);
+    }
+
+    public static boolean isGestureProgress() {
+        return Prefers.getBoolean("gesture_progress", true);
+    }
+
+    public static void putGestureProgress(boolean enabled) {
+        Prefers.put("gesture_progress", enabled);
+    }
+
     public static float getDanmakuSize() {
         return Prefers.getFloat("danmaku_size", 1.0f);
     }
