@@ -531,7 +531,16 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         } else {
             mBinding.historySection.setVisibility(View.VISIBLE);
             mBinding.historyRecycler.setVisibility(View.VISIBLE);
-            mHistoryAdapter.setItems(histories);
+            boolean firstItemChanged = mHistoryAdapter.setItems(histories);
+            if (firstItemChanged) {
+                mBinding.historyRecycler.stopScroll();
+                androidx.recyclerview.widget.RecyclerView.LayoutManager manager = mBinding.historyRecycler.getLayoutManager();
+                if (manager instanceof androidx.recyclerview.widget.LinearLayoutManager) {
+                    ((androidx.recyclerview.widget.LinearLayoutManager) manager).scrollToPositionWithOffset(0, 0);
+                } else {
+                    mBinding.historyRecycler.scrollToPosition(0);
+                }
+            }
         }
     }
 
