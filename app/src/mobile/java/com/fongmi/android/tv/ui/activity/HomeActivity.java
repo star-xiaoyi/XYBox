@@ -6,6 +6,7 @@ import android.content.res.Configuration;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.RelativeLayout;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.pm.ShortcutInfoCompat;
@@ -174,6 +175,15 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     public void change(int position) {
         mManager.change(position);
+    }
+
+    public void setBottomNavigationVisible(boolean visible) {
+        if (mBinding == null) return;
+        mBinding.navigation.setVisibility(visible ? View.VISIBLE : View.GONE);
+        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBinding.container.getLayoutParams();
+        params.removeRule(RelativeLayout.ABOVE);
+        if (visible) params.addRule(RelativeLayout.ABOVE, R.id.navigation);
+        mBinding.container.setLayoutParams(params);
     }
 
     @Override
