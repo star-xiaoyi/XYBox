@@ -4,9 +4,15 @@ import com.github.catvod.utils.Logger;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.transition.AutoTransition;
+import android.transition.TransitionManager;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -32,6 +38,7 @@ import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Hot;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
+import com.fongmi.android.tv.bean.Suggest;
 import com.fongmi.android.tv.bean.Value;
 import com.fongmi.android.tv.databinding.FragmentVodBinding;
 import com.fongmi.android.tv.event.CastEvent;
@@ -42,12 +49,13 @@ import com.fongmi.android.tv.impl.ConfigCallback;
 import com.fongmi.android.tv.impl.FilterCallback;
 import com.fongmi.android.tv.impl.SiteCallback;
 import com.fongmi.android.tv.model.SiteViewModel;
-import com.fongmi.android.tv.ui.activity.CollectActivity;
+import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.ui.activity.HistoryActivity;
 import com.fongmi.android.tv.ui.activity.KeepActivity;
 import com.fongmi.android.tv.ui.activity.VideoActivity;
 import com.airbnb.lottie.LottieAnimationView;
 import com.fongmi.android.tv.ui.adapter.HistoryCardAdapter;
+import com.fongmi.android.tv.ui.adapter.SearchSuggestionAdapter;
 import com.fongmi.android.tv.ui.adapter.TypeAdapter;
 import com.fongmi.android.tv.ui.base.BaseFragment;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
@@ -56,13 +64,16 @@ import com.fongmi.android.tv.ui.dialog.LastWatchToast;
 import com.fongmi.android.tv.ui.dialog.LinkDialog;
 import com.fongmi.android.tv.ui.dialog.ReceiveDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
+import com.fongmi.android.tv.ui.custom.CustomTextListener;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.Util;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.utils.WebDAVSyncManager;
 import com.github.catvod.net.OkHttp;
 import com.google.common.net.HttpHeaders;
+import com.google.android.material.appbar.AppBarLayout;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -84,10 +95,19 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private SiteViewModel mViewModel;
     private TypeAdapter mAdapter;
     private HistoryCardAdapter mHistoryAdapter;
+    private SearchSuggestionAdapter mSuggestionAdapter;
     private Runnable mRunnable;
+    private Runnable mSuggestRunnable;
     private List<String> mHots;
     private Result mResult;
     private int mAppBarOffset;
+    private String mSuggestedKeyword = "";
+    private boolean mSearchEditing;
+    private boolean mSearchResultsVisible;
+    private boolean mSearchViewReady;
+    private boolean mSearchHeaderExpanded;
+    private boolean mHeaderAnimationReady;
+    private int mSuggestionGeneration;
 
     public static VodFragment newInstance() {
         return new VodFragment();
@@ -157,14 +177,32 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     @Override
     protected void initEvent() {
-        mBinding.hot.setOnClickListener(this::onHot);
+        mBinding.hot.setOnFocusChangeListener((view, hasFocus) -> {
+            mBinding.hot.setCursorVisible(hasFocus);
+            if (hasFocus) enterSearchEditing();
+        });
+        mBinding.hot.setOnEditorActionListener((textView, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_DONE) {
+                submitHomeSearch();
+                return true;
+            }
+            return false;
+        });
+        mBinding.hot.addTextChangedListener(new CustomTextListener() {
+            @Override
+            public void afterTextChanged(Editable editable) {
+                if (!mSearchEditing || !mBinding.hot.hasFocus()) return;
+                scheduleSearchSuggestions(editable.toString().trim());
+            }
+        });
         mBinding.top.setOnClickListener(this::onTop);
         mBinding.link.setOnClickListener(this::onLink);
         mBinding.logo.setOnClickListener(this::onLogo);
         mBinding.keep.setOnClickListener(this::onKeep);
         mBinding.retry.setOnClickListener(this::onRetry);
         mBinding.filter.setOnClickListener(this::onFilter);
-        mBinding.search.setOnClickListener(this::onSearch);
+        mBinding.search.setOnClickListener(this::onSearchAction);
+        mBinding.searchBack.setOnClickListener(this::onSearchBack);
         mBinding.history.setOnClickListener(this::onHistory);
         mBinding.historyMore.setOnClickListener(this::onHistory);
         mBinding.swipeLayout.setOnRefreshListener(this::onPullRefresh);
@@ -183,6 +221,11 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
                 setFabVisible(position);
             }
         });
+        mBinding.getRoot().requestFocus();
+        mBinding.hot.clearFocus();
+        mBinding.hot.setCursorVisible(false);
+        setSearchHeaderExpanded(false);
+        mHeaderAnimationReady = true;
     }
 
     // 添加检查上次播放历史并显示弹窗的方法
@@ -206,6 +249,9 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.type.setHasFixedSize(true);
         mBinding.type.setItemAnimator(null);
         mBinding.type.setAdapter(mAdapter = new TypeAdapter(this));
+        mBinding.searchSuggestions.setHasFixedSize(true);
+        mBinding.searchSuggestions.setItemAnimator(null);
+        mBinding.searchSuggestions.setAdapter(mSuggestionAdapter = new SearchSuggestionAdapter(this::onSuggestionClick));
         mBinding.pager.setAdapter(new PageAdapter(getChildFragmentManager()));
     }
 
@@ -230,8 +276,9 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     private void updateHot() {
         App.post(mRunnable, TimeUnit.SECONDS.toMillis(10));
-        if (mHots.isEmpty() || mHots.size() < 10) return;
-        mBinding.hot.setText(mHots.get(new Random().nextInt(11)));
+        if (mBinding == null || mHots.isEmpty()) return;
+        mSuggestedKeyword = mHots.get(new Random().nextInt(mHots.size()));
+        if (!mSearchEditing && !mSearchResultsVisible) mBinding.hot.setText(mSuggestedKeyword);
     }
 
     private Result handle(Result result) {
@@ -475,12 +522,200 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         if (mAdapter.getItemCount() > 0) FilterDialog.create().filter(mAdapter.get(mBinding.pager.getCurrentItem()).getFilters()).show(this);
     }
 
-    private void onHot(View view) {
-        CollectActivity.start(getActivity());
+    private void enterSearchEditing() {
+        if (mBinding == null) return;
+        mSearchEditing = true;
+        setSearchHeaderExpanded(true);
+        setBottomNavigationVisible(false);
+        mBinding.search.setImageResource(R.drawable.ic_action_search);
+        mBinding.appBar.setExpanded(true, true);
+        scheduleSearchSuggestions(mBinding.hot.getText().toString().trim());
     }
 
-    private void onSearch(View view) {
-        CollectActivity.start(getActivity(), mBinding.hot.getText().toString());
+    private void onSearchBack(View view) {
+        if (mSearchResultsVisible) hideSearchContent();
+        else cancelSearchEditing();
+    }
+
+    private void onSearchAction(View view) {
+        HomeSearchFragment fragment = getHomeSearchFragment();
+        if (mSearchResultsVisible && mSearchViewReady && !mSearchEditing && fragment != null) {
+            fragment.toggleView();
+            updateSearchActionIcon(fragment);
+        } else {
+            submitHomeSearch();
+        }
+    }
+
+    private void submitHomeSearch() {
+        if (mBinding == null) return;
+        String keyword = mBinding.hot.getText().toString().trim();
+        if (TextUtils.isEmpty(keyword)) return;
+        mSearchEditing = false;
+        mSearchViewReady = false;
+        hideSearchSuggestions();
+        mBinding.hot.setCursorVisible(false);
+        Util.hideKeyboard(mBinding.hot);
+        mBinding.hot.clearFocus();
+        setSearchHeaderExpanded(true);
+        showSearchContent();
+        mBinding.search.setImageResource(R.drawable.ic_action_search);
+        HomeSearchFragment fragment = getHomeSearchFragment();
+        if (fragment == null) {
+            fragment = HomeSearchFragment.newInstance(keyword);
+            getChildFragmentManager().beginTransaction()
+                    .replace(mBinding.searchContent.getId(), fragment, "home_search")
+                    .commitNowAllowingStateLoss();
+        } else {
+            fragment.search(keyword);
+        }
+    }
+
+    private void showSearchContent() {
+        mSearchResultsVisible = true;
+        mBinding.appBar.setExpanded(true, false);
+        setHeaderPinned(true);
+        mBinding.historySection.setVisibility(View.GONE);
+        mBinding.historyRecycler.setVisibility(View.GONE);
+        mBinding.type.setVisibility(View.GONE);
+        mBinding.pager.setVisibility(View.GONE);
+        mBinding.searchContent.setVisibility(View.VISIBLE);
+        mBinding.emptySourceHint.setVisibility(View.GONE);
+        mBinding.retry.setVisibility(View.GONE);
+        mBinding.progress.getRoot().setVisibility(View.GONE);
+        mBinding.swipeLayout.setEnabled(false);
+        setBottomNavigationVisible(false);
+        hideFabButtons();
+    }
+
+    private void hideSearchContent() {
+        if (mBinding == null) return;
+        mSearchEditing = false;
+        mSearchResultsVisible = false;
+        mSearchViewReady = false;
+        hideSearchSuggestions();
+        Util.hideKeyboard(mBinding.hot);
+        mBinding.hot.clearFocus();
+        mBinding.hot.setCursorVisible(false);
+        mBinding.search.setImageResource(R.drawable.ic_action_search);
+        mBinding.searchContent.setVisibility(View.GONE);
+        mBinding.type.setVisibility(View.VISIBLE);
+        mBinding.pager.setVisibility(View.VISIBLE);
+        mBinding.swipeLayout.setEnabled(true);
+        setBottomNavigationVisible(true);
+        setHeaderPinned(false);
+        setSearchHeaderExpanded(false);
+        if (!TextUtils.isEmpty(mSuggestedKeyword)) mBinding.hot.setText(mSuggestedKeyword);
+        loadHistory();
+        checkRetry();
+        checkEmptySource();
+        if (mAdapter.getItemCount() > 0) setFabVisible(Math.max(0, mBinding.pager.getCurrentItem()));
+    }
+
+    private void cancelSearchEditing() {
+        if (mBinding == null) return;
+        mSearchEditing = false;
+        hideSearchSuggestions();
+        Util.hideKeyboard(mBinding.hot);
+        mBinding.hot.clearFocus();
+        mBinding.hot.setCursorVisible(false);
+        if (mSearchResultsVisible) {
+            HomeSearchFragment fragment = getHomeSearchFragment();
+            if (mSearchViewReady && fragment != null) updateSearchActionIcon(fragment);
+        } else {
+            setBottomNavigationVisible(true);
+            setSearchHeaderExpanded(false);
+            if (!TextUtils.isEmpty(mSuggestedKeyword)) mBinding.hot.setText(mSuggestedKeyword);
+        }
+    }
+
+    private void setSearchHeaderExpanded(boolean expanded) {
+        if (mHeaderAnimationReady && mSearchHeaderExpanded != expanded) {
+            TransitionManager.beginDelayedTransition(mBinding.headerBar, new AutoTransition().setDuration(180));
+        }
+        mSearchHeaderExpanded = expanded;
+        int visibility = expanded ? View.GONE : View.VISIBLE;
+        mBinding.logo.setVisibility(visibility);
+        mBinding.keep.setVisibility(visibility);
+        mBinding.history.setVisibility(visibility);
+        mBinding.searchBack.setVisibility(expanded ? View.VISIBLE : View.GONE);
+    }
+
+    private void scheduleSearchSuggestions(String keyword) {
+        if (mBinding == null) return;
+        if (mSuggestRunnable != null) App.removeCallbacks(mSuggestRunnable);
+        int generation = ++mSuggestionGeneration;
+        if (TextUtils.isEmpty(keyword)) {
+            mSuggestionAdapter.clear();
+            mBinding.searchSuggestionPanel.setVisibility(View.GONE);
+            return;
+        }
+        mSuggestRunnable = () -> requestSearchSuggestions(keyword, generation);
+        App.post(mSuggestRunnable, 250);
+    }
+
+    private void requestSearchSuggestions(String keyword, int generation) {
+        String url = "https://suggest.video.iqiyi.com/?if=mobile&key=" + Uri.encode(keyword);
+        OkHttp.newCall(url).enqueue(new Callback() {
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                List<String> suggestions = Suggest.get(response.body().string());
+                App.post(() -> showSearchSuggestions(keyword, generation, suggestions));
+            }
+        });
+    }
+
+    private void showSearchSuggestions(String keyword, int generation, List<String> suggestions) {
+        if (mBinding == null || generation != mSuggestionGeneration) return;
+        if (!mSearchEditing || !mBinding.hot.hasFocus()) return;
+        if (!keyword.equals(mBinding.hot.getText().toString().trim())) return;
+        mSuggestionAdapter.setItems(suggestions);
+        mBinding.searchSuggestionPanel.setVisibility(suggestions.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private void hideSearchSuggestions() {
+        mSuggestionGeneration++;
+        if (mSuggestRunnable != null) App.removeCallbacks(mSuggestRunnable);
+        if (mBinding == null || mSuggestionAdapter == null) return;
+        mSuggestionAdapter.clear();
+        mBinding.searchSuggestionPanel.setVisibility(View.GONE);
+    }
+
+    private void onSuggestionClick(String text) {
+        if (mBinding == null) return;
+        mBinding.hot.setText(text);
+        mBinding.hot.setSelection(text.length());
+        hideSearchSuggestions();
+        submitHomeSearch();
+    }
+
+    private void setBottomNavigationVisible(boolean visible) {
+        if (getActivity() instanceof HomeActivity) ((HomeActivity) getActivity()).setBottomNavigationVisible(visible);
+    }
+
+    private void setHeaderPinned(boolean pinned) {
+        ViewGroup.LayoutParams layoutParams = mBinding.homeHeaderContent.getLayoutParams();
+        if (!(layoutParams instanceof AppBarLayout.LayoutParams)) return;
+        AppBarLayout.LayoutParams params = (AppBarLayout.LayoutParams) layoutParams;
+        params.setScrollFlags(pinned ? 0 : AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL);
+        mBinding.homeHeaderContent.setLayoutParams(params);
+    }
+
+    @Nullable
+    private HomeSearchFragment getHomeSearchFragment() {
+        Fragment fragment = getChildFragmentManager().findFragmentByTag("home_search");
+        return fragment instanceof HomeSearchFragment ? (HomeSearchFragment) fragment : null;
+    }
+
+    public void onHomeSearchResultsReady() {
+        if (mBinding == null || !mSearchResultsVisible) return;
+        mSearchViewReady = true;
+        HomeSearchFragment fragment = getHomeSearchFragment();
+        if (fragment != null) updateSearchActionIcon(fragment);
+    }
+
+    private void updateSearchActionIcon(HomeSearchFragment fragment) {
+        mBinding.search.setImageResource(fragment.isGrid() ? R.drawable.ic_action_list : R.drawable.ic_action_grid);
     }
 
     private void onHistory(View view) {
@@ -529,6 +764,11 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void loadHistory() {
+        if (mSearchResultsVisible) {
+            mBinding.historySection.setVisibility(View.GONE);
+            mBinding.historyRecycler.setVisibility(View.GONE);
+            return;
+        }
         // 检查是否显示历史记录
         if (!Setting.isHistoryVisible()) {
             mBinding.historySection.setVisibility(View.GONE);
@@ -682,6 +922,14 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     @Override
     public boolean canBack() {
+        if (mSearchResultsVisible) {
+            hideSearchContent();
+            return false;
+        }
+        if (mSearchEditing || mBinding.hot.hasFocus()) {
+            cancelSearchEditing();
+            return false;
+        }
         if (mBinding.pager.getAdapter() == null) return true;
         if (mBinding.pager.getAdapter().getCount() == 0) return true;
         return getFragment().canBack();
@@ -690,13 +938,16 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     @Override
     public void onResume() {
         super.onResume();
-        loadHistory();
+        if (!mSearchResultsVisible) loadHistory();
     }
 
     @Override
     public void onDestroyView() {
+        setBottomNavigationVisible(true);
+        hideSearchSuggestions();
         super.onDestroyView();
         App.removeCallbacks(mRunnable);
+        if (mSuggestRunnable != null) App.removeCallbacks(mSuggestRunnable);
         EventBus.getDefault().unregister(this);
     }
 
