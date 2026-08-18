@@ -527,6 +527,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mSearchEditing = true;
         setSearchHeaderExpanded(true);
         setBottomNavigationVisible(false);
+        hideFabButtons();
         mBinding.search.setImageResource(R.drawable.ic_action_search);
         mBinding.appBar.setExpanded(true, true);
         scheduleSearchSuggestions(mBinding.hot.getText().toString().trim());
@@ -626,6 +627,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
             setBottomNavigationVisible(true);
             setSearchHeaderExpanded(false);
             if (!TextUtils.isEmpty(mSuggestedKeyword)) mBinding.hot.setText(mSuggestedKeyword);
+            if (mAdapter.getItemCount() > 0) setFabVisible(Math.max(0, mBinding.pager.getCurrentItem()));
         }
     }
 

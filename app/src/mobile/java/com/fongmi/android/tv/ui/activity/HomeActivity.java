@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.activity;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.view.View;
@@ -48,8 +49,10 @@ import org.greenrobot.eventbus.ThreadMode;
 
 public class HomeActivity extends BaseActivity implements NavigationBarView.OnItemSelectedListener {
 
+    private static final String STATE_POSITION = "home_position";
     private FragmentStateManager mManager;
     private ActivityHomeBinding mBinding;
+    private int currentPosition;
     private int orientation;
     private int windowWidthDp;
 
@@ -80,11 +83,14 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         
         orientation = getResources().getConfiguration().orientation;
         windowWidthDp = ResUtil.getWindowWidthDp(this);
+        currentPosition = savedInstanceState == null ? 0 : savedInstanceState.getInt(STATE_POSITION, 0);
         // Updater.create().release().start(this); // 移除自动检查更新，只在点击版本号时检查
         initFragment(savedInstanceState);
         Server.get().start();
         initConfig();
         setNavigation();
+        mBinding.navigation.setSelectedItemId(currentPosition == 1 ? R.id.setting : R.id.vod);
+        setSettingsChrome(currentPosition == 1);
     }
 
     @Override
@@ -174,15 +180,31 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     public void change(int position) {
+        currentPosition = position;
+        setSettingsChrome(position == 1);
         mManager.change(position);
+    }
+
+    private void setSettingsChrome(boolean settings) {
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        if (!night) {
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        }
+        getWindow().getDecorView().setSystemUiVisibility(flags);
+        getWindow().setStatusBarColor(getColor(R.color.screen_background));
+        getWindow().setNavigationBarColor(getColor(R.color.screen_background));
+        mBinding.getRoot().setBackgroundColor(getColor(R.color.screen_background));
     }
 
     public void setBottomNavigationVisible(boolean visible) {
         if (mBinding == null) return;
-        mBinding.navigation.setVisibility(visible ? View.VISIBLE : View.GONE);
+        boolean show = visible || currentPosition == 1;
+        mBinding.navigation.setVisibility(show ? View.VISIBLE : View.GONE);
         RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBinding.container.getLayoutParams();
         params.removeRule(RelativeLayout.ABOVE);
-        if (visible) params.addRule(RelativeLayout.ABOVE, R.id.navigation);
+        if (show) params.addRule(RelativeLayout.ABOVE, R.id.navigation);
         mBinding.container.setLayoutParams(params);
     }
 
@@ -201,8 +223,16 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
         if (mBinding.navigation.getSelectedItemId() == item.getItemId()) return false;
-        if (item.getItemId() == R.id.setting) return mManager.change(1);
-        if (item.getItemId() == R.id.vod) return mManager.change(0);
+        if (item.getItemId() == R.id.setting) {
+            currentPosition = 1;
+            setSettingsChrome(true);
+            return mManager.change(1);
+        }
+        if (item.getItemId() == R.id.vod) {
+            currentPosition = 0;
+            setSettingsChrome(false);
+            return mManager.change(0);
+        }
         if (item.getItemId() == R.id.live) {
             if (LiveConfig.isEmpty()) {
                 Notify.showCenter(R.string.error_no_live);
@@ -211,6 +241,12 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
             return openLive();
         }
         return false;
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putInt(STATE_POSITION, currentPosition);
+        super.onSaveInstanceState(outState);
     }
 
     @Override

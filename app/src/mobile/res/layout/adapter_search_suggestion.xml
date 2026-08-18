@@ -10,6 +10,6 @@
     android:maxLines="1"
     android:paddingStart="16dp"
     android:paddingEnd="16dp"
-    android:textColor="@color/white"
+    android:textColor="@color/text_primary"
     android:textSize="15sp"
     tools:text="熊出没·重启未来" />

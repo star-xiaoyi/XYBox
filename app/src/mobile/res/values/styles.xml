@@ -13,12 +13,17 @@
         <item name="android:windowTranslucentStatus">false</item>
     </style>
 
-    <style name="BaseTheme" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="BaseTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primaryDark</item>
         <item name="colorAccent">@color/accent</item>
-        <item name="colorControlHighlight">@color/white_20</item>
-        <item name="android:windowBackground">@null</item>
+        <item name="colorSurface">@color/surface_primary</item>
+        <item name="colorSurfaceVariant">@color/surface_secondary</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorOutline">@color/separator</item>
+        <item name="colorControlHighlight">@color/separator</item>
+        <item name="android:windowBackground">@color/screen_background</item>
         <item name="android:windowDisablePreview">true</item>
         <item name="android:navigationBarColor">@color/transparent</item>
         <item name="bottomSheetDialogTheme">@style/BottomSheetDialog</item>
@@ -39,7 +44,7 @@
         <item name="android:textSize">14sp</item>
     </style>
 
-    <style name="BottomSheetDialog" parent="Theme.Material3.Dark.BottomSheetDialog">
+    <style name="BottomSheetDialog" parent="Theme.Material3.DayNight.BottomSheetDialog">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primaryDark</item>
         <item name="colorAccent">@color/accent</item>
@@ -59,7 +64,7 @@
     </style>
 
     <style name="Indicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
-        <item name="android:color">@color/primary</item>
+        <item name="android:color">?attr/colorPrimary</item>
         <item name="android:height">42dp</item>
     </style>
     
@@ -75,6 +80,88 @@
         <item name="itemTextAppearanceInactive">@style/BottomNavigationView.TextAppearance</item>
         <item name="itemRippleColor">@android:color/transparent</item>
         <item name="android:background">@null</item>
+    </style>
+
+    <style name="ThemeOverlay.XYBox.Accent" parent="ThemeOverlay.Material3" />
+
+    <style name="ThemeOverlay.XYBox.Accent.Yellow">
+        <item name="colorPrimary">@color/accent_yellow</item>
+        <item name="colorPrimaryDark">@color/accent_yellow</item>
+        <item name="colorSecondary">@color/accent_yellow</item>
+        <item name="colorAccent">@color/accent_yellow</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <item name="colorControlActivated">@color/accent_yellow</item>
+    </style>
+
+    <style name="ThemeOverlay.XYBox.Accent.Blue">
+        <item name="colorPrimary">@color/accent_blue</item>
+        <item name="colorPrimaryDark">@color/accent_blue</item>
+        <item name="colorSecondary">@color/accent_blue</item>
+        <item name="colorAccent">@color/accent_blue</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorControlActivated">@color/accent_blue</item>
+    </style>
+
+    <style name="ThemeOverlay.XYBox.Accent.Green">
+        <item name="colorPrimary">@color/accent_green</item>
+        <item name="colorPrimaryDark">@color/accent_green</item>
+        <item name="colorSecondary">@color/accent_green</item>
+        <item name="colorAccent">@color/accent_green</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorControlActivated">@color/accent_green</item>
+    </style>
+
+    <style name="ThemeOverlay.XYBox.Accent.Purple">
+        <item name="colorPrimary">@color/accent_purple</item>
+        <item name="colorPrimaryDark">@color/accent_purple</item>
+        <item name="colorSecondary">@color/accent_purple</item>
+        <item name="colorAccent">@color/accent_purple</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorControlActivated">@color/accent_purple</item>
+    </style>
+
+    <style name="SettingsSectionTitle" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="SettingsCard">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/shape_settings_card</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:clipToOutline">true</item>
+    </style>
+
+    <style name="SettingsRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:background">@drawable/shape_settings_row</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
+    </style>
+
+    <style name="SettingsTitle" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <style name="SettingsSummary" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="SettingsValue" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
     </style>
 
     <!-- M3 Switch Style (Material Design) - 使用CustomSwitch完全自定义 -->
@@ -108,18 +195,16 @@
 
     <!-- MaterialAlertDialog 样式 -->
     <style name="MaterialAlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorOnPrimary">@color/black</item>
-        <item name="colorSurface">@color/black</item>
-        <item name="colorOnSurface">@color/white</item>
-        <item name="android:textColorPrimary">@color/white</item>
-        <item name="android:textColorSecondary">@color/white</item>
+        <item name="colorSurface">@color/surface_primary</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
         <item name="buttonBarPositiveButtonStyle">@style/AlertDialogButton</item>
         <item name="buttonBarNegativeButtonStyle">@style/AlertDialogButton</item>
     </style>
 
     <style name="AlertDialogButton" parent="Widget.Material3.Button.TextButton.Dialog">
-        <item name="android:textColor">@color/primary</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
     </style>
 
 </resources>

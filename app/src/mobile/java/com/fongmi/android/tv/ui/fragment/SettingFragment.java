@@ -3,17 +3,16 @@ import com.github.catvod.utils.Logger;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.res.ColorStateList;
 import android.content.Intent;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextUtils;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
-import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -56,11 +55,13 @@ import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.ThemeUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Doh;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Path;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.color.MaterialColors;
 import com.permissionx.guolindev.PermissionX;
 
 import org.greenrobot.eventbus.EventBus;
@@ -129,7 +130,18 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.historyVisibleSwitch.setChecked(Setting.isHistoryVisible());
         mBinding.sizeText.setText((size = ResUtil.getStringArray(R.array.select_size))[Setting.getSize()]);
         mBinding.wallText.setText(getWallText());
+        mBinding.themeText.setText(getThemeNames()[Setting.getThemeMode()]);
+        mBinding.accentText.setText(getAccentNames()[Setting.getAccentColor()]);
+        mBinding.accentPreview.setBackgroundTintList(ColorStateList.valueOf(requireContext().getColor(ThemeUtil.getAccentColorResource())));
         setLiveSettingsVisibility();
+    }
+
+    private String[] getThemeNames() {
+        return new String[]{getString(R.string.setting_theme_system), getString(R.string.setting_theme_light), getString(R.string.setting_theme_dark)};
+    }
+
+    private String[] getAccentNames() {
+        return new String[]{getString(R.string.setting_accent_yellow), getString(R.string.setting_accent_blue), getString(R.string.setting_accent_green), getString(R.string.setting_accent_purple)};
     }
 
     private String getWallText() {
@@ -140,23 +152,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
 
     private void setLiveSettingsVisibility() {
         boolean isLiveTabVisible = !Setting.isLiveTabVisible(); // 注意：这里取反，因为开关是"隐藏直播"
-        
-        // 获取直播容器的布局参数
-        LinearLayout.LayoutParams liveContainerParams = (LinearLayout.LayoutParams) mBinding.liveContainer.getLayoutParams();
-        
-        if (isLiveTabVisible) {
-            // 直播开关打开：显示直播模块，间距为12dp
-            mBinding.liveContainer.setVisibility(View.VISIBLE);
-            liveContainerParams.topMargin = (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 12, getResources().getDisplayMetrics());
-        } else {
-            // 直播开关关闭：隐藏直播模块，间距为0dp（这样视频模块和下一个模块之间会有正常间距）
-            mBinding.liveContainer.setVisibility(View.GONE);
-            liveContainerParams.topMargin = 0;
-        }
-        
-        // 应用布局参数
-        mBinding.liveContainer.setLayoutParams(liveContainerParams);
+        mBinding.liveContainer.setVisibility(isLiveTabVisible ? View.VISIBLE : View.GONE);
     }
 
     private void setCacheText() {
@@ -198,6 +194,8 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.size.setOnClickListener(this::setSize);
         mBinding.wall.setOnClickListener(this::onWall);
         mBinding.doh.setOnClickListener(this::setDoh);
+        mBinding.theme.setOnClickListener(this::setTheme);
+        mBinding.accent.setOnClickListener(this::setAccent);
     }
 
     @Override
@@ -322,10 +320,9 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     private void setSourceHintText(TextView textView, String desc, int hintStringRes) {
         if (TextUtils.isEmpty(desc)) {
             SpannableString spannable = new SpannableString(getString(hintStringRes));
-            spannable.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.white)), 0, spannable.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             spannable.setSpan(new RelativeSizeSpan(0.8f), 0, spannable.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            int alpha = (int)(255 * 0.5f);
-            spannable.setSpan(new ForegroundColorSpan(android.graphics.Color.argb(alpha, 255, 255, 255)), 0, spannable.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            int color = MaterialColors.getColor(textView, com.google.android.material.R.attr.colorOnSurfaceVariant);
+            spannable.setSpan(new ForegroundColorSpan(color), 0, spannable.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             textView.setText(spannable);
         } else {
             textView.setText(desc);
@@ -463,6 +460,31 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         }).show();
     }
 
+    private void setTheme(View view) {
+        String[] names = getThemeNames();
+        new MaterialAlertDialogBuilder(getActivity()).setTitle(R.string.setting_theme).setNegativeButton(R.string.dialog_negative, null).setSingleChoiceItems(names, Setting.getThemeMode(), (dialog, which) -> {
+            if (which != Setting.getThemeMode()) {
+                Setting.putThemeMode(which);
+                mBinding.themeText.setText(names[which]);
+                ThemeUtil.applyNightMode();
+            }
+            dialog.dismiss();
+        }).show();
+    }
+
+    private void setAccent(View view) {
+        String[] names = getAccentNames();
+        new MaterialAlertDialogBuilder(getActivity()).setTitle(R.string.setting_accent).setNegativeButton(R.string.dialog_negative, null).setSingleChoiceItems(names, Setting.getAccentColor(), (dialog, which) -> {
+            if (which != Setting.getAccentColor()) {
+                Setting.putAccentColor(which);
+                dialog.dismiss();
+                requireActivity().recreate();
+            } else {
+                dialog.dismiss();
+            }
+        }).show();
+    }
+
     private void setDoh(View view) {
         new MaterialAlertDialogBuilder(getActivity()).setTitle(R.string.setting_doh).setNegativeButton(R.string.dialog_negative, null).setSingleChoiceItems(getDohList(), getDohIndex(), (dialog, which) -> {
             setDoh(VodConfig.get().getDoh().get(which));
@@ -573,6 +595,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         setSourceHintText(mBinding.liveUrl, LiveConfig.getDesc(), R.string.source_hint_live);
         // setSourceHintText(mBinding.wallUrl, WallConfig.getDesc(), R.string.source_hint_wall); // 壁纸功能已移除
         setCacheText();
+        setOtherText();
     }
 
     @Override
