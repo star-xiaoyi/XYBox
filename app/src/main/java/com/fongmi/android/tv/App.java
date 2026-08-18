@@ -54,6 +54,7 @@ public class App extends Application {
     private final Runnable webdavSyncTask;
     private boolean appJustLaunched;
     private boolean webdavStartupSyncPending;
+    private int foregroundActivityCount;
 
     public App() {
         instance = this;
@@ -161,6 +162,7 @@ public class App extends Application {
 
             @Override
             public void onActivityStarted(@NonNull Activity activity) {
+                foregroundActivityCount++;
                 if (activity != activity()) setActivity(activity);
             }
 
@@ -186,6 +188,8 @@ public class App extends Application {
 
             @Override
             public void onActivityStopped(@NonNull Activity activity) {
+                foregroundActivityCount = Math.max(0, foregroundActivityCount - 1);
+                if (foregroundActivityCount == 0) WebDAVSyncManager.get().flushPendingSync();
                 if (activity == activity()) setActivity(null);
             }
 

@@ -7,11 +7,14 @@ import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Setting;
+import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Backup;
+import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.impl.Callback;
 import com.github.catvod.utils.Logger;
 import com.github.catvod.utils.Prefers;
 import com.google.gson.Gson;
@@ -49,9 +52,9 @@ import java.util.UUID;
  */
 public final class WebDAVSyncManager {
 
-    private static final int SCHEMA_VERSION = 2;
+    private static final int SCHEMA_VERSION = 3;
     private static final int MAX_ATTEMPTS = 3;
-    private static final long DEBOUNCE_MILLIS = 15_000L;
+    private static final long ACTIVE_SYNC_DELAY = 5L * 60 * 1000;
     private static final long TOMBSTONE_RETENTION = 120L * 24 * 60 * 60 * 1000;
     private static final String SYNC_FILE = "xybox_sync_v2.json";
     private static final String BACKUP_FILE = "xybox_sync_v2.backup.json";
@@ -67,6 +70,7 @@ public final class WebDAVSyncManager {
     private static final String PREF_LAST_STATUS = "webdav_last_status_v2";
     private static final String HISTORY_PREFIX = "history:";
     private static final String KEEP_PREFIX = "keep:";
+    private static final String CONFIG_PREFIX = "config:";
 
     private static final Gson SYNC_GSON = new GsonBuilder()
             .disableHtmlEscaping()
@@ -81,7 +85,7 @@ public final class WebDAVSyncManager {
             "subtitle_text_size", "subtitle_position", "gesture_double_tap_play",
             "gesture_double_tap_seek", "gesture_seek_seconds", "gesture_brightness",
             "gesture_volume", "gesture_progress", "live_tab_visible", "history_visible",
-            "ai_ad_block"
+            "ai_ad_block", "config_0", "config_1"
     ));
 
     private static final Set<String> FLOAT_SETTINGS = new HashSet<>(Arrays.asList(
@@ -94,7 +98,10 @@ public final class WebDAVSyncManager {
     private String baseUrl;
     private String username;
     private String password;
-    private final Runnable dirtySyncTask = () -> App.execute(this::syncNow);
+    private long dirtyGeneration;
+    private boolean dirtySyncScheduled;
+    private boolean flushAfterSync;
+    private final Runnable dirtySyncTask = this::dispatchDirtySync;
 
     public static WebDAVSyncManager get() {
         if (instance == null) {
@@ -161,9 +168,12 @@ public final class WebDAVSyncManager {
     }
 
     public SyncResult syncNow() {
+        final long generationAtStart;
         synchronized (this) {
             if (syncing) return new SyncResult(false, "同步正在进行中，请稍候", 0, 0);
             syncing = true;
+            flushAfterSync = false;
+            generationAtStart = dirtyGeneration;
         }
         putLong(PREF_LAST_ATTEMPT, System.currentTimeMillis());
         try {
@@ -178,12 +188,21 @@ public final class WebDAVSyncManager {
                     RemoteSnapshot remote = downloadSnapshot();
                     SyncEnvelope local = captureLocal(remote);
                     SyncEnvelope merged = merge(remote.envelope, local);
+                    SyncDelta downloaded = diff(local, merged);
+                    SyncDelta uploaded = diff(remote.envelope, merged);
+                    boolean needsUpload = !remote.exists || remote.legacyImported || uploaded.hasChanges();
+                    if (needsUpload) {
+                        uploadSafely(remote, merged);
+                    } else {
+                        merged.revision = remote.envelope.revision;
+                        merged.deviceId = remote.envelope.deviceId;
+                        merged.updatedAt = remote.envelope.updatedAt;
+                    }
                     applyLocally(merged);
-                    uploadSafely(remote, merged);
                     rememberSuccessfulState(merged);
+                    markGenerationSynced(generationAtStart);
                     String legacy = remote.legacyImported ? "，并已导入旧版数据" : "";
-                    return finish(true, "同步完成：历史 " + merged.histories.size()
-                            + " 条，收藏 " + merged.keeps.size() + " 条" + legacy,
+                    return finish(true, buildSyncMessage(downloaded, needsUpload ? uploaded : new SyncDelta()) + legacy,
                             merged.histories.size(), merged.keeps.size());
                 } catch (SyncConflictException e) {
                     lastError = e;
@@ -205,24 +224,65 @@ public final class WebDAVSyncManager {
         } catch (Exception e) {
             return finish(false, friendlyError(e), 0, 0);
         } finally {
-            syncing = false;
+            boolean flush;
+            synchronized (this) {
+                syncing = false;
+                flush = flushAfterSync && dirtyGeneration != 0;
+                flushAfterSync = false;
+            }
+            if (flush) App.execute(this::syncNow);
         }
     }
 
     public void performAutoSync() {
         if (!Setting.isWebDAVAutoSync() || !isConfigured()) return;
-        long interval = Math.max(15, Setting.getWebDAVSyncInterval()) * 60_000L;
-        if (System.currentTimeMillis() - getLong(PREF_LAST_SUCCESS) < interval) return;
+        if (System.currentTimeMillis() - getLong(PREF_LAST_SUCCESS) < ACTIVE_SYNC_DELAY) return;
         syncNow();
+    }
+
+    private void markGenerationSynced(long generation) {
+        synchronized (this) {
+            if (generation != dirtyGeneration) return;
+            dirtyGeneration = 0;
+            dirtySyncScheduled = false;
+        }
+        App.removeCallbacks(dirtySyncTask);
+        WebDAVSyncJobService.cancel();
     }
 
     public void requestSync() {
         if (!Setting.isWebDAVAutoSync() || !isConfigured()) return;
-        App.post(dirtySyncTask, DEBOUNCE_MILLIS);
+        synchronized (this) {
+            dirtyGeneration++;
+            WebDAVSyncJobService.schedule();
+            if (dirtySyncScheduled) return;
+            dirtySyncScheduled = true;
+        }
+        App.post(dirtySyncTask, ACTIVE_SYNC_DELAY);
+    }
+
+    public void flushPendingSync() {
+        boolean dispatch;
+        synchronized (this) {
+            if (dirtyGeneration == 0) return;
+            dirtySyncScheduled = false;
+            dispatch = !syncing && !flushAfterSync;
+            flushAfterSync = true;
+        }
+        App.removeCallbacks(dirtySyncTask);
+        if (dispatch) App.execute(this::syncNow);
+    }
+
+    private void dispatchDirtySync() {
+        synchronized (this) {
+            dirtySyncScheduled = false;
+            if (dirtyGeneration == 0) return;
+        }
+        App.execute(this::syncNow);
     }
 
     public long getAutoSyncIntervalMillis() {
-        return Math.max(15, Setting.getWebDAVSyncInterval()) * 60_000L;
+        return ACTIVE_SYNC_DELAY;
     }
 
     public String getLastStatus() {
@@ -237,6 +297,11 @@ public final class WebDAVSyncManager {
     public void markKeepDeleted(Keep keep) {
         if (keep == null || TextUtils.isEmpty(keep.getKey())) return;
         markDeleted(KEEP_PREFIX + keep.getKey());
+    }
+
+    public void markConfigDeleted(Config config) {
+        if (config == null || TextUtils.isEmpty(config.getUrl()) || config.getType() > 1) return;
+        markDeleted(CONFIG_PREFIX + configKey(config));
     }
 
     public void markHistoriesDeleted(List<History> histories) {
@@ -346,6 +411,11 @@ public final class WebDAVSyncManager {
         local.updatedAt = System.currentTimeMillis();
         local.histories.addAll(AppDatabase.get().getHistoryDao().findAll());
         local.keeps.addAll(AppDatabase.get().getKeepDao().findAll());
+        for (Config config : AppDatabase.get().getConfigDao().findAll()) {
+            if (config.getType() <= 1 && !TextUtils.isEmpty(config.getUrl())) {
+                local.configs.add(copyConfigForSync(config));
+            }
+        }
         local.tombstones.putAll(loadLocalTombstones());
         local.settings.putAll(collectSettings());
         local.settingsUpdatedAt = resolveLocalSettingsTime(local.settings, !remote.envelope.settings.isEmpty());
@@ -359,6 +429,17 @@ public final class WebDAVSyncManager {
         merged.updatedAt = System.currentTimeMillis();
         mergeTombstones(merged.tombstones, remote.tombstones);
         mergeTombstones(merged.tombstones, local.tombstones);
+
+        Map<String, Config> configs = new LinkedHashMap<>();
+        mergeConfigs(configs, remote.configs);
+        mergeConfigs(configs, local.configs);
+        for (Map.Entry<String, Config> entry : configs.entrySet()) {
+            long deletedAt = merged.tombstones.getOrDefault(CONFIG_PREFIX + entry.getKey(), 0L);
+            if (deletedAt == 0 || deletedAt < entry.getValue().getTime()) merged.configs.add(entry.getValue());
+        }
+        normalizeConfigIds(merged.configs);
+        remapEnvelopeConfigIds(remote, merged.configs);
+        remapEnvelopeConfigIds(local, merged.configs);
 
         Map<String, History> histories = new LinkedHashMap<>();
         mergeHistories(histories, remote.histories);
@@ -411,6 +492,71 @@ public final class WebDAVSyncManager {
         }
     }
 
+    private void mergeConfigs(Map<String, Config> output, List<Config> input) {
+        if (input == null) return;
+        for (Config candidate : input) {
+            if (candidate == null || TextUtils.isEmpty(candidate.getUrl()) || candidate.getType() > 1) continue;
+            String key = configKey(candidate);
+            Config current = output.get(key);
+            if (current == null) {
+                output.put(key, candidate);
+            } else if (candidate.getTime() > current.getTime()) {
+                Config winner = copyConfigForSync(candidate);
+                winner.setId(current.getId());
+                output.put(key, winner);
+            }
+        }
+    }
+
+    private Config copyConfigForSync(Config source) {
+        Config copy = new Config();
+        copy.setId(source.getId());
+        copy.setType(source.getType());
+        // Time also determines the selected source. Diffs intentionally ignore time-only changes.
+        copy.setTime(source.getTime());
+        copy.setUrl(source.getUrl());
+        copy.setName(source.getName());
+        return copy;
+    }
+
+    private String configKey(Config config) {
+        return config.getType() + ":" + config.getUrl();
+    }
+
+    private void normalizeConfigIds(List<Config> configs) {
+        Set<Integer> used = new HashSet<>();
+        int nextId = 1;
+        for (Config config : configs) nextId = Math.max(nextId, config.getId() + 1);
+        for (Config config : configs) {
+            if (config.getId() > 0 && used.add(config.getId())) continue;
+            while (used.contains(nextId)) nextId++;
+            config.setId(nextId);
+            used.add(nextId++);
+        }
+    }
+
+    private void remapEnvelopeConfigIds(SyncEnvelope envelope, List<Config> canonicalConfigs) {
+        Map<String, Integer> canonicalIds = new HashMap<>();
+        for (Config config : canonicalConfigs) canonicalIds.put(configKey(config), config.getId());
+        Map<Integer, Integer> idMap = new HashMap<>();
+        for (Config config : envelope.configs) {
+            Integer canonicalId = canonicalIds.get(configKey(config));
+            if (canonicalId != null && config.getId() > 0) idMap.put(config.getId(), canonicalId);
+        }
+        remapRecordConfigIds(envelope.histories, envelope.keeps, idMap);
+    }
+
+    private void remapRecordConfigIds(List<History> histories, List<Keep> keeps, Map<Integer, Integer> idMap) {
+        for (History history : histories) {
+            Integer id = idMap.get(history.getCid());
+            if (id != null) history.setCid(id);
+        }
+        for (Keep keep : keeps) {
+            Integer id = idMap.get(keep.getCid());
+            if (id != null) keep.setCid(id);
+        }
+    }
+
     private void mergeTombstones(Map<String, Long> output, Map<String, Long> input) {
         if (input == null) return;
         for (Map.Entry<String, Long> entry : input.entrySet()) {
@@ -419,12 +565,74 @@ public final class WebDAVSyncManager {
         }
     }
 
+    private SyncDelta diff(SyncEnvelope before, SyncEnvelope after) {
+        SyncDelta delta = new SyncDelta();
+        Map<String, History> oldHistories = new HashMap<>();
+        Map<String, History> newHistories = new HashMap<>();
+        for (History item : before.histories) oldHistories.put(item.getKey(), item);
+        for (History item : after.histories) newHistories.put(item.getKey(), item);
+        for (Map.Entry<String, History> entry : newHistories.entrySet()) {
+            History old = oldHistories.get(entry.getKey());
+            if (old == null) delta.historyAdded++;
+            else if (!sameJson(old, entry.getValue())) delta.historyUpdated++;
+        }
+        for (String key : oldHistories.keySet()) if (!newHistories.containsKey(key)) delta.historyDeleted++;
+
+        Map<String, Keep> oldKeeps = new HashMap<>();
+        Map<String, Keep> newKeeps = new HashMap<>();
+        for (Keep item : before.keeps) oldKeeps.put(item.getKey(), item);
+        for (Keep item : after.keeps) newKeeps.put(item.getKey(), item);
+        for (Map.Entry<String, Keep> entry : newKeeps.entrySet()) {
+            Keep old = oldKeeps.get(entry.getKey());
+            if (old == null) delta.keepAdded++;
+            else if (!sameJson(old, entry.getValue())) delta.keepUpdated++;
+        }
+        for (String key : oldKeeps.keySet()) if (!newKeeps.containsKey(key)) delta.keepDeleted++;
+
+        Map<String, Config> oldConfigs = new HashMap<>();
+        Map<String, Config> newConfigs = new HashMap<>();
+        for (Config item : before.configs) oldConfigs.put(configKey(item), item);
+        for (Config item : after.configs) newConfigs.put(configKey(item), item);
+        for (Map.Entry<String, Config> entry : newConfigs.entrySet()) {
+            Config old = oldConfigs.get(entry.getKey());
+            if (old == null) delta.configAdded++;
+            else if (!sameConfig(old, entry.getValue())) delta.configUpdated++;
+        }
+        for (String key : oldConfigs.keySet()) if (!newConfigs.containsKey(key)) delta.configDeleted++;
+
+        delta.settingsChanged = !Objects.equals(before.settings, after.settings);
+        delta.metadataChanged = !Objects.equals(before.tombstones, after.tombstones);
+        return delta;
+    }
+
+    private boolean sameJson(Object first, Object second) {
+        return Objects.equals(SYNC_GSON.toJson(first), SYNC_GSON.toJson(second));
+    }
+
+    private boolean sameConfig(Config first, Config second) {
+        return first.getId() == second.getId()
+                && first.getType() == second.getType()
+                && TextUtils.equals(first.getUrl(), second.getUrl())
+                && TextUtils.equals(first.getName(), second.getName());
+    }
+
+    private String buildSyncMessage(SyncDelta downloaded, SyncDelta uploaded) {
+        List<String> changes = new ArrayList<>();
+        if (downloaded.hasChanges()) changes.add("下载" + downloaded.describe());
+        if (uploaded.hasChanges()) changes.add("上传" + uploaded.describe());
+        if (changes.isEmpty()) return "同步完成：没有新变化";
+        return "同步完成：" + String.join("；", changes);
+    }
+
     private void pruneTombstones(Map<String, Long> tombstones) {
         long cutoff = System.currentTimeMillis() - TOMBSTONE_RETENTION;
         tombstones.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() < cutoff);
     }
 
     private void applyLocally(SyncEnvelope merged) {
+        String runtimeVodUrl = VodConfig.getUrl();
+        Map<Integer, Integer> localConfigIds = applyConfigs(merged.configs);
+        remapRecordConfigIds(merged.histories, merged.keeps, localConfigIds);
         Set<String> historyKeys = new HashSet<>();
         Set<String> keepKeys = new HashSet<>();
         for (History history : merged.histories) historyKeys.add(history.getKey());
@@ -439,16 +647,74 @@ public final class WebDAVSyncManager {
                 } else if (entry.getKey().startsWith(KEEP_PREFIX)) {
                     String key = entry.getKey().substring(KEEP_PREFIX.length());
                     if (!keepKeys.contains(key)) AppDatabase.get().getKeepDao().deleteByKey(key);
+                } else if (entry.getKey().startsWith(CONFIG_PREFIX)) {
+                    deleteConfigTombstone(entry.getKey());
                 }
             }
         });
         applySettings(merged.settings);
+        applySelectedConfigs(merged.settings);
         saveLocalTombstones(merged.tombstones);
+        Config syncedVod = Config.vod();
+        boolean reloadVod = !syncedVod.isEmpty() && !TextUtils.equals(runtimeVodUrl, syncedVod.getUrl());
         App.post(() -> {
             RefreshEvent.history();
             RefreshEvent.keep();
             RefreshEvent.config();
+            if (reloadVod) {
+                VodConfig.load(Config.vod(), new Callback() {
+                    @Override
+                    public void success() {
+                        RefreshEvent.config();
+                        RefreshEvent.video();
+                    }
+                });
+            }
         });
+    }
+
+    private Map<Integer, Integer> applyConfigs(List<Config> configs) {
+        Map<Integer, Integer> idMap = new HashMap<>();
+        if (configs == null) return idMap;
+        for (Config cloud : configs) {
+            if (cloud == null || TextUtils.isEmpty(cloud.getUrl()) || cloud.getType() > 1) continue;
+            Config stored = AppDatabase.get().getConfigDao().find(cloud.getUrl(), cloud.getType());
+            Config target = copyConfigForSync(cloud);
+            if (stored != null) target.setId(stored.getId());
+            if (stored == null && AppDatabase.get().getConfigDao().findById(target.getId()) != null) target.setId(0);
+            AppDatabase.get().getConfigDao().insertOrUpdate(target);
+            Config applied = AppDatabase.get().getConfigDao().find(cloud.getUrl(), cloud.getType());
+            if (applied != null && cloud.getId() > 0) idMap.put(cloud.getId(), applied.getId());
+        }
+        return idMap;
+    }
+
+    private void deleteConfigTombstone(String tombstone) {
+        String value = tombstone.substring(CONFIG_PREFIX.length());
+        int separator = value.indexOf(':');
+        if (separator <= 0) return;
+        try {
+            int type = Integer.parseInt(value.substring(0, separator));
+            String url = value.substring(separator + 1);
+            AppDatabase.get().getConfigDao().delete(url, type);
+        } catch (NumberFormatException ignored) {
+        }
+    }
+
+    private void applySelectedConfigs(Map<String, Object> settings) {
+        if (settings == null) return;
+        applySelectedConfig(settings, 0);
+        applySelectedConfig(settings, 1);
+    }
+
+    private void applySelectedConfig(Map<String, Object> settings, int type) {
+        Object value = settings.get("config_" + type);
+        if (!(value instanceof String) || TextUtils.isEmpty((String) value)) return;
+        Config selected = AppDatabase.get().getConfigDao().find((String) value, type);
+        if (selected != null && Config.getAll(type).size() > 1) {
+            selected.setTime(System.currentTimeMillis());
+            AppDatabase.get().getConfigDao().insertOrUpdate(selected);
+        }
     }
 
     private void uploadSafely(RemoteSnapshot expected, SyncEnvelope merged) throws Exception {
@@ -580,6 +846,7 @@ public final class WebDAVSyncManager {
         envelope.schemaVersion = SCHEMA_VERSION;
         if (envelope.histories == null) envelope.histories = new ArrayList<>();
         if (envelope.keeps == null) envelope.keeps = new ArrayList<>();
+        if (envelope.configs == null) envelope.configs = new ArrayList<>();
         if (envelope.settings == null) envelope.settings = new TreeMap<>();
         else envelope.settings = filterSettings(envelope.settings);
         if (envelope.tombstones == null) envelope.tombstones = new HashMap<>();
@@ -756,6 +1023,7 @@ public final class WebDAVSyncManager {
         long settingsUpdatedAt;
         List<History> histories = new ArrayList<>();
         List<Keep> keeps = new ArrayList<>();
+        List<Config> configs = new ArrayList<>();
         Map<String, Object> settings = new TreeMap<>();
         Map<String, Long> tombstones = new HashMap<>();
     }
@@ -775,5 +1043,46 @@ public final class WebDAVSyncManager {
     }
 
     private static final class SyncConflictException extends Exception {
+    }
+
+    private static final class SyncDelta {
+        int historyAdded;
+        int historyUpdated;
+        int historyDeleted;
+        int keepAdded;
+        int keepUpdated;
+        int keepDeleted;
+        int configAdded;
+        int configUpdated;
+        int configDeleted;
+        boolean settingsChanged;
+        boolean metadataChanged;
+
+        boolean hasChanges() {
+            return historyAdded + historyUpdated + historyDeleted
+                    + keepAdded + keepUpdated + keepDeleted
+                    + configAdded + configUpdated + configDeleted > 0
+                    || settingsChanged || metadataChanged;
+        }
+
+        String describe() {
+            List<String> items = new ArrayList<>();
+            add(items, historyAdded, "新增", "条观看记录");
+            add(items, historyUpdated, "更新", "条观看记录");
+            add(items, historyDeleted, "删除", "条观看记录");
+            add(items, keepAdded, "新增", "条收藏");
+            add(items, keepUpdated, "更新", "条收藏");
+            add(items, keepDeleted, "删除", "条收藏");
+            add(items, configAdded, "新增", "个播放源");
+            add(items, configUpdated, "更新", "个播放源");
+            add(items, configDeleted, "删除", "个播放源");
+            if (settingsChanged) items.add("更新设置");
+            if (items.isEmpty() && metadataChanged) items.add("更新删除状态");
+            return String.join("、", items);
+        }
+
+        private void add(List<String> items, int count, String action, String unit) {
+            if (count > 0) items.add(action + count + unit);
+        }
     }
 }

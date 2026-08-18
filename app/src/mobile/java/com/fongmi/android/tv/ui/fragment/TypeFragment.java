@@ -9,7 +9,6 @@ import androidx.annotation.Nullable;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.Product;
@@ -34,7 +33,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class TypeFragment extends BaseFragment implements CustomScroller.Callback, VodAdapter.OnClickListener, SwipeRefreshLayout.OnRefreshListener {
+public class TypeFragment extends BaseFragment implements CustomScroller.Callback, VodAdapter.OnClickListener {
 
     private HashMap<String, String> mExtends;
     private FragmentTypeBinding mBinding;
@@ -103,15 +102,12 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
         mScroller = new CustomScroller(this);
         mPages = new ArrayList<>();
         mExtends = getExtend();
-        mBinding.swipeLayout.setProgressBackgroundColorSchemeColor(0xFF1A1A1A);
-        mBinding.swipeLayout.setColorSchemeColors(0xFFFFEB3B);
         setRecyclerView();
         setViewModel();
     }
 
     @Override
     protected void initEvent() {
-        mBinding.swipeLayout.setOnRefreshListener(this);
         mBinding.recycler.addOnScrollListener(mScroller = new CustomScroller(this));
     }
 
@@ -149,7 +145,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
 
     private void getVideo(String typeId, String page) {
         if ("1".equals(page)) mAdapter.clear();
-        if ("1".equals(page) && !mBinding.swipeLayout.isRefreshing()) mBinding.progressLayout.showProgress();
+        if ("1".equals(page) && !getParent().isRefreshing()) mBinding.progressLayout.showProgress();
         if (isHome() && "1".equals(page)) setAdapter(getParent().getResult());
         else mViewModel.categoryContent(getKey(), typeId, page, true, mExtends);
     }
@@ -158,7 +154,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
         boolean first = mScroller.first();
         int size = result.getList().size();
         mBinding.progressLayout.showContent(first, size);
-        mBinding.swipeLayout.setRefreshing(false);
+        getParent().setRefreshing(false);
         if (size > 0) addVideo(result);
         mScroller.endLoading(result);
         checkPosition(first);
@@ -204,14 +200,17 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
         mBinding.recycler.smoothScrollToPosition(0);
     }
 
+    public boolean canScrollUp() {
+        return mBinding != null && mBinding.recycler.canScrollVertically(-1);
+    }
+
     public void setFilter(String key, Value value) {
         if (value.isActivated()) mExtends.put(key, value.getV());
         else mExtends.remove(key);
-        onRefresh();
+        refreshContent();
     }
 
-    @Override
-    public void onRefresh() {
+    public void refreshContent() {
         if (isHome()) getHome();
         else getVideo();
     }
@@ -246,7 +245,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     public boolean canBack() {
         if (mPages.isEmpty()) return true;
         mPages.remove(mPage = getLastPage());
-        onRefresh();
+        refreshContent();
         return false;
     }
 }
