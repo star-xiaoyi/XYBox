@@ -98,12 +98,12 @@
 
     <ImageView
         android:id="@+id/gestureFeedback"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
         android:layout_gravity="center"
         android:background="@drawable/shape_control"
         android:importantForAccessibility="no"
-        android:padding="16dp"
+        android:padding="8dp"
         android:src="@drawable/exo_icon_play"
         android:visibility="gone"
         tools:visibility="visible" />
