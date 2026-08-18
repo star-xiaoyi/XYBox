@@ -6,9 +6,12 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.IBinder;
 import android.support.v4.media.MediaMetadataCompat;
+import android.text.TextUtils;
 
 import androidx.annotation.DrawableRes;
 import androidx.annotation.Nullable;
@@ -40,6 +43,7 @@ import java.util.Objects;
 public class PlaybackService extends Service {
 
     private Map<String, Bitmap> cache;
+    private Bitmap defaultArt;
     private static Players player;
 
     public static void start(Players player) {
@@ -77,24 +81,26 @@ public class PlaybackService extends Service {
     }
 
     private String getTitle() {
-        return getMetadata() == null || getMetadata().getString(MediaMetadataCompat.METADATA_KEY_TITLE).isEmpty() ? null : getMetadata().getString(MediaMetadataCompat.METADATA_KEY_TITLE);
+        String title = getMetadata() == null ? null : getMetadata().getString(MediaMetadataCompat.METADATA_KEY_TITLE);
+        return TextUtils.isEmpty(title) ? null : title;
     }
 
     private String getArtist() {
-        return getMetadata() == null || getMetadata().getString(MediaMetadataCompat.METADATA_KEY_ARTIST).isEmpty() ? null : getMetadata().getString(MediaMetadataCompat.METADATA_KEY_ARTIST);
+        String artist = getMetadata() == null ? null : getMetadata().getString(MediaMetadataCompat.METADATA_KEY_ARTIST);
+        return TextUtils.isEmpty(artist) ? null : artist;
     }
 
     private String getArtUri() {
-        return getMetadata() == null ? "" : getMetadata().getString(MediaMetadataCompat.METADATA_KEY_ART_URI);
+        String artUri = getMetadata() == null ? null : getMetadata().getString(MediaMetadataCompat.METADATA_KEY_ART_URI);
+        return TextUtils.isEmpty(artUri) ? "" : artUri;
     }
 
     private void setLargeIcon(NotificationCompat.Builder builder, Bitmap art) {
-        Bitmap b1 = Bitmap.createScaledBitmap(art, 16, 16, true);
-        Bitmap b2 = Bitmap.createScaledBitmap(b1, 1, 1, true);
-        builder.setColor(b2.getPixel(0, 0));
+        if (art == null || art.isRecycled()) return;
+        Bitmap swatch = Bitmap.createScaledBitmap(art, 1, 1, true);
+        builder.setColor(swatch.getPixel(0, 0));
         builder.setLargeIcon(art);
-        b2.recycle();
-        b1.recycle();
+        if (swatch != art) swatch.recycle();
     }
 
     private void addAction(NotificationCompat.Builder builder) {
@@ -110,7 +116,7 @@ public class PlaybackService extends Service {
         builder.setOnlyAlertOnce(true);
         builder.setContentText(getArtist());
         builder.setContentTitle(getTitle());
-        builder.setSmallIcon(R.drawable.ic_logo);
+        builder.setSmallIcon(R.drawable.ic_stat_xybox);
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         builder.setDeleteIntent(ActionReceiver.getPendingIntent(this, ActionEvent.STOP));
         if (nonNull()) builder.setContentIntent(player.getSession().getController().getSessionActivity());
@@ -121,17 +127,30 @@ public class PlaybackService extends Service {
     }
 
     private void setArtwork(NotificationCompat.Builder builder) {
-        if (cache.containsKey(getArtUri())) {
-            setLargeIcon(builder, cache.get(getArtUri()));
-        } else if (!getArtUri().isEmpty()) {
-            App.execute(() -> glide(builder));
+        setLargeIcon(builder, getDefaultArt());
+        String artUri = getArtUri();
+        if (cache.containsKey(artUri)) {
+            setLargeIcon(builder, cache.get(artUri));
+        } else if (!artUri.isEmpty()) {
+            App.execute(() -> glide(builder, artUri));
         }
     }
 
-    private void glide(NotificationCompat.Builder builder) {
+    private Bitmap getDefaultArt() {
+        if (defaultArt != null && !defaultArt.isRecycled()) return defaultArt;
+        Drawable drawable = ContextCompat.getDrawable(this, R.mipmap.ic_launcher);
+        if (drawable == null) return null;
+        int size = Math.round(64 * getResources().getDisplayMetrics().density);
+        defaultArt = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        drawable.setBounds(0, 0, size, size);
+        drawable.draw(new Canvas(defaultArt));
+        return defaultArt;
+    }
+
+    private void glide(NotificationCompat.Builder builder, String artUri) {
         try {
-            cache.put(getArtUri(), Glide.with(this).asBitmap().skipMemoryCache(true).dontAnimate().load(ImgUtil.getUrl(getArtUri())).submit().get());
-            setLargeIcon(builder, cache.get(getArtUri()));
+            cache.put(artUri, Glide.with(this).asBitmap().skipMemoryCache(true).dontAnimate().load(ImgUtil.getUrl(artUri)).submit().get());
+            setLargeIcon(builder, cache.get(artUri));
             Notify.show(builder.build());
         } catch (Exception e) {
             Logger.e("Error", e);
@@ -168,6 +187,8 @@ public class PlaybackService extends Service {
         EventBus.getDefault().unregister(this);
         getManager().cancel(Notify.ID);
         stopForeground(true);
+        if (defaultArt != null && !defaultArt.isRecycled()) defaultArt.recycle();
+        defaultArt = null;
     }
 
     @Nullable
