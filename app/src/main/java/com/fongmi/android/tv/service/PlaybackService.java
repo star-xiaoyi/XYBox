@@ -116,7 +116,7 @@ public class PlaybackService extends Service {
         builder.setOnlyAlertOnce(true);
         builder.setContentText(getArtist());
         builder.setContentTitle(getTitle());
-        builder.setSmallIcon(R.drawable.ic_stat_xybox);
+        builder.setSmallIcon(R.drawable.ic_logo);
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         builder.setDeleteIntent(ActionReceiver.getPendingIntent(this, ActionEvent.STOP));
         if (nonNull()) builder.setContentIntent(player.getSession().getController().getSessionActivity());
@@ -149,7 +149,7 @@ public class PlaybackService extends Service {
 
     private void glide(NotificationCompat.Builder builder, String artUri) {
         try {
-            cache.put(artUri, Glide.with(this).asBitmap().skipMemoryCache(true).dontAnimate().load(ImgUtil.getUrl(artUri)).submit().get());
+            cache.put(artUri, Glide.with(this).asBitmap().load(ImgUtil.getUrl(artUri)).skipMemoryCache(false).dontAnimate().signature(ImgUtil.getSignature(artUri)).submit().get());
             setLargeIcon(builder, cache.get(artUri));
             Notify.show(builder.build());
         } catch (Exception e) {

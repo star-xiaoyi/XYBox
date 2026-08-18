@@ -30,7 +30,7 @@ import jahirfiquitiva.libs.textdrawable.TextDrawable;
 
 public class ImgUtil {
 
-    private static ObjectKey getSignature(String url) {
+    public static ObjectKey getSignature(String url) {
         return new ObjectKey(url + "_" + Setting.getQuality());
     }
 
