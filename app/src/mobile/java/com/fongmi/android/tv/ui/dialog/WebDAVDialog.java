@@ -78,7 +78,6 @@ public class WebDAVDialog {
         String username = Setting.getWebDAVUsername();
         String password = Setting.getWebDAVPassword();
         boolean autoSync = Setting.isWebDAVAutoSync();
-        int interval = Setting.getWebDAVSyncInterval();
 
         // 根据保存的URL判断是哪个服务提供商
         selectedProvider = getProviderIndexByUrl(url);
@@ -107,10 +106,7 @@ public class WebDAVDialog {
         binding.usernameText.setText(username);
         binding.passwordText.setText(password);
         binding.autoSyncSwitch.setChecked(autoSync);
-        binding.syncIntervalText.setText(String.valueOf(interval));
-        
-        // 根据自动同步开关显示/隐藏同步间隔
-        updateSyncIntervalVisibility(autoSync);
+        binding.syncIntervalContainer.setVisibility(View.GONE);
         showStatus(syncManager.getLastStatus(), true);
         
         isInitializing = false;  // 初始化完成
@@ -162,8 +158,6 @@ public class WebDAVDialog {
                 boolean newState = binding.autoSyncSwitch.isChecked();
                 // 立即保存自动同步状态
                 Setting.putWebDAVAutoSync(newState);
-                // 更新同步间隔的可见性
-                updateSyncIntervalVisibility(newState);
             });
         });
 
@@ -172,9 +166,6 @@ public class WebDAVDialog {
 
         // 立即同步按钮
         binding.syncButton.setOnClickListener(v -> onSyncNow());
-
-        // 同步间隔点击（弹出选择对话框）
-        binding.syncIntervalContainer.setOnClickListener(v -> onSelectInterval());
 
         // 密码输入框回车键
         binding.passwordText.setOnEditorActionListener((textView, actionId, event) -> {
@@ -216,10 +207,6 @@ public class WebDAVDialog {
             })
             .setNegativeButton("取消", null)
             .show();
-    }
-
-    private void updateSyncIntervalVisibility(boolean visible) {
-        binding.syncIntervalContainer.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
     private void onTestConnection() {
@@ -328,30 +315,6 @@ public class WebDAVDialog {
         });
     }
 
-    private void onSelectInterval() {
-        String[] intervals = {"15", "30", "60", "120", "240"};
-        int currentInterval = Setting.getWebDAVSyncInterval();
-        int selectedIndex = 0;
-        for (int i = 0; i < intervals.length; i++) {
-            if (Integer.parseInt(intervals[i]) == currentInterval) {
-                selectedIndex = i;
-                break;
-            }
-        }
-
-        new MaterialAlertDialogBuilder(binding.getRoot().getContext())
-            .setTitle("选择同步间隔")
-            .setSingleChoiceItems(intervals, selectedIndex, (dialog, which) -> {
-                int interval = Integer.parseInt(intervals[which]);
-                binding.syncIntervalText.setText(String.valueOf(interval));
-                // 立即保存同步间隔
-                Setting.putWebDAVSyncInterval(interval);
-                dialog.dismiss();
-            })
-            .setNegativeButton("取消", null)
-            .show();
-    }
-
     private void showStatus(String message, boolean isSuccess) {
         // 检查对话框是否还存在
         if (binding == null || dialog == null || !dialog.isShowing()) {
@@ -389,7 +352,6 @@ public class WebDAVDialog {
         String username = binding.usernameText.getText().toString().trim();
         String password = binding.passwordText.getText().toString().trim();
         boolean autoSync = binding.autoSyncSwitch.isChecked();
-        int interval = Integer.parseInt(binding.syncIntervalText.getText().toString());
 
         // 验证输入
         if (TextUtils.isEmpty(url)) {
@@ -410,7 +372,6 @@ public class WebDAVDialog {
         Setting.putWebDAVUsername(username);
         Setting.putWebDAVPassword(password);
         Setting.putWebDAVAutoSync(autoSync);
-        Setting.putWebDAVSyncInterval(interval);
 
         // 重新加载配置
         syncManager.reloadConfig();

@@ -152,8 +152,15 @@ public class ConfigDialog {
         
         android.util.Log.d("ConfigDialog", "onPositive: type=" + type + ", url=" + url + ", name=" + name);
         
-        // 如果是编辑模式，更新现有配置
-        if (edit) Config.find(ori, type).url(url).name(name).update();
+        // 如果是编辑模式，更新现有配置；URL 变化时同步删除旧地址。
+        if (edit && !url.isEmpty()) {
+            Config original = Config.find(ori, type);
+            if (!TextUtils.equals(ori, url)) {
+                com.fongmi.android.tv.utils.WebDAVSyncManager.get().markConfigDeleted(original);
+            }
+            original.url(url).name(name).update();
+            com.fongmi.android.tv.utils.WebDAVSyncManager.get().requestSync();
+        }
         
         // 如果URL为空，删除配置
         if (url.isEmpty()) {

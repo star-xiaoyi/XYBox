@@ -8,6 +8,7 @@ import android.view.View;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.History;
@@ -15,7 +16,8 @@ import com.fongmi.android.tv.databinding.ActivityHistoryBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.ui.adapter.HistoryAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
-import com.fongmi.android.tv.ui.dialog.SyncDialog;
+import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.WebDAVSyncManager;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.airbnb.lottie.LottieAnimationView;
 
@@ -82,7 +84,20 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
     }
 
     private void onSync(View view) {
-        SyncDialog.create().history().show(this);
+        WebDAVSyncManager manager = WebDAVSyncManager.get();
+        if (!manager.isConfigured()) {
+            Notify.show("请先在设置中配置 WebDAV");
+            return;
+        }
+        view.setEnabled(false);
+        App.execute(() -> {
+            WebDAVSyncManager.SyncResult result = manager.syncNow();
+            App.post(() -> {
+                view.setEnabled(true);
+                getHistory();
+                Notify.show(result.message);
+            });
+        });
     }
 
     private void onDelete(View view) {

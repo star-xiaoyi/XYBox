@@ -30,6 +30,9 @@ public abstract class ConfigDao extends BaseDao<Config> {
     @Query("SELECT * FROM Config WHERE url = :url AND type = :type")
     public abstract Config find(String url, int type);
 
+    @Query("SELECT * FROM Config WHERE url = :url")
+    public abstract List<Config> findByUrl(String url);
+
     @Query("DELETE FROM Config WHERE url = :url AND type = :type")
     public abstract void delete(String url, int type);
 

@@ -60,6 +60,7 @@ import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
+import com.fongmi.android.tv.utils.WebDAVSyncManager;
 import com.github.catvod.net.OkHttp;
 import com.google.common.net.HttpHeaders;
 
@@ -110,6 +111,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         setRecyclerView();
         setViewModel();
         setupHistoryRecycler();
+        mBinding.swipeLayout.setProgressBackgroundColorSchemeColor(0xFF1A1A1A);
+        mBinding.swipeLayout.setColorSchemeColors(0xFFFFEB3B);
         initStartupState(); // 根据是否已有配置来设置初始状态
         setLogo();
         initHot();
@@ -156,6 +159,14 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.search.setOnClickListener(this::onSearch);
         mBinding.history.setOnClickListener(this::onHistory);
         mBinding.historyMore.setOnClickListener(this::onHistory);
+        mBinding.swipeLayout.setOnRefreshListener(this::onPullRefresh);
+        mBinding.swipeLayout.setOnChildScrollUpCallback((parent, child) -> {
+            try {
+                return getFragment().canScrollUp();
+            } catch (Exception e) {
+                return false;
+            }
+        });
         mBinding.filter.setOnLongClickListener(this::onLink);
         mBinding.pager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
             @Override
@@ -231,6 +242,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         hideProgress();
         checkRetry();
         checkEmptySource(); // 添加检查是否显示空源提示
+        setRefreshing(false);
     }
 
     // 修改checkEmptySource方法，增强鲁棒性
@@ -466,6 +478,27 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     private void onHistory(View view) {
         HistoryActivity.start(getActivity());
+    }
+
+    private void onPullRefresh() {
+        getFragment().refreshContent();
+        WebDAVSyncManager manager = WebDAVSyncManager.get();
+        if (!manager.isConfigured()) return;
+        App.execute(() -> {
+            WebDAVSyncManager.SyncResult result = manager.syncNow();
+            App.post(() -> {
+                loadHistory();
+                Notify.show(result.message);
+            });
+        });
+    }
+
+    public boolean isRefreshing() {
+        return mBinding != null && mBinding.swipeLayout.isRefreshing();
+    }
+
+    public void setRefreshing(boolean refreshing) {
+        if (mBinding != null) mBinding.swipeLayout.setRefreshing(refreshing);
     }
 
     private void setupHistoryRecycler() {

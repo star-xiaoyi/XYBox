@@ -8,6 +8,7 @@ import android.view.View;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
@@ -18,8 +19,8 @@ import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.ui.adapter.KeepAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
-import com.fongmi.android.tv.ui.dialog.SyncDialog;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.WebDAVSyncManager;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.airbnb.lottie.LottieAnimationView;
 
@@ -86,7 +87,20 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     }
 
     private void onSync(View view) {
-        SyncDialog.create().keep().show(this);
+        WebDAVSyncManager manager = WebDAVSyncManager.get();
+        if (!manager.isConfigured()) {
+            Notify.show("请先在设置中配置 WebDAV");
+            return;
+        }
+        view.setEnabled(false);
+        App.execute(() -> {
+            WebDAVSyncManager.SyncResult result = manager.syncNow();
+            App.post(() -> {
+                view.setEnabled(true);
+                getKeep();
+                Notify.show(result.message);
+            });
+        });
     }
 
     private void onDelete(View view) {

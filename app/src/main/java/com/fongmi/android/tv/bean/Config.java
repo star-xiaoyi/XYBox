@@ -190,10 +190,15 @@ public class Config {
     }
 
     public static void delete(String url) {
+        for (Config item : AppDatabase.get().getConfigDao().findByUrl(url)) {
+            com.fongmi.android.tv.utils.WebDAVSyncManager.get().markConfigDeleted(item);
+        }
         AppDatabase.get().getConfigDao().delete(url);
     }
 
     public static void delete(String url, int type) {
+        Config item = AppDatabase.get().getConfigDao().find(url, type);
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().markConfigDeleted(item);
         if (type == 2) Path.clear(FileUtil.getWall(0));
         if (type == 2) AppDatabase.get().getConfigDao().delete(type);
         else AppDatabase.get().getConfigDao().delete(url, type);
@@ -245,6 +250,7 @@ public class Config {
     public Config insert() {
         if (isEmpty()) return this;
         setId(Math.toIntExact(AppDatabase.get().getConfigDao().insert(this)));
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().requestSync();
         return this;
     }
 
@@ -256,12 +262,16 @@ public class Config {
 
     public Config update() {
         if (isEmpty()) return this;
+        boolean selectionChanged = !TextUtils.equals(Prefers.getString("config_" + getType(), ""), getUrl());
         setTime(System.currentTimeMillis());
         Prefers.put("config_" + getType(), getUrl());
-        return save();
+        save();
+        if (selectionChanged) com.fongmi.android.tv.utils.WebDAVSyncManager.get().requestSync();
+        return this;
     }
 
     public void delete() {
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().markConfigDeleted(this);
         AppDatabase.get().getConfigDao().delete(getUrl(), getType());
         History.delete(getId());
         Keep.delete(getId());
