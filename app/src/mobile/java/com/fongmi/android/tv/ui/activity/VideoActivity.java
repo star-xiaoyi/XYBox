@@ -1952,10 +1952,21 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     protected void onStop() {
         super.onStop();
+        savePlaybackProgress();
         com.fongmi.android.tv.utils.WebDAVSyncManager.get().flushPendingSync();
         if (Setting.isBackgroundOff()) onPaused();
         if (Setting.isBackgroundOff()) mClock.stop();
         setStop(true);
+    }
+
+    private void savePlaybackProgress() {
+        if (mHistory == null || mPlayers == null || mPlayers.isEmpty() || Setting.isIncognito()) return;
+        long position = mPlayers.getPosition();
+        long duration = mPlayers.getDuration();
+        if (position < 0 || duration <= 0) return;
+        mHistory.setPosition(position);
+        mHistory.setDuration(duration);
+        mHistory.update();
     }
 
     @Override

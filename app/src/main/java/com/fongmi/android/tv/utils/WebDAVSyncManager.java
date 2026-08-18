@@ -262,15 +262,13 @@ public final class WebDAVSyncManager {
     }
 
     public void flushPendingSync() {
-        boolean dispatch;
         synchronized (this) {
             if (dirtyGeneration == 0) return;
             dirtySyncScheduled = false;
-            dispatch = !syncing && !flushAfterSync;
-            flushAfterSync = true;
+            if (syncing) flushAfterSync = true;
         }
         App.removeCallbacks(dirtySyncTask);
-        if (dispatch) App.execute(this::syncNow);
+        WebDAVSyncJobService.scheduleImmediate();
     }
 
     private void dispatchDirtySync() {

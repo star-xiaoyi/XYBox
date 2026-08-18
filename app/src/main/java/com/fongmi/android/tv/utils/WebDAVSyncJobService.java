@@ -17,17 +17,28 @@ public class WebDAVSyncJobService extends JobService {
 
     private static final int JOB_ID = 0x58594258;
     private static final long DELAY = TimeUnit.MINUTES.toMillis(5);
+    private static final long URGENT_DEADLINE = TimeUnit.MINUTES.toMillis(1);
 
     public static void schedule() {
+        schedule(false);
+    }
+
+    public static void scheduleImmediate() {
+        schedule(true);
+    }
+
+    private static void schedule(boolean immediate) {
         if (!Setting.isWebDAVAutoSync()) return;
         JobScheduler scheduler = (JobScheduler) App.get().getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        if (scheduler == null || scheduler.getPendingJob(JOB_ID) != null) return;
-        JobInfo info = new JobInfo.Builder(JOB_ID, new ComponentName(App.get(), WebDAVSyncJobService.class))
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                .setMinimumLatency(DELAY)
-                .setOverrideDeadline(DELAY * 2)
-                .build();
-        scheduler.schedule(info);
+        if (scheduler == null || (!immediate && scheduler.getPendingJob(JOB_ID) != null)) return;
+        JobInfo.Builder builder = new JobInfo.Builder(JOB_ID, new ComponentName(App.get(), WebDAVSyncJobService.class))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY);
+        if (immediate) {
+            builder.setOverrideDeadline(URGENT_DEADLINE);
+        } else {
+            builder.setMinimumLatency(DELAY).setOverrideDeadline(DELAY * 2);
+        }
+        scheduler.schedule(builder.build());
     }
 
     public static void cancel() {

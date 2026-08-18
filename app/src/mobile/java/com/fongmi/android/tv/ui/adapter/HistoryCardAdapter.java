@@ -43,7 +43,8 @@ public class HistoryCardAdapter extends RecyclerView.Adapter<HistoryCardAdapter.
         void onItemClick(History item);
     }
 
-    public void setItems(List<History> items) {
+    public boolean setItems(List<History> items) {
+        String previousFirstKey = mItems.isEmpty() ? null : mItems.get(0).getKey();
         List<History> nextItems = new ArrayList<>();
         if (items != null) {
             // 限制最多显示15条记录
@@ -54,6 +55,8 @@ public class HistoryCardAdapter extends RecyclerView.Adapter<HistoryCardAdapter.
         mItems.clear();
         mItems.addAll(nextItems);
         result.dispatchUpdatesTo(this);
+        String currentFirstKey = mItems.isEmpty() ? null : mItems.get(0).getKey();
+        return !TextUtils.equals(previousFirstKey, currentFirstKey);
     }
 
     public void clear() {
