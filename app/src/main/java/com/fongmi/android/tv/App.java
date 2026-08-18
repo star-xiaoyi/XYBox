@@ -53,7 +53,7 @@ public class App extends Application {
     private final Runnable syncTask;
     private final Runnable webdavSyncTask;
     private boolean appJustLaunched;
-    private boolean webdavStartupSyncPending;
+    private boolean webdavForegroundSyncPending;
     private int foregroundActivityCount;
 
     public App() {
@@ -77,7 +77,6 @@ public class App extends Application {
         syncTask = this::doAutoSync;
         webdavSyncTask = this::doWebDAVAutoSync;
         appJustLaunched = true;
-        webdavStartupSyncPending = true;
     }
 
     public static App get() {
@@ -162,6 +161,7 @@ public class App extends Application {
 
             @Override
             public void onActivityStarted(@NonNull Activity activity) {
+                if (foregroundActivityCount == 0) webdavForegroundSyncPending = true;
                 foregroundActivityCount++;
                 if (activity != activity()) setActivity(activity);
             }
@@ -300,8 +300,8 @@ public class App extends Application {
         removeCallbacks(webdavSyncTask);
         if (!Setting.isWebDAVAutoSync()) return;
         WebDAVSyncManager manager = WebDAVSyncManager.get();
-        if (webdavStartupSyncPending) {
-            webdavStartupSyncPending = false;
+        if (webdavForegroundSyncPending) {
+            webdavForegroundSyncPending = false;
             execute(manager::syncNow);
         } else {
             execute(manager::performAutoSync);
