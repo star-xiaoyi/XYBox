@@ -4,12 +4,15 @@ import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.view.View;
 
 import androidx.appcompat.widget.AppCompatCheckBox;
+
+import com.google.android.material.color.MaterialColors;
 
 public class CustomSwitch extends AppCompatCheckBox {
     
@@ -22,10 +25,10 @@ public class CustomSwitch extends AppCompatCheckBox {
     private int currentTrackColor;
     private int currentThumbColor;
     
-    private static final int TRACK_COLOR_OFF = 0xFF555555; // 灰色
-    private static final int TRACK_COLOR_ON = 0xFFFFEB3B;  // 黄色
-    private static final int THUMB_COLOR_OFF = 0xFFFFFFFF; // 白色
-    private static final int THUMB_COLOR_ON = 0xFF000000;  // 黑色
+    private int trackColorOff;
+    private int trackColorOn;
+    private int thumbColorOff;
+    private int thumbColorOn;
     
     private ValueAnimator animator;
     
@@ -53,9 +56,14 @@ public class CustomSwitch extends AppCompatCheckBox {
         
         trackRect = new RectF();
         thumbRect = new RectF();
+
+        trackColorOff = MaterialColors.getColor(this, com.google.android.material.R.attr.colorOutline);
+        trackColorOn = MaterialColors.getColor(this, com.google.android.material.R.attr.colorPrimary);
+        thumbColorOff = Color.WHITE;
+        thumbColorOn = Color.WHITE;
         
-        currentTrackColor = TRACK_COLOR_OFF;
-        currentThumbColor = THUMB_COLOR_OFF;
+        currentTrackColor = trackColorOff;
+        currentThumbColor = thumbColorOff;
         
         // 监听状态变化
         setOnCheckedChangeListener((buttonView, isChecked) -> animateSwitch(isChecked));
@@ -98,8 +106,8 @@ public class CustomSwitch extends AppCompatCheckBox {
         }
         
         float targetPosition = isChecked ? 1f : 0f;
-        int targetTrackColor = isChecked ? TRACK_COLOR_ON : TRACK_COLOR_OFF;
-        int targetThumbColor = isChecked ? THUMB_COLOR_ON : THUMB_COLOR_OFF;
+        int targetTrackColor = isChecked ? trackColorOn : trackColorOff;
+        int targetThumbColor = isChecked ? thumbColorOn : thumbColorOff;
         
         animator = ValueAnimator.ofFloat(thumbPosition, targetPosition);
         animator.setDuration(250); // 250ms动画时长
@@ -111,10 +119,10 @@ public class CustomSwitch extends AppCompatCheckBox {
             
             // 颜色渐变
             currentTrackColor = (int) colorEvaluator.evaluate(
-                thumbPosition, TRACK_COLOR_OFF, TRACK_COLOR_ON
+                thumbPosition, trackColorOff, trackColorOn
             );
             currentThumbColor = (int) colorEvaluator.evaluate(
-                thumbPosition, THUMB_COLOR_OFF, THUMB_COLOR_ON
+                thumbPosition, thumbColorOff, thumbColorOn
             );
             
             invalidate();
@@ -129,8 +137,8 @@ public class CustomSwitch extends AppCompatCheckBox {
         // 初始化时不播放动画
         if (!isAttachedToWindow()) {
             thumbPosition = checked ? 1f : 0f;
-            currentTrackColor = checked ? TRACK_COLOR_ON : TRACK_COLOR_OFF;
-            currentThumbColor = checked ? THUMB_COLOR_ON : THUMB_COLOR_OFF;
+            currentTrackColor = checked ? trackColorOn : trackColorOff;
+            currentThumbColor = checked ? thumbColorOn : thumbColorOff;
         }
     }
 }

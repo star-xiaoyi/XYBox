@@ -5,4 +5,18 @@
     <color name="accent">#FDD835</color>
     <color name="indicator">@color/black_50</color>
 
+    <!-- iOS-inspired semantic palette (dark) -->
+    <color name="screen_background">#FF000000</color>
+    <color name="surface_primary">#FF1C1C1E</color>
+    <color name="surface_secondary">#FF2C2C2E</color>
+    <color name="glass_surface">#B31C1C1E</color>
+    <color name="glass_outline">#33FFFFFF</color>
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FF98989D</color>
+    <color name="separator">#40545458</color>
+    <color name="accent_yellow">#FFFFD60A</color>
+    <color name="accent_blue">#FF0A84FF</color>
+    <color name="accent_green">#FF30D158</color>
+    <color name="accent_purple">#FFBF5AF2</color>
+
 </resources>

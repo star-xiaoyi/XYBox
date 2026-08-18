@@ -62,7 +62,7 @@
 
         <activity
             android:name=".ui.activity.HomeActivity"
-            android:configChanges="screenSize|smallestScreenSize|screenLayout|uiMode|orientation"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:exported="true"
             android:screenOrientation="fullUser"
             android:windowSoftInputMode="adjustPan">

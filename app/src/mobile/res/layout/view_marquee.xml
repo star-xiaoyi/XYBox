@@ -10,7 +10,7 @@
         android:layerType="software"
         android:fadingEdgeLength="24dp"
         android:requiresFadingEdge="horizontal"
-        android:textColor="@color/yellow_500"
+        android:textColor="?attr/colorPrimary"
         android:textSize="14sp" />
 
-</FrameLayout> 
+</FrameLayout>

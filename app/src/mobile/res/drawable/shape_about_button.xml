@@ -3,7 +3,7 @@
     android:color="?attr/colorControlHighlight">
     <item android:id="@android:id/background">
         <shape android:shape="rectangle">
-            <solid android:color="@color/primary" />
+            <solid android:color="?attr/colorPrimary" />
             <corners android:radius="8dp" />
             <padding
                 android:bottom="14dp"
@@ -12,4 +12,4 @@
                 android:top="14dp" />
         </shape>
     </item>
-</ripple> 
+</ripple>
