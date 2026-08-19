@@ -4,31 +4,38 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/screen_background"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="12dp">
 
         <ImageView
             android:id="@+id/back"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_marginEnd="16dp"
-            android:background="@drawable/shape_action_background"
-            android:src="@drawable/ic_back" />
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/shape_settings_icon"
+            android:contentDescription="@string/back"
+            android:padding="8dp"
+            android:src="@drawable/ic_back"
+            android:tint="@color/text_primary" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/setting_player"
-            android:textColor="@color/white"
-            android:textSize="20sp"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
             android:textStyle="bold" />
 
     </LinearLayout>
@@ -41,521 +48,404 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:animateLayoutChanges="true"
             android:orientation="vertical"
-            android:paddingStart="24dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="24dp"
-            android:paddingBottom="16dp">
+            android:paddingStart="16dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="24dp">
 
-            <LinearLayout
-                android:id="@+id/render"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal">
+            <!-- 播放设置卡片 -->
+            <LinearLayout style="@style/SettingsCard">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="16dp"
-                    android:text="@string/player_render"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
+                <LinearLayout
+                    android:id="@+id/render"
+                    style="@style/SettingsRow">
 
-                <TextView
-                    android:id="@+id/renderText"
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_render" />
+
+                    <TextView
+                        android:id="@+id/renderText"
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="Surface" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="6dp"
+                        android:src="@drawable/ic_arrow_right"
+                        android:tint="@color/text_secondary" />
+
+                </LinearLayout>
+
+                <View
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    tools:text="Surface" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/playerEngine"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
                     android:layout_marginEnd="16dp"
-                    android:text="播放器引擎"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
+                    android:background="@color/separator" />
 
-                <TextView
-                    android:id="@+id/playerEngineText"
+                <LinearLayout
+                    android:id="@+id/playerEngine"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="播放器引擎" />
+
+                    <TextView
+                        android:id="@+id/playerEngineText"
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="ExoPlayer (自动)" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="6dp"
+                        android:src="@drawable/ic_arrow_right"
+                        android:tint="@color/text_secondary" />
+
+                </LinearLayout>
+
+                <View
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    tools:text="ExoPlayer (自动)" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/scale"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
                     android:layout_marginEnd="16dp"
-                    android:text="@string/player_scale"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
+                    android:background="@color/separator" />
 
-                <TextView
-                    android:id="@+id/scaleText"
+                <LinearLayout
+                    android:id="@+id/scale"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_scale" />
+
+                    <TextView
+                        android:id="@+id/scaleText"
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="預設" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="6dp"
+                        android:src="@drawable/ic_arrow_right"
+                        android:tint="@color/text_secondary" />
+
+                </LinearLayout>
+
+                <View
+                    android:id="@+id/captionDividerTop"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    tools:text="預設" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/caption"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
                     android:layout_marginEnd="16dp"
-                    android:text="@string/player_caption"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
+                    android:background="@color/separator" />
 
-                <TextView
-                    android:id="@+id/captionText"
+                <LinearLayout
+                    android:id="@+id/caption"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_caption" />
+
+                    <TextView
+                        android:id="@+id/captionText"
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="middle"
+                        android:singleLine="true"
+                        tools:text="預設" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="6dp"
+                        android:src="@drawable/ic_arrow_right"
+                        android:tint="@color/text_secondary" />
+
+                </LinearLayout>
+
+                <View
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:ellipsize="middle"
-                    android:gravity="end"
-                    android:singleLine="true"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    tools:text="預設" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/buffer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
                     android:layout_marginEnd="16dp"
-                    android:text="@string/player_buffer"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
+                    android:background="@color/separator" />
 
-                <TextView
-                    android:id="@+id/bufferText"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="end"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    tools:text="1" />
+                <LinearLayout
+                    android:id="@+id/buffer"
+                    style="@style/SettingsRow">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:text="@string/times"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_buffer" />
 
-            </LinearLayout>
+                    <TextView
+                        android:id="@+id/bufferText"
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="1" />
 
-            <LinearLayout
-                android:id="@+id/speed"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal">
+                    <TextView
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:text="@string/times" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="16dp"
-                    android:text="@string/player_speed"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="6dp"
+                        android:src="@drawable/ic_arrow_right"
+                        android:tint="@color/text_secondary" />
 
-                <TextView
-                    android:id="@+id/speedText"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="end"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    tools:text="1" />
+                </LinearLayout>
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:text="@string/times"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-            </LinearLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="8dp"
-                android:text="@string/player_gesture_title"
-                android:textColor="@color/yellow_500"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <LinearLayout
-                android:id="@+id/gestureDoubleTapPlay"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/shape_item"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/player_gesture_double_tap_play"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <com.fongmi.android.tv.ui.custom.CustomSwitch
-                    android:id="@+id/gestureDoubleTapPlaySwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/gestureDoubleTapSeek"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/shape_item"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/player_gesture_double_tap_seek"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <com.fongmi.android.tv.ui.custom.CustomSwitch
-                    android:id="@+id/gestureDoubleTapSeekSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/gestureSeekSeconds"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="16dp"
-                    android:text="@string/player_gesture_seek_seconds"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <TextView
-                    android:id="@+id/gestureSeekSecondsText"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="end"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    tools:text="10 秒" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/gestureBrightness"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/shape_item"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/player_gesture_brightness"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <com.fongmi.android.tv.ui.custom.CustomSwitch
-                    android:id="@+id/gestureBrightnessSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/gestureVolume"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/shape_item"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/player_gesture_volume"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <com.fongmi.android.tv.ui.custom.CustomSwitch
-                    android:id="@+id/gestureVolumeSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/gestureProgress"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/shape_item"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/player_gesture_progress"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <com.fongmi.android.tv.ui.custom.CustomSwitch
-                    android:id="@+id/gestureProgressSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/tunnel"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/player_tunnel"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <com.fongmi.android.tv.ui.custom.CustomSwitch
-                    android:id="@+id/tunnelSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/audioDecode"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/player_audio_decode"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <com.fongmi.android.tv.ui.custom.CustomSwitch
-                    android:id="@+id/audioDecodeSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/aac"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/player_aac"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <com.fongmi.android.tv.ui.custom.CustomSwitch
-                    android:id="@+id/aacSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/danmakuLoad"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/player_danmaku_load"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <com.fongmi.android.tv.ui.custom.CustomSwitch
-                    android:id="@+id/danmakuLoadSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/background"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="16dp"
-                    android:text="@string/player_background"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
-
-                <TextView
-                    android:id="@+id/backgroundText"
+                <View
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    tools:text="畫中畫" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/ua"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/shape_item"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
                     android:layout_marginEnd="16dp"
-                    android:text="@string/player_ua"
-                    android:textColor="@color/white"
-                    android:textSize="16sp" />
+                    android:background="@color/separator" />
 
-                <TextView
-                    android:id="@+id/uaText"
+                <LinearLayout
+                    android:id="@+id/speed"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_speed" />
+
+                    <TextView
+                        android:id="@+id/speedText"
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="1" />
+
+                    <TextView
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:text="@string/times" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="6dp"
+                        android:src="@drawable/ic_arrow_right"
+                        android:tint="@color/text_secondary" />
+
+                </LinearLayout>
+
+                <View
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:ellipsize="middle"
-                    android:gravity="end"
-                    android:singleLine="true"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    tools:text="okhttp/4.11.0" />
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/tunnel"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_tunnel" />
+
+                    <com.fongmi.android.tv.ui.custom.CustomSwitch
+                        android:id="@+id/tunnelSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/audioDecode"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_audio_decode" />
+
+                    <com.fongmi.android.tv.ui.custom.CustomSwitch
+                        android:id="@+id/audioDecodeSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/aac"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_aac" />
+
+                    <com.fongmi.android.tv.ui.custom.CustomSwitch
+                        android:id="@+id/aacSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/danmakuLoad"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_danmaku_load" />
+
+                    <com.fongmi.android.tv.ui.custom.CustomSwitch
+                        android:id="@+id/danmakuLoadSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/background"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_background" />
+
+                    <TextView
+                        android:id="@+id/backgroundText"
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="畫中畫" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="6dp"
+                        android:src="@drawable/ic_arrow_right"
+                        android:tint="@color/text_secondary" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/ua"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_ua" />
+
+                    <TextView
+                        android:id="@+id/uaText"
+                        style="@style/SettingsValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="middle"
+                        android:maxWidth="160dp"
+                        android:singleLine="true"
+                        tools:text="okhttp/4.11.0" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="6dp"
+                        android:src="@drawable/ic_arrow_right"
+                        android:tint="@color/text_secondary" />
+
+                </LinearLayout>
 
             </LinearLayout>
+
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 </LinearLayout>

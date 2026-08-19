@@ -57,14 +57,6 @@
             android:paddingEnd="16dp"
             android:paddingBottom="24dp">
 
-            <TextView
-                style="@style/SettingsSectionTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_marginBottom="7dp"
-                android:text="@string/setting_section_sources" />
-
             <LinearLayout style="@style/SettingsCard">
 
                 <LinearLayout
@@ -135,6 +127,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
                         android:layout_marginStart="64dp"
+                        android:layout_marginEnd="16dp"
                         android:background="@color/separator" />
 
                     <LinearLayout
@@ -207,16 +200,9 @@
                 android:layout_marginTop="6dp"
                 android:text="@string/setting_source_tip" />
 
-            <TextView
-                style="@style/SettingsSectionTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="7dp"
-                android:text="@string/setting_section_appearance" />
-
-            <LinearLayout style="@style/SettingsCard">
+            <LinearLayout
+                style="@style/SettingsCard"
+                android:layout_marginTop="24dp">
 
                 <LinearLayout
                     android:id="@+id/theme"
@@ -249,6 +235,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -289,6 +276,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -323,6 +311,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -356,6 +345,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -380,6 +370,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -402,16 +393,9 @@
 
             </LinearLayout>
 
-            <TextView
-                style="@style/SettingsSectionTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="7dp"
-                android:text="@string/setting_section_playback" />
-
-            <LinearLayout style="@style/SettingsCard">
+            <LinearLayout
+                style="@style/SettingsCard"
+                android:layout_marginTop="24dp">
 
                 <LinearLayout
                     android:id="@+id/player"
@@ -451,6 +435,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -471,18 +456,53 @@
 
                 </LinearLayout>
 
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <!-- 操作设置入口（与播放设置同卡片，进入二级页面） -->
+                <LinearLayout
+                    android:id="@+id/operation"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            style="@style/SettingsTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/setting_operation" />
+
+                        <TextView
+                            style="@style/SettingsSummary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/setting_operation_summary" />
+
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="8dp"
+                        android:src="@drawable/ic_arrow_right"
+                        android:tint="@color/text_secondary" />
+
+                </LinearLayout>
+
             </LinearLayout>
 
-            <TextView
-                style="@style/SettingsSectionTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="7dp"
-                android:text="@string/setting_section_network_sync" />
-
-            <LinearLayout style="@style/SettingsCard">
+            <LinearLayout
+                style="@style/SettingsCard"
+                android:layout_marginTop="24dp">
 
                 <LinearLayout
                     android:id="@+id/webdav"
@@ -522,6 +542,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -562,6 +583,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -595,6 +617,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -626,16 +649,9 @@
 
             </LinearLayout>
 
-            <TextView
-                style="@style/SettingsSectionTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_marginTop="24dp"
-                android:layout_marginBottom="7dp"
-                android:text="@string/setting_section_storage_about" />
-
-            <LinearLayout style="@style/SettingsCard">
+            <LinearLayout
+                style="@style/SettingsCard"
+                android:layout_marginTop="24dp">
 
                 <LinearLayout
                     android:id="@+id/cache"
@@ -675,6 +691,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -700,6 +717,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -725,6 +743,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout
@@ -752,6 +771,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
                 <LinearLayout

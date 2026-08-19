@@ -1,6 +1,10 @@
 # TV
 -keep class com.fongmi.android.tv.bean.** { *; }
 
+# WebDAV 同步信封：Gson 反序列化依赖字段名与泛型签名（List<Config> 等），
+# 一旦被 R8 混淆/擦除，元素会退化成 LinkedTreeMap 导致 ClassCastException
+-keep class com.fongmi.android.tv.utils.WebDAVSyncManager$SyncEnvelope { *; }
+
 # Gson
 -keep class com.google.gson.** { *; }
 

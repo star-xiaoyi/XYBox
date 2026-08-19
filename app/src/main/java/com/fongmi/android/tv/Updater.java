@@ -104,18 +104,20 @@ public class Updater implements Download.Callback {
                 return;
             }
 
-            // 检查是否是错误响应
-            if (response.contains("Not Found") || response.contains("404")) {
-                App.post(() -> Notify.show("检查更新失败：未找到发布版本"));
-                return;
-            }
-
-            if (response.contains("rate limit") || response.contains("API rate limit")) {
-                App.post(() -> Notify.show("检查更新失败：API请求次数已达上限"));
-                return;
-            }
-
             JSONObject release = new JSONObject(response);
+
+            // GitHub API 的错误响应（404、限流等）会带 message 字段而非 release 数据。
+            // 注意：不能用 response.contains("404") 判断，APK 文件大小等数字也可能包含 404。
+            if (release.has("message")) {
+                String message = release.optString("message");
+                if (message.contains("rate limit")) {
+                    App.post(() -> Notify.show("检查更新失败：API请求次数已达上限"));
+                } else {
+                    App.post(() -> Notify.show("检查更新失败：未找到发布版本"));
+                }
+                return;
+            }
+
             String tagName = release.optString("tag_name");
             String body = release.optString("body");
             String version = tagName.startsWith("v") ? tagName.substring(1) : tagName;

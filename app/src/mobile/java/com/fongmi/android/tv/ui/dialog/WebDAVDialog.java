@@ -10,7 +10,6 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 
 import com.fongmi.android.tv.App;
-import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.databinding.DialogWebdavBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
@@ -41,7 +40,6 @@ public class WebDAVDialog {
     private AlertDialog dialog;
     private WebDAVSyncManager syncManager;
     private int selectedProvider = 0;  // 默认选择坚果云
-    private boolean isInitializing = false;  // 标记是否正在初始化，防止初始化时触发监听器
 
     public static WebDAVDialog create(Fragment fragment) {
         return new WebDAVDialog(fragment);
@@ -71,13 +69,10 @@ public class WebDAVDialog {
     }
 
     private void initView() {
-        isInitializing = true;  // 标记开始初始化
-        
         // 加载已保存的配置
         String url = Setting.getWebDAVUrl();
         String username = Setting.getWebDAVUsername();
         String password = Setting.getWebDAVPassword();
-        boolean autoSync = Setting.isWebDAVAutoSync();
 
         // 根据保存的URL判断是哪个服务提供商
         selectedProvider = getProviderIndexByUrl(url);
@@ -105,11 +100,7 @@ public class WebDAVDialog {
 
         binding.usernameText.setText(username);
         binding.passwordText.setText(password);
-        binding.autoSyncSwitch.setChecked(autoSync);
-        binding.syncIntervalContainer.setVisibility(View.GONE);
         showStatus(syncManager.getLastStatus(), true);
-        
-        isInitializing = false;  // 初始化完成
     }
     
     /**
@@ -145,22 +136,6 @@ public class WebDAVDialog {
         // 服务提供商选择
         binding.providerText.setOnClickListener(v -> onSelectProvider());
 
-        // 自动同步开关监听（立即保存状态）
-        // 使用setOnClickListener而不是setOnCheckedChangeListener，避免覆盖CustomSwitch内部的动画监听器
-        // AppCompatCheckBox会自动处理状态切换，我们只需要在状态切换后获取新状态
-        binding.autoSyncSwitch.setOnClickListener(v -> {
-            // 防止初始化时触发监听器
-            if (isInitializing) {
-                return;
-            }
-            // 使用post()确保在状态切换后获取新状态
-            binding.autoSyncSwitch.post(() -> {
-                boolean newState = binding.autoSyncSwitch.isChecked();
-                // 立即保存自动同步状态
-                Setting.putWebDAVAutoSync(newState);
-            });
-        });
-
         // 测试连接按钮
         binding.testButton.setOnClickListener(v -> onTestConnection());
 
@@ -178,35 +153,37 @@ public class WebDAVDialog {
     }
     
     private void onSelectProvider() {
-        new MaterialAlertDialogBuilder(binding.getRoot().getContext())
-            .setTitle("选择服务提供商")
-            .setSingleChoiceItems(PROVIDERS, selectedProvider, (dialog, which) -> {
-                selectedProvider = which;
-                binding.providerText.setText(PROVIDERS[which]);
-                
-                // 如果是自定义，显示URL输入框
-                if (which == PROVIDERS.length - 1) {
-                    binding.urlInput.setVisibility(View.VISIBLE);
-                    String currentUrl = binding.urlText.getText().toString().trim();
-                    if (TextUtils.isEmpty(currentUrl)) {
-                        binding.urlText.setText("");
-                    }
-                } else {
-                    // 使用预设的URL
-                    binding.urlInput.setVisibility(View.GONE);
-                    String providerUrl = getProviderUrl();
-                    if (!TextUtils.isEmpty(providerUrl)) {
-                        // URL会在保存时自动填充
-                    } else {
-                        // Nextcloud或ownCloud需要用户输入URL
-                        binding.urlInput.setVisibility(View.VISIBLE);
-                        binding.urlText.setHint("请输入" + PROVIDERS[which] + "服务器地址");
-                    }
-                }
-                dialog.dismiss();
-            })
-            .setNegativeButton("取消", null)
-            .show();
+        // 使用下拉菜单而非弹窗，交互更轻量
+        androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(binding.getRoot().getContext(), binding.providerText);
+        for (int i = 0; i < PROVIDERS.length; i++) {
+            popup.getMenu().add(0, i, i, PROVIDERS[i]);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            applyProvider(item.getItemId());
+            return true;
+        });
+        popup.show();
+    }
+
+    /** 应用服务商选择：更新文案并按需显示/隐藏自定义地址输入框 */
+    private void applyProvider(int which) {
+        selectedProvider = which;
+        binding.providerText.setText(PROVIDERS[which]);
+        if (which == PROVIDERS.length - 1) {
+            // 自定义，显示URL输入框
+            binding.urlInput.setVisibility(View.VISIBLE);
+            binding.urlText.setHint("WebDAV服务器地址（如：https://example.com/webdav）");
+        } else {
+            String providerUrl = getProviderUrl();
+            if (!TextUtils.isEmpty(providerUrl)) {
+                // 有预设URL（如坚果云），隐藏输入框，保存时自动填充
+                binding.urlInput.setVisibility(View.GONE);
+            } else {
+                // Nextcloud或ownCloud需要用户输入URL
+                binding.urlInput.setVisibility(View.VISIBLE);
+                binding.urlText.setHint("请输入" + PROVIDERS[which] + "服务器地址");
+            }
+        }
     }
 
     private void onTestConnection() {
@@ -322,10 +299,16 @@ public class WebDAVDialog {
         }
         binding.statusText.setText(message);
         binding.statusText.setVisibility(TextUtils.isEmpty(message) ? View.GONE : View.VISIBLE);
-        // 可以根据isSuccess设置不同的颜色
-        binding.statusText.setTextColor(isSuccess ? 
-            fragment.getResources().getColor(R.color.white) : 
-            fragment.getResources().getColor(android.R.color.holo_red_dark));
+        // 成功用次级文字色，失败用主题错误色，深浅色模式下都清晰可见
+        binding.statusText.setTextColor(resolveThemeColor(isSuccess
+                ? com.google.android.material.R.attr.colorOnSurfaceVariant
+                : com.google.android.material.R.attr.colorError));
+    }
+
+    private int resolveThemeColor(int attr) {
+        android.util.TypedValue value = new android.util.TypedValue();
+        binding.getRoot().getContext().getTheme().resolveAttribute(attr, value, true);
+        return value.data;
     }
 
     /**
@@ -351,7 +334,6 @@ public class WebDAVDialog {
         String url = getServerUrl();
         String username = binding.usernameText.getText().toString().trim();
         String password = binding.passwordText.getText().toString().trim();
-        boolean autoSync = binding.autoSyncSwitch.isChecked();
 
         // 验证输入
         if (TextUtils.isEmpty(url)) {
@@ -367,11 +349,11 @@ public class WebDAVDialog {
             return;
         }
 
-        // 保存配置
+        // 保存配置（配置了 WebDAV 即默认开启自动同步）
         Setting.putWebDAVUrl(url);
         Setting.putWebDAVUsername(username);
         Setting.putWebDAVPassword(password);
-        Setting.putWebDAVAutoSync(autoSync);
+        Setting.putWebDAVAutoSync(true);
 
         // 重新加载配置
         syncManager.reloadConfig();

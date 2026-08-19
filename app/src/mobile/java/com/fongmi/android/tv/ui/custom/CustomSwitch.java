@@ -50,6 +50,8 @@ public class CustomSwitch extends AppCompatCheckBox {
     private void init() {
         // 隐藏默认的checkbox样式
         setButtonDrawable(null);
+        // Material3 主题的 CheckBox 自带圆形触摸反馈背景，点击时会在开关底下出现灰色圆圈，移除
+        setBackground(null);
         
         trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         thumbPaint = new Paint(Paint.ANTI_ALIAS_FLAG);

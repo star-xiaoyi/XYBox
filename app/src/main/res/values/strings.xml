@@ -115,7 +115,9 @@
     <string name="setting_lan_sync_summary">Scan a code to connect a device on the same network</string>
     <string name="setting_about">About XYBox</string>
     <string name="setting_source_tip">Tap a source to import; hold to edit</string>
-    <string name="setting_player_summary">Engine, decoding, gestures, subtitles and background play</string>
+    <string name="setting_player_summary">Engine, decoding, subtitles and background play</string>
+    <string name="setting_operation">Operation settings</string>
+    <string name="setting_operation_summary">Playback gestures: double tap, brightness, volume</string>
     <string name="setting_cache_summary">Tap to clear cached images and temporary files</string>
     <string name="app_version">v3.1.1</string>
     <string name="about_github">View on GitHub</string>
