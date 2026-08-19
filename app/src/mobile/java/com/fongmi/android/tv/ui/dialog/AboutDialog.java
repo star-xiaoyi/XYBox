@@ -40,7 +40,7 @@ public class AboutDialog extends BaseDialog {
     private void openGitHub() {
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setData(Uri.parse("https://github.com/Tosencen/XMBOX/releases/latest"));
+            intent.setData(Uri.parse("https://github.com/star-xiaoyi/XYBox"));
             startActivity(intent);
         } catch (Exception e) {
             Logger.e("Error", e);
