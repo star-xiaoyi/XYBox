@@ -820,10 +820,17 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         if (mBinding == null) return;
         mBinding.swipeLayout.post(() -> {
             if (mBinding == null) return;
-            View anchor = mBinding.historySection.getVisibility() == View.VISIBLE ? mBinding.historySection : mBinding.headerBar;
+            boolean historyVisible = mBinding.historySection.getVisibility() == View.VISIBLE;
+            View anchor = historyVisible ? mBinding.historySection : mBinding.headerBar;
             int edge = anchor.getBottom();
             if (edge <= 0) return;
-            mBinding.swipeLayout.setProgressViewOffset(false, Math.max(0, edge - ResUtil.dp2px(40)), edge + ResUtil.dp2px(24));
+            if (historyVisible) {
+                mBinding.swipeLayout.setProgressViewOffset(false, Math.max(0, edge - ResUtil.dp2px(40)), edge + ResUtil.dp2px(24));
+            } else {
+                // 首页历史关闭时锚点是搜索框所在的顶栏，本身高度很小，
+                // 若仍减去指示器高度，指示器会落进搜索框内部；直接从搜索框下缘开始。
+                mBinding.swipeLayout.setProgressViewOffset(false, edge, edge + ResUtil.dp2px(40));
+            }
         });
     }
 

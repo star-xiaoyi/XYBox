@@ -8,7 +8,7 @@
     android:focusable="true"
     android:focusableInTouchMode="true">
 
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+    <com.fongmi.android.tv.ui.custom.CustomSwipeRefreshLayout
         android:id="@+id/swipeLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
@@ -223,7 +223,7 @@
 
         </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+    </com.fongmi.android.tv.ui.custom.CustomSwipeRefreshLayout>
 
     <!-- 新增空源提示文本 -->
     <LinearLayout
