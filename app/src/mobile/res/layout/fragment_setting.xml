@@ -438,32 +438,7 @@
                     android:layout_marginEnd="16dp"
                     android:background="@color/separator" />
 
-                <LinearLayout
-                    android:id="@+id/incognito"
-                    style="@style/SettingsRow">
-
-                    <TextView
-                        style="@style/SettingsTitle"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/setting_incognito" />
-
-                    <com.fongmi.android.tv.ui.custom.CustomSwitch
-                        android:id="@+id/incognitoSwitch"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" />
-
-                </LinearLayout>
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginStart="16dp"
-                    android:layout_marginEnd="16dp"
-                    android:background="@color/separator" />
-
-                <!-- 操作设置入口（与播放设置同卡片，进入二级页面） -->
+                <!-- 操作设置入口（紧跟播放设置，进入二级页面） -->
                 <LinearLayout
                     android:id="@+id/operation"
                     style="@style/SettingsRow">
@@ -495,6 +470,31 @@
                         android:layout_marginStart="8dp"
                         android:src="@drawable/ic_arrow_right"
                         android:tint="@color/text_secondary" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/incognito"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/setting_incognito" />
+
+                    <com.fongmi.android.tv.ui.custom.CustomSwitch
+                        android:id="@+id/incognitoSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
 
                 </LinearLayout>
 
