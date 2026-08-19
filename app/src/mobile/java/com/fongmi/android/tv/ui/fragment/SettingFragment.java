@@ -114,7 +114,9 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         setSourceHintText(mBinding.liveUrl, LiveConfig.getDesc(), R.string.source_hint_live);
         // setSourceHintText(mBinding.wallUrl, WallConfig.getDesc(), R.string.source_hint_wall); // 壁纸功能已移除
         mBinding.versionText.setText(getString(R.string.setting_version) + " " + BuildConfig.VERSION_NAME);
-        
+        mBinding.wall.setVisibility(View.GONE);
+        mBinding.wallDivider.setVisibility(View.GONE);
+
         setOtherText();
         setCacheText();
         String[] quotes = getResources().getStringArray(R.array.motivational_quotes);
