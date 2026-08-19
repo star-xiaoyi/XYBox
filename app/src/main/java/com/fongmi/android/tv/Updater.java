@@ -94,7 +94,7 @@ public class Updater implements Download.Callback {
 
     private void checkUpdate(Activity activity) {
         try {
-            String releasesUrl = "https://api.github.com/repos/Tosencen/XMBOX/releases/latest";
+            String releasesUrl = "https://api.github.com/repos/star-xiaoyi/XYBox/releases/latest";
             
             // 后台线程执行网络请求
             String response = OkHttp.string(releasesUrl);
