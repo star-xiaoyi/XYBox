@@ -110,7 +110,9 @@
     <string name="setting_lan_sync_summary">扫码连接同一网络中的设备</string>
     <string name="setting_about">关于 XYBox</string>
     <string name="setting_source_tip">单击导入播放源，长按可编辑</string>
-    <string name="setting_player_summary">播放核心、解码、手势、字幕和后台播放</string>
+    <string name="setting_player_summary">播放核心、解码、字幕和后台播放</string>
+    <string name="setting_operation">操作设置</string>
+    <string name="setting_operation_summary">播放手势：双击、亮度、音量</string>
     <string name="setting_cache_summary">点击清理图片缓存和临时文件</string>
     <string name="setting_source">源管理</string>
     <string name="setting_app">应用设置</string>

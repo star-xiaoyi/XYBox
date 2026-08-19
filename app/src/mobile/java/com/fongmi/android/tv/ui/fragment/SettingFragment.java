@@ -198,6 +198,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.doh.setOnClickListener(this::setDoh);
         mBinding.theme.setOnClickListener(this::setTheme);
         mBinding.accent.setOnClickListener(this::setAccent);
+        mBinding.operation.setOnClickListener(this::onOperation);
     }
 
     @Override
@@ -451,6 +452,10 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         // 发送刷新事件，通知首页更新历史记录显示
         RefreshEvent.history();
         // 不需要再次调用 setChecked，因为点击已经触发了状态变化
+    }
+
+    private void onOperation(View view) {
+        com.fongmi.android.tv.ui.activity.SettingOperationActivity.start(requireActivity());
     }
 
     private void setSize(View view) {
