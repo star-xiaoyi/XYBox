@@ -67,3 +67,6 @@ XMBOX-Release/
 # Tools and utilities (not part of the project)
 other/
 tools/
+
+# WorkBuddy workspace data (not part of the project)
+.workbuddy/

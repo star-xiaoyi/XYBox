@@ -22,6 +22,7 @@ import com.fongmi.android.tv.utils.CacheCleaner;
 import com.fongmi.android.tv.utils.UpdateInstaller;
 import com.fongmi.android.tv.utils.AutoSyncManager;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ThemeUtil;
 import com.fongmi.android.tv.utils.WebDAVSyncManager;
 import com.fongmi.hook.Hook;
 import com.github.catvod.Init;
@@ -141,6 +142,8 @@ public class App extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        // 必须在任何 Activity 创建之前应用日夜模式，否则冷启动时系统栏/导航栏颜色与内容区不一致
+        ThemeUtil.applyNightMode();
         OkHttp.get().setProxy(Setting.getProxy());
         OkHttp.get().setDoh(Doh.objectFrom(Setting.getDoh()));
         // EventBus.builder().addIndex(new EventIndex()).installDefaultEventBus(); // 暂时注释，如果EventIndex不存在则删除
