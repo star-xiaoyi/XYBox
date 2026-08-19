@@ -19,4 +19,7 @@
     <color name="accent_green">#FF30D158</color>
     <color name="accent_purple">#FFBF5AF2</color>
 
+    <!-- Bottom navigation -->
+    <color name="bottom_nav_background">#FF1C1C1E</color>
+
 </resources>
