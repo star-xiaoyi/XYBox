@@ -278,7 +278,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         App.post(mRunnable, TimeUnit.SECONDS.toMillis(10));
         if (mBinding == null || mHots.isEmpty()) return;
         mSuggestedKeyword = mHots.get(new Random().nextInt(mHots.size()));
-        if (!mSearchEditing && !mSearchResultsVisible) mBinding.hot.setText(mSuggestedKeyword);
+        if (!mSearchEditing && !mSearchResultsVisible) mBinding.hot.setHint(mSuggestedKeyword);
     }
 
     private Result handle(Result result) {
@@ -551,7 +551,12 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private void submitHomeSearch() {
         if (mBinding == null) return;
         String keyword = mBinding.hot.getText().toString().trim();
-        if (TextUtils.isEmpty(keyword)) return;
+        if (TextUtils.isEmpty(keyword)) {
+            keyword = mSuggestedKeyword == null ? "" : mSuggestedKeyword.trim();
+            if (TextUtils.isEmpty(keyword)) return;
+            mBinding.hot.setText(keyword);
+            mBinding.hot.setSelection(keyword.length());
+        }
         mSearchEditing = false;
         mSearchViewReady = false;
         hideSearchSuggestions();
@@ -570,6 +575,13 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         } else {
             fragment.search(keyword);
         }
+    }
+
+    public void searchFromHome(String keyword) {
+        if (mBinding == null || TextUtils.isEmpty(keyword)) return;
+        mBinding.hot.setText(keyword);
+        mBinding.hot.setSelection(keyword.length());
+        submitHomeSearch();
     }
 
     private void showSearchContent() {
@@ -606,7 +618,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         setBottomNavigationVisible(true);
         setHeaderPinned(false);
         setSearchHeaderExpanded(false);
-        if (!TextUtils.isEmpty(mSuggestedKeyword)) mBinding.hot.setText(mSuggestedKeyword);
+        restoreSuggestedHint();
         loadHistory();
         checkRetry();
         checkEmptySource();
@@ -626,9 +638,15 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         } else {
             setBottomNavigationVisible(true);
             setSearchHeaderExpanded(false);
-            if (!TextUtils.isEmpty(mSuggestedKeyword)) mBinding.hot.setText(mSuggestedKeyword);
+            restoreSuggestedHint();
             if (mAdapter.getItemCount() > 0) setFabVisible(Math.max(0, mBinding.pager.getCurrentItem()));
         }
+    }
+
+    private void restoreSuggestedHint() {
+        if (mBinding == null) return;
+        mBinding.hot.setText("");
+        mBinding.hot.setHint(TextUtils.isEmpty(mSuggestedKeyword) ? getString(R.string.search_keyword) : mSuggestedKeyword);
     }
 
     private void setSearchHeaderExpanded(boolean expanded) {
