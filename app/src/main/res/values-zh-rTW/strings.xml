@@ -120,7 +120,9 @@
     <string name="player_gesture_seek_seconds_value">%1$d 秒</string>
     <string name="player_gesture_brightness">左側滑動調節亮度</string>
     <string name="player_gesture_volume">右側滑動調節音量</string>
-    <string name="player_gesture_progress">水平滑動調節進度</string>
+    <string name="player_gesture_progress">左右滑動調節進度</string>
+    <string name="player_gesture_episode_port">豎屏上下滑動切換集數</string>
+    <string name="player_gesture_episode_land">橫屏上下滑動切換集數</string>
     <string name="player_ua">User-Agent</string>
 
     <!-- Search -->

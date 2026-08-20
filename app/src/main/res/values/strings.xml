@@ -150,6 +150,8 @@
     <string name="player_gesture_brightness">Swipe left side for brightness</string>
     <string name="player_gesture_volume">Swipe right side for volume</string>
     <string name="player_gesture_progress">Swipe horizontally to seek</string>
+    <string name="player_gesture_episode_port">Swipe vertically to change episode (portrait)</string>
+    <string name="player_gesture_episode_land">Swipe vertically to change episode (landscape)</string>
     <string name="player_ua">User-Agent</string>
 
     <!-- Search -->

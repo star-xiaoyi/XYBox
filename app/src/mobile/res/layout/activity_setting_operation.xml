@@ -187,6 +187,81 @@
 
                 </LinearLayout>
 
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/gestureProgress"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_gesture_progress" />
+
+                    <com.fongmi.android.tv.ui.custom.CustomSwitch
+                        android:id="@+id/gestureProgressSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/gestureEpisodePort"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_gesture_episode_port" />
+
+                    <com.fongmi.android.tv.ui.custom.CustomSwitch
+                        android:id="@+id/gestureEpisodePortSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/separator" />
+
+                <LinearLayout
+                    android:id="@+id/gestureEpisodeLand"
+                    style="@style/SettingsRow">
+
+                    <TextView
+                        style="@style/SettingsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/player_gesture_episode_land" />
+
+                    <com.fongmi.android.tv.ui.custom.CustomSwitch
+                        android:id="@+id/gestureEpisodeLandSwitch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
             </LinearLayout>
 
         </LinearLayout>

@@ -325,6 +325,22 @@ public class Setting {
         Prefers.put("gesture_volume", enabled);
     }
 
+    public static boolean isGestureEpisodePort() {
+        return Prefers.getBoolean("gesture_episode_port", true);
+    }
+
+    public static void putGestureEpisodePort(boolean enabled) {
+        Prefers.put("gesture_episode_port", enabled);
+    }
+
+    public static boolean isGestureEpisodeLand() {
+        return Prefers.getBoolean("gesture_episode_land", true);
+    }
+
+    public static void putGestureEpisodeLand(boolean enabled) {
+        Prefers.put("gesture_episode_land", enabled);
+    }
+
     public static boolean isGestureProgress() {
         return Prefers.getBoolean("gesture_progress", true);
     }

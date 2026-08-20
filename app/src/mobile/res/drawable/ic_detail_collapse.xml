@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 收起箭头（向上），无内置 tint，由使用方 drawableTint 着色 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp"
+    android:height="16dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,8.6L18,14.6 16.6,16 12,11.4 7.4,16 6,14.6z" />
+</vector>
