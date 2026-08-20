@@ -108,4 +108,6 @@ Make sure both are on the same Wi-Fi</string>
 
     <string name="update_retrying">Connection failed, retrying…</string>
 
+    <string name="update_connecting">Connecting…</string>
+
 </resources>

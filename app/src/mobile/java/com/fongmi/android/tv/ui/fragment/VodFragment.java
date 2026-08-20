@@ -148,8 +148,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         initHot();
         getHot();
         loadHistory();
-        // 检查是否需要显示上次播放弹窗
-        checkLastWatchDialog();
+        App.setAppLaunched();
     }
     
     // 初始化启动状态：区分已有配置和无配置的情况
@@ -228,23 +227,6 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.hot.setCursorVisible(false);
         setSearchHeaderExpanded(false);
         mHeaderAnimationReady = true;
-    }
-
-    // 添加检查上次播放历史并显示弹窗的方法
-    private void checkLastWatchDialog() {
-        if (App.isAppJustLaunched()) {
-            List<History> histories = History.get();
-            if (!histories.isEmpty()) {
-                App.setAppLaunched();
-                App.post(() -> {
-                    if (getActivity() != null) {
-                        LastWatchToast.create(getActivity(), histories.get(0)).show();
-                    }
-                }, 1000);
-            } else {
-                App.setAppLaunched();
-            }
-        }
     }
 
     private void setRecyclerView() {

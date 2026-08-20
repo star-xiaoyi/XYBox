@@ -94,7 +94,7 @@
             style="@style/DialogTextButton"
             android:layout_marginStart="4dp"
             android:text="@string/update_confirm"
-            android:textColor="@color/accent_blue"
+            android:textColor="?attr/colorPrimary"
             android:textStyle="bold" />
 
     </LinearLayout>

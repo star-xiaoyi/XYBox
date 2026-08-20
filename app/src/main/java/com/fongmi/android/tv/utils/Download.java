@@ -94,8 +94,9 @@ public class Download {
         for (int attempt = 1; attempt <= MAX_RETRY_COUNT; attempt++) {
             try {
                 // 这里原本会把进度打回 0：重试一次进度条就退回原点，看着就是"下到 1% 又归零"
-                if (callback != null && attempt > 1) {
-                    App.post(() -> callback.retry());
+                if (callback != null && attempt > 1 && lastException != null) {
+                    String reason = lastException.getMessage();
+                    App.post(() -> callback.retry(reason));
                 }
 
                 boolean success = downloadWithUrl(downloadUrl, source, attempt);
@@ -170,9 +171,8 @@ public class Download {
             // 下载文件
             download(inputStream, expectedLength);
 
-            // 验证下载的文件（如果知道预期大小）
-            if (expectedLength > 0 && !verifyDownloadedFile(file, expectedLength)) {
-                throw new Exception("下载的文件可能已损坏，请重试");
+            if (!verifyDownloadedFile(file, expectedLength)) {
+                throw new Exception("下载的文件不是有效的安装包");
             }
 
             Logger.d("Download: 下载成功 (来源: " + source + ", 尝试 " + attempt + "/" + MAX_RETRY_COUNT + ")");
@@ -253,10 +253,11 @@ public class Download {
                 return false;
             }
 
-            // 如果知道预期大小，检查文件大小是否匹配
+            // 长度对不上只记一笔，不据此判失败：流已经读到 EOF，真被截断 OkHttp 自己会抛，
+            // 而中间任何一层（代理、网络拦截器）改写了 Content-Length 都会让这个等式不成立，
+            // 之前就是卡在这里下到 100% 又从头重来。
             if (expectedLength > 0 && file.length() != expectedLength) {
-                Logger.e("File size mismatch: expected " + expectedLength + ", actual " + file.length());
-                return false;
+                Logger.w("Download: 长度与响应头不一致 expected=" + expectedLength + " actual=" + file.length());
             }
 
             // 检查APK文件头 (ZIP文件头)
@@ -293,8 +294,8 @@ public class Download {
 
         void progress(int progress);
 
-        /** 一次尝试失败、即将重试：进度条保持原样，只提示状态 */
-        default void retry() {
+        /** 一次尝试失败、即将重试：进度条保持原样，只提示原因 */
+        default void retry(String reason) {
         }
 
         void error(String msg);

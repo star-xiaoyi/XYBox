@@ -99,4 +99,6 @@
 
     <string name="update_retrying">连接失败，正在重试…</string>
 
+    <string name="update_connecting">正在连接…</string>
+
 </resources>
