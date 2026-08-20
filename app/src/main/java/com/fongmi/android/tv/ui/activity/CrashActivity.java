@@ -29,6 +29,7 @@ public class CrashActivity extends BaseActivity {
 
     private ActivityCrashBinding mBinding;
     private String details;
+    private String full;
 
     @Override
     protected ViewBinding getBinding() {
@@ -64,6 +65,7 @@ public class CrashActivity extends BaseActivity {
     private void setTrace() {
         String trace = Objects.toString(CustomActivityOnCrash.getStackTraceFromIntent(getIntent()), "");
         details = buildDetails(trace);
+        full = CustomActivityOnCrash.getAllErrorDetailsFromIntent(this, getIntent());
         mBinding.summary.setText(getSummary(trace));
         mBinding.env.setText(getEnv());
         mBinding.trace.setText(trace);
@@ -71,25 +73,28 @@ public class CrashActivity extends BaseActivity {
     }
 
     private String getEnv() {
-        return BuildConfig.VERSION_NAME + " · " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " · Android " + android.os.Build.VERSION.RELEASE + " (SDK " + android.os.Build.VERSION.SDK_INT + ")";
+        return BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ") · " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " · Android " + android.os.Build.VERSION.RELEASE + " (SDK " + android.os.Build.VERSION.SDK_INT + ")";
     }
 
     /**
-     * 复制出去的内容要能独立还原现场：摘要放最前面方便一眼看到，
-     * 后面跟完整环境信息、崩溃栈和页面跳转记录。
+     * 复制出去的是给人看的精简报告，不是完整日志：环境一行 + 根因 + 只保留
+     * 本项目和 catvod 的栈帧。框架内部那几十行（ActivityThread / Looper / Zygote）
+     * 对定位没有帮助，全贴出来反而把重点淹了。
+     * 完整日志仍然写进文件，需要时再用 adb pull 取。
      */
     private String buildDetails(String trace) {
         StringBuilder sb = new StringBuilder();
-        sb.append("【XYBox 崩溃报告】").append("\n\n");
-        sb.append("摘要：").append(getSummary(trace).replace("\n\n", " | ")).append("\n\n");
-        sb.append("版本：").append(BuildConfig.VERSION_NAME).append(" (").append(BuildConfig.VERSION_CODE).append(")").append("\n");
-        sb.append("设备：").append(android.os.Build.MANUFACTURER).append(" ").append(android.os.Build.MODEL).append("\n");
-        sb.append("系统：Android ").append(android.os.Build.VERSION.RELEASE).append(" (SDK ").append(android.os.Build.VERSION.SDK_INT).append(")").append("\n");
-        sb.append("时间：").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date())).append("\n\n");
-        sb.append("崩溃栈：").append("\n").append(trace).append("\n");
-        String log = CustomActivityOnCrash.getActivityLogFromIntent(getIntent());
-        if (!TextUtils.isEmpty(log)) sb.append("\n").append("页面记录：").append("\n").append(log);
-        return sb.toString();
+        sb.append("【XYBox 崩溃】\n");
+        sb.append(getEnv()).append("\n");
+        sb.append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date())).append("\n\n");
+        for (String line : trace.split("\n")) {
+            String text = line.trim();
+            if (text.isEmpty()) continue;
+            boolean header = !text.startsWith("at ") && !text.startsWith("...");
+            boolean mine = text.startsWith("at com.fongmi.") || text.startsWith("at com.github.catvod.");
+            if (header || mine) sb.append(header ? "" : "    ").append(text).append("\n");
+        }
+        return sb.toString().trim();
     }
 
     /**
@@ -121,7 +126,7 @@ public class CrashActivity extends BaseActivity {
             String name = "crash-" + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.getDefault()).format(new Date()) + ".txt";
             File file = new File(dir, name);
             try (FileOutputStream os = new FileOutputStream(file)) {
-                os.write(details.getBytes(StandardCharsets.UTF_8));
+                os.write(Objects.toString(full, details).getBytes(StandardCharsets.UTF_8));
             }
             mBinding.saved.setText(file.getAbsolutePath());
             mBinding.saved.setVisibility(View.VISIBLE);
