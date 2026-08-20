@@ -6,9 +6,11 @@ import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.Product;
@@ -109,6 +111,17 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     @Override
     protected void initEvent() {
         mBinding.recycler.addOnScrollListener(mScroller = new CustomScroller(this));
+        // 悬浮按钮挂在 VodFragment 的外层 CoordinatorLayout 上，收不到这里的嵌套滚动，
+        // 所以直接把滚动状态回传给宿主，由它决定显示筛选按钮还是回到顶部按钮
+        mBinding.recycler.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
+                Fragment parent = getParentFragment();
+                if (parent instanceof VodFragment) {
+                    ((VodFragment) parent).onContentScrolled(dy, recyclerView.canScrollVertically(-1));
+                }
+            }
+        });
     }
 
     @Override

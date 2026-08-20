@@ -17,7 +17,6 @@ import androidx.fragment.app.Fragment;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
-import com.fongmi.android.tv.api.config.WallConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.DialogConfigBinding;
 import com.fongmi.android.tv.impl.ConfigCallback;
@@ -69,7 +68,7 @@ public class ConfigDialog {
     }
 
     private void initDialog() {
-        dialog = new MaterialAlertDialogBuilder(binding.getRoot().getContext()).setTitle(type == 0 ? R.string.setting_vod : type == 1 ? R.string.setting_live : R.string.setting_wall).setView(binding.getRoot()).setPositiveButton(edit ? R.string.dialog_edit : R.string.dialog_positive, this::onPositive).setNegativeButton(R.string.dialog_negative, this::onNegative).create();
+        dialog = new MaterialAlertDialogBuilder(binding.getRoot().getContext()).setTitle(type == 0 ? R.string.setting_vod : R.string.setting_live).setView(binding.getRoot()).setPositiveButton(edit ? R.string.dialog_edit : R.string.dialog_positive, this::onPositive).setNegativeButton(R.string.dialog_negative, this::onNegative).create();
         dialog.getWindow().setDimAmount(0);
         dialog.show();
     }
@@ -102,8 +101,6 @@ public class ConfigDialog {
                 return VodConfig.get().getConfig();
             case 1:
                 return LiveConfig.get().getConfig();
-            case 2:
-                return WallConfig.get().getConfig();
             default:
                 return null;
         }
@@ -212,18 +209,6 @@ public class ConfigDialog {
                             break;
                         case 1:
                             LiveConfig.get().clear().config(Config.live()).load(new Callback() {
-                                @Override
-                                public void success() {}
-                                
-                                @Override
-                                public void success(String result) {}
-                                
-                                @Override
-                                public void error(String msg) {}
-                            });
-                            break;
-                        case 2:
-                            WallConfig.get().clear().config(Config.wall()).load(new Callback() {
                                 @Override
                                 public void success() {}
                                 

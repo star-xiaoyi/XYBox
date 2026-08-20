@@ -105,6 +105,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private boolean mSearchEditing;
     private boolean mSearchResultsVisible;
     private boolean mSearchViewReady;
+    /** 当前是否允许显示悬浮按钮（空源时整体隐藏）。 */
+    private boolean mFabEnabled;
     private boolean mSearchHeaderExpanded;
     private boolean mHeaderAnimationReady;
     private int mSuggestionGeneration;
@@ -139,8 +141,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         setRecyclerView();
         setViewModel();
         setupHistoryRecycler();
-        mBinding.swipeLayout.setProgressBackgroundColorSchemeColor(0xFF1A1A1A);
-        mBinding.swipeLayout.setColorSchemeColors(0xFFFFEB3B);
+        mBinding.swipeLayout.setProgressBackgroundColorSchemeColor(ResUtil.getThemeColor(getActivity(), com.google.android.material.R.attr.colorSurface));
+        mBinding.swipeLayout.setColorSchemeColors(ResUtil.getThemeColor(getActivity(), com.google.android.material.R.attr.colorPrimary));
         initStartupState(); // 根据是否已有配置来设置初始状态
         setLogo();
         initHot();
@@ -464,27 +466,20 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         }
         
         boolean isEmpty = !hasBaseConfig || (!hasValidSites || !hasValidHome);
-        
+
         if (isEmpty) {
             // 空源状态下隐藏所有悬浮按钮
             hideFabButtons();
-        } else if (mAdapter.getItemCount() == 0) {
-            mBinding.top.setVisibility(View.INVISIBLE);
-            mBinding.link.setVisibility(View.VISIBLE);
-            mBinding.filter.setVisibility(View.GONE);
-        } else if (!mAdapter.get(position).getFilters().isEmpty()) {
-            mBinding.top.setVisibility(View.INVISIBLE);
-            mBinding.link.setVisibility(View.GONE);
-            mBinding.filter.show();
-        } else if (position == 0 || mAdapter.get(position).getFilters().isEmpty()) {
-            mBinding.top.setVisibility(View.INVISIBLE);
-            mBinding.filter.setVisibility(View.GONE);
-            mBinding.link.show();
+        } else {
+            mFabEnabled = true;
+            mBinding.top.setVisibility(View.GONE);
+            showActionFab(position);
         }
     }
-    
+
     // 隐藏所有悬浮按钮的方法
     private void hideFabButtons() {
+        mFabEnabled = false;
         mBinding.top.setVisibility(View.GONE);
         mBinding.link.setVisibility(View.GONE);
         mBinding.filter.setVisibility(View.GONE);
@@ -496,9 +491,46 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     private void onTop(View view) {
         getFragment().scrollToTop();
-        mBinding.top.setVisibility(View.INVISIBLE);
-        if (mBinding.filter.getVisibility() == View.INVISIBLE) mBinding.filter.show();
-        else if (mBinding.link.getVisibility() == View.INVISIBLE) mBinding.link.show();
+        // 回到顶部要连搜索框一起展开，否则只把列表拉到头、顶栏还是收起的
+        mBinding.appBar.setExpanded(true, true);
+        showActionFab();
+    }
+
+    /**
+     * 内容区滚动回调。悬浮按钮挂在外层 CoordinatorLayout 上，收不到 ViewPager 里
+     * RecyclerView 的嵌套滚动，所以由 TypeFragment 主动回传，这里手动切换按钮。
+     */
+    public void onContentScrolled(int dy, boolean canScrollUp) {
+        if (mBinding == null || mSearchResultsVisible || !mFabEnabled) return;
+        if (!canScrollUp) showActionFab();
+        else if (dy > 0) showTopFab();
+    }
+
+    /** 显示「回到顶部」，把筛选/链接按钮收起。 */
+    private void showTopFab() {
+        if (mBinding.top.getVisibility() == View.VISIBLE) return;
+        mBinding.filter.hide();
+        mBinding.link.hide();
+        mBinding.top.show();
+    }
+
+    /** 回到列表顶部时恢复原来的筛选/链接按钮。 */
+    private void showActionFab() {
+        showActionFab(mBinding.pager.getCurrentItem());
+    }
+
+    private void showActionFab(int position) {
+        if (!mFabEnabled) return;
+        mBinding.top.hide();
+        boolean hasFilter = position >= 0 && mAdapter.getItemCount() > position
+                && !mAdapter.get(position).getFilters().isEmpty();
+        if (hasFilter) {
+            mBinding.link.setVisibility(View.GONE);
+            mBinding.filter.show();
+        } else {
+            mBinding.filter.setVisibility(View.GONE);
+            mBinding.link.show();
+        }
     }
 
     private boolean onLink(View view) {

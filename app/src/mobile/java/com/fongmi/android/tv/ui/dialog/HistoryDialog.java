@@ -10,12 +10,14 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.DialogHistoryBinding;
 import com.fongmi.android.tv.impl.ConfigCallback;
 import com.fongmi.android.tv.ui.adapter.ConfigAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 public class HistoryDialog implements ConfigAdapter.OnClickListener {
@@ -54,7 +56,12 @@ public class HistoryDialog implements ConfigAdapter.OnClickListener {
     }
 
     private void setDialog() {
-        if (adapter.getItemCount() == 0) return;
+        // 列表里不含当前正在用的那条，只导入过一个源时就是空的；
+        // 以前这里直接 return，点了没任何反应，改成给个提示
+        if (adapter.getItemCount() == 0) {
+            Notify.tip(ResUtil.getString(R.string.no_history_config));
+            return;
+        }
         dialog.getWindow().setDimAmount(0);
         dialog.show();
     }

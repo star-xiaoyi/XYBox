@@ -23,7 +23,7 @@
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:layout_marginEnd="12dp"
-            android:background="@drawable/shape_settings_icon"
+            android:background="@drawable/shape_icon_circle"
             android:contentDescription="@string/back"
             android:padding="8dp"
             android:src="@drawable/ic_back"

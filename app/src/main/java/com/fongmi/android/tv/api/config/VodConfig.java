@@ -36,7 +36,6 @@ public class VodConfig {
     private boolean loadLive;
     private Config config;
     private Parse parse;
-    private String wall;
     private Site home;
     private volatile boolean isLoading = false; // 添加加载状态标记
 
@@ -120,7 +119,6 @@ public class VodConfig {
     }
 
     public VodConfig init() {
-        this.wall = null;
         this.home = null;
         this.parse = null;
         this.config = Config.vod();
@@ -140,7 +138,6 @@ public class VodConfig {
     }
 
     public VodConfig clear() {
-        this.wall = null;
         this.home = null;
         this.parse = null;
         if (this.ads != null) this.ads.clear();
@@ -299,7 +296,6 @@ public class VodConfig {
         setFlags(Json.safeListString(object, "flags"));
         setHosts(Json.safeListString(object, "hosts"));
         setProxy(Json.safeListString(object, "proxy"));
-        setWall(Json.safeString(object, "wallpaper"));
         setAds(Json.safeListString(object, "ads"));
     }
 
@@ -388,10 +384,6 @@ public class VodConfig {
         return home == null ? new Site() : home;
     }
 
-    public String getWall() {
-        return TextUtils.isEmpty(wall) ? "" : wall;
-    }
-
     public Parse getParse(String name) {
         int index = getParses().indexOf(Parse.get(name));
         return index == -1 ? null : getParses().get(index);
@@ -436,11 +428,5 @@ public class VodConfig {
         } catch (Exception e) {
             Logger.e("Error", e);
         }
-    }
-
-    private void setWall(String wall) {
-        this.wall = wall;
-        boolean load = !TextUtils.isEmpty(wall) && WallConfig.get().needSync(wall);
-        if (load) WallConfig.get().config(Config.find(wall, config.getName(), 2).update());
     }
 }

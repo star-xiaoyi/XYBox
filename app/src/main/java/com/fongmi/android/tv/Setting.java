@@ -19,7 +19,7 @@ public class Setting {
     public static final int ACCENT_PURPLE = 3;
 
     public static int getThemeMode() {
-        int mode = Prefers.getInt("theme_mode", THEME_SYSTEM);
+        int mode = Prefers.getInt("theme_mode", THEME_DARK);
         return mode >= THEME_SYSTEM && mode <= THEME_DARK ? mode : THEME_SYSTEM;
     }
 
@@ -74,14 +74,6 @@ public class Setting {
 
     public static void putUa(String ua) {
         Prefers.put("ua", ua);
-    }
-
-    public static int getWall() {
-        return Prefers.getInt("wall", 6);
-    }
-
-    public static void putWall(int wall) {
-        Prefers.put("wall", wall);
     }
 
     public static int getReset() {
@@ -408,14 +400,6 @@ public class Setting {
 
     public static boolean hasCaption() {
         return new Intent(Settings.ACTION_CAPTIONING_SETTINGS).resolveActivity(App.get().getPackageManager()) != null;
-    }
-
-    public static boolean isPrivacyAgreed() {
-        return Prefers.getBoolean("privacy_agreed_v1", false);
-    }
-
-    public static void setPrivacyAgreed(boolean agreed) {
-        Prefers.put("privacy_agreed_v1", agreed);
     }
 
     public static boolean isLiveTabVisible() {

@@ -71,7 +71,6 @@
     <!-- Setting -->
     <string name="setting_vod">Vod</string>
     <string name="setting_live">Live</string>
-    <string name="setting_wall">Wallpaper</string>
     <string name="setting_subscription">Subscription</string>
     <string name="setting_source">Source Management</string>
     <string name="setting_app">App Settings</string>
@@ -108,7 +107,6 @@
     <string name="setting_accent_blue">Blue</string>
     <string name="setting_accent_green">Green</string>
     <string name="setting_accent_purple">Purple</string>
-    <string name="setting_wallpaper">Wallpaper</string>
     <string name="setting_webdav">WebDAV sync</string>
     <string name="setting_webdav_summary">Sync history, sources and preferences through the cloud</string>
     <string name="setting_lan_sync">Local device sync</string>
@@ -273,14 +271,8 @@
     <string name="add_source">添加源</string>
     
     <!-- 隐私协议相关 -->
-    <string name="privacy_agreement_title">XYBox软件许可协议</string>
-    <string name="privacy_agreement_tip">请仔细阅读以下协议条款</string>
-    <string name="privacy_agreement_agree">我已阅读并同意</string>
-    <string name="privacy_agreement_disagree">不同意并退出</string>
-    <string name="privacy_agreement_content">XYBox软件许可协议：\n\n- 以下是对[GPL-3.0](LICENSE.md)开源协议的补充，如有冲突，以以下协议为准。\n- 词语约定： 本协议中的"本软件"指"XYBox软件"，"用户"指签署本协议的使用者，"版权数据"指包括但不限于视频、图像、音频、名字等在内的他人拥有所属版权的数据。\n\n1. 本软件仅为技术性多媒体播放器外壳（"空壳播放器"），核心功能限于基础媒体文件解析与播放。\n\n2. 本软件自身不包含、不预装、不内置、不集成、不主动推荐、不直接或间接提供任何音视频、直播、图文等媒体资源内容。软件播放的任何资源均非由本软件或其开发者提供。\n\n3. 用户通过本软件播放的任何内容均完全来源于用户自行配置、输入、添加、获取或选择的第三方来源（如网络地址、本地文件、用户安装的插件/扩展/配置源等）。本软件仅作为访问用户自行指定内容的技术工具。\n\n4. 本软件无法控制、筛选、审查或保证用户访问的任何第三方内容的合法性、版权状态、准确性、安全性或适宜性。用户对其播放的内容负全部责任。\n\n5. 关于用户责任与风险承担：\n   • 用户必须确保其通过本软件配置、访问或播放的所有内容均已获相关权利人合法授权，或属于法律允许的自由使用范畴。\n   • 用户理解并同意，使用本软件访问第三方资源可能涉及侵犯版权、传播非法信息、隐私泄露、网络安全等风险。因用户使用本软件访问、播放或传播内容产生的一切法律责任、纠纷、损失及后果（包括法律诉讼、行政处罚、民事赔偿等），均由用户自行承担，与本软件及其开发者无涉。\n   • 开发者不认可、不支持任何利用本软件规避技术保护措施（如DRM）的行为，此类行为导致的侵权责任由用户全权承担。\n\n6. 用户承诺并保证不利用本软件从事任何侵犯他人知识产权或其他合法权益的活动，或进行任何违反法律法规的行为。严禁使用本软件播放、传播盗版、色情、暴力、赌博、诈骗、危害国家安全、危害社会稳定等非法或侵权内容。\n\n7. 在任何情况下，本软件开发者均不就因用户使用或无法使用本软件、用户配置或访问的第三方资源、用户违反本协议或法律法规的行为导致的任何直接、间接、偶然、特殊、惩罚性或结果性损害（包括利润损失、数据丢失、业务中断、声誉损害等）承担任何责任（无论基于合同、侵权、严格责任或其他法律理论）。\n\n8. 本软件运行可能依赖第三方库、服务或技术。开发者不对这些第三方组件的可用性、准确性、功能或合法性负责。\n\n9. 用户理解并同意，使用本软件（包括下载、安装、运行）存在固有技术风险（如软件缺陷、兼容性问题、系统不稳定等），用户应自行承担此风险。\n\n10. 本软件仅用于对技术可行性的探索及研究，不接受任何商业（包括但不限于广告等）合作及捐赠。\n\n11. 本软件内使用的部分包括但不限于字体、图片等资源来源于互联网。如果出现侵权可联系开发者移除。\n\n12. 使用本软件的过程中可能会产生版权数据。对于这些版权数据，本软件不拥有它们的所有权。为了避免侵权，用户务必在 24 小时内 清除使用本项目的过程中所产生的版权数据。\n\n13. 本协议受中华人民共和国法律管辖并据其解释。若用户所在地法律强制规定特定责任条款，应以当地法律要求为准，但其他条款仍保持有效。任何由本协议或使用本软件引起的争议，应首先通过友好协商解决。\n\n14. 若你使用了本软件，即代表你接受本协议。\n\n15. 本协议更新后，继续使用视为接受新协议。</string>
     <string name="source_hint_setting">Add Source</string>
     <string name="source_hint_live">Add Live Source</string>
-    <string name="source_hint_wall">Add Wallpaper Source</string>
 
     <!-- Crash Activity -->
     <string name="crash_info">应用遇到了一个错误\n我们对此深感抱歉</string>
@@ -301,4 +293,5 @@
     <string name="cast_search_error">搜索失败，请重试</string>
     <string name="cast_name_invalid">演职人员名字无效</string>
 
+    <string name="no_history_config">No other imported sources</string>
 </resources>

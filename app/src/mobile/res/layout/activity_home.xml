@@ -2,8 +2,7 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fitsSystemWindows="true">
+    android:layout_height="match_parent">
 
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/container"
@@ -11,12 +10,15 @@
         android:layout_height="match_parent"
         android:layout_above="@+id/navigation" />
 
+    <!-- 底栏不透明；高度用 wrap_content，由 HomeActivity 按手势条高度补底部内边距，
+         这样系统小白条区域也是底栏这块颜色，视觉上连成一片 -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/navigation"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
-        android:background="@color/surface_secondary"
+        android:background="@color/nav_background"
+        android:minHeight="56dp"
         app:elevation="0dp"
         app:itemIconSize="24dp"
         app:itemIconTint="@color/nav"
