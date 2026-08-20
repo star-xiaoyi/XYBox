@@ -231,4 +231,6 @@
     <string name="source_hint">點我添加源</string>
 
     <string name="no_history_config">暫無其他匯入記錄</string>
+    <string name="crash_title">應用程式當機了</string>
+
 </resources>

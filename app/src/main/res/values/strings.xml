@@ -296,4 +296,6 @@
     <string name="cast_name_invalid">演职人员名字无效</string>
 
     <string name="no_history_config">No other imported sources</string>
+    <string name="crash_title">应用崩溃了</string>
+
 </resources>

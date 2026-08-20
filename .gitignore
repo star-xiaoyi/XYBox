@@ -69,4 +69,6 @@ other/
 tools/
 
 # WorkBuddy workspace data (not part of the project)
-.workbuddy/
+.workbuddy
+mapping-archive/
+
