@@ -1101,10 +1101,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             sheet.removeRule(RelativeLayout.ALIGN_PARENT_END);
             sheet.addRule(RelativeLayout.BELOW, R.id.video);
             video.width = RelativeLayout.LayoutParams.MATCH_PARENT;
-            video.height = ResUtil.dp2px(220);
+            video.height = getVideoHeight();
             video.removeRule(RelativeLayout.START_OF);
             mBinding.progressLayout.setBackgroundResource(R.drawable.shape_detail_sheet);
         }
+        setSheetPadding(land);
         mBinding.handleBar.setVisibility(land ? View.GONE : View.VISIBLE);
         mBinding.handleLand.setVisibility(land ? View.VISIBLE : View.GONE);
         mBinding.swipeLayout.setVisibility(View.VISIBLE);
@@ -1112,6 +1113,28 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.swipeLayout.setLayoutParams(sheet);
         mFrameParams = video;
         clearDrag();
+    }
+
+    /**
+     * 竖屏视频区高度按屏宽算 16:9，而不是写死 220dp——那个值是照手机屏宽定的，
+     * 放到平板上就成了顶部一条窄带，下面的详情卡片长得离谱。
+     * 再夹一个屏高上限，避免超长屏上视频把整页占满。
+     */
+    private int getVideoHeight() {
+        int width = getResources().getDisplayMetrics().widthPixels;
+        int height = getResources().getDisplayMetrics().heightPixels;
+        return Math.min(width * 9 / 16, (int) (height * 0.55f));
+    }
+
+    /**
+     * 横屏时卡片是贴着屏幕上下边缘的，内容不留白就会顶到最上面；
+     * 左边还压着一根竖把手，也得给它让出位置。竖屏靠布局自身的间距即可。
+     */
+    private void setSheetPadding(boolean land) {
+        int start = land ? ResUtil.dp2px(10) : 0;
+        int vertical = land ? ResUtil.dp2px(22) : 0;
+        mBinding.scroll.setClipToPadding(false);
+        mBinding.scroll.setPadding(start, vertical, 0, vertical);
     }
 
     /**
