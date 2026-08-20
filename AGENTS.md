@@ -64,7 +64,8 @@ app/src/leanback/ → 电视端（当前不构建）
 3. **真机验证必须用 release 包**：混淆相关问题 debug 包永远复现不了。
 4. **安装签名冲突**：`INSTALL_FAILED_UPDATE_INCOMPATIBLE` 说明手机上旧包签名不同，需先卸载（会清本地数据，WebDAV 云端数据不受影响）。
 5. **检查更新逻辑**：`needUpdate` 按版本号逐段比较；release 的 tag 形如 `v0.1.1`。应用内更新要求资产文件名同时包含 `mode`（mobile）和 `abi`（arm64 / arm64-v8a）字样，例如 `XYBox-mobile-arm64-v8a.apk`，否则报"未找到匹配的APK"。注意：当前 v0.1.0/v0.1.1 上传的资产名是 `XYBox-release.apk`，不满足该匹配规则——版本相同时走"已是最新版本"分支不会触发资产匹配，但**发布更高版本时必须用符合规则的文件名**，否则用户无法应用内更新。
-6. **提交规范**： conventional commits 中文描述；PowerShell 不支持 heredoc，多段提交信息用多个 `-m` 参数。
+6. **删除资源限定符变体后必须 clean 重建**：删掉 `layout-sw600dp/xxx.xml` 这类变体文件后，Gradle 的资源增量合并**不会**把它从 `app/build/intermediates/merged-not-compiled-resources/` 里清掉，陈旧副本会继续被打进 APK。表现极具迷惑性：源码只剩一份布局，手机怎么测都正常，但平板（sw>=600dp）运行时仍命中幽灵变体，`ViewBinding.inflate` 报 `Missing required view with ID: xxx`。本项目实际踩过——v0.2.2 删了源文件却没 clean，v0.2.3 仍在崩，直到 v0.2.4 执行 `gradlew clean` 才真正生效。验证方法：`find app/build -name "<布局名>*.xml"`，确认没有多余限定符目录。
+7. **提交规范**： conventional commits 中文描述；PowerShell 不支持 heredoc，多段提交信息用多个 `-m` 参数。
 
 ## 用户偏好（务必遵守）
 
