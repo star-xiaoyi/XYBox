@@ -1,3 +1,13 @@
+# ---- 崩溃栈可读性 ----
+# 本项目是 GPL 开源的，混淆方法名换不来任何保护，只会让线上崩溃栈变成
+# VideoActivity.S(...) 这种没法直接定位的东西。这里保留自己代码和 catvod 的
+# 名字与行号（仍然允许 shrink / optimize，包体基本不受影响），
+# 崩溃页拿到的就是真实类名、方法名和行号。
+-keepattributes SourceFile,LineNumberTable,Signature,*Annotation*
+-renamesourcefileattribute SourceFile
+-keep,allowshrinking,allowoptimization class com.fongmi.android.tv.** { *; }
+-keep,allowshrinking,allowoptimization class com.github.catvod.** { *; }
+
 # TV
 -keep class com.fongmi.android.tv.bean.** { *; }
 

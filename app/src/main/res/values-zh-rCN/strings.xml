@@ -261,4 +261,6 @@
     <string name="source_hint_live">添加直播源</string>
 
     <string name="no_history_config">暂无其他导入记录</string>
+    <string name="crash_title">应用崩溃了</string>
+
 </resources>
