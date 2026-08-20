@@ -244,7 +244,7 @@ public class Updater implements Download.Callback {
         binding.buttonGroup.setVisibility(View.GONE);
         binding.progressGroup.setVisibility(View.VISIBLE);
         binding.progress.setIndeterminate(true);
-        binding.progressText.setText(R.string.update_downloading);
+        binding.progressText.setText(R.string.update_connecting);
         download = Download.create(apkUrl, getFile(), apkUrl, this);
         download.start();
     }
@@ -266,9 +266,9 @@ public class Updater implements Download.Callback {
     }
 
     @Override
-    public void retry() {
+    public void retry(String reason) {
         if (binding == null) return;
-        binding.progressText.setText(R.string.update_retrying);
+        binding.progressText.setText(App.get().getString(R.string.update_retrying) + (TextUtils.isEmpty(reason) ? "" : "（" + reason + "）"));
     }
 
     @Override

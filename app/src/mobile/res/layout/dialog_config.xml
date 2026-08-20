@@ -88,7 +88,7 @@
             android:id="@+id/positive"
             style="@style/DialogTextButton"
             android:layout_marginStart="4dp"
-            android:textColor="@color/accent_blue"
+            android:textColor="?attr/colorPrimary"
             android:textStyle="bold"
             tools:text="@string/dialog_positive" />
 
