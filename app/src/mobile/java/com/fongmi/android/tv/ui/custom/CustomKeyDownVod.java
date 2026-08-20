@@ -33,11 +33,14 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     private boolean changeSpeed;
     private boolean changeScale;
     private boolean changeTime;
+    private boolean changeEpisode;
     private boolean animating;
     private boolean center;
     private boolean touch;
     private boolean lock;
     private float bright;
+    private int lastVolume;
+    private float lastBright;
     private float volume;
     private float scale;
     private long time;
@@ -57,6 +60,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     }
 
     public boolean onTouchEvent(MotionEvent e) {
+        int action = e.getActionMasked();
+        if (changeEpisode && (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)) onEpisodeEnd();
         if (changeTime && e.getAction() == MotionEvent.ACTION_UP) onSeekEnd();
         if (changeSpeed && e.getAction() == MotionEvent.ACTION_UP) listener.onSpeedEnd();
         if (changeBright && e.getAction() == MotionEvent.ACTION_UP) listener.onBrightEnd();
@@ -94,8 +99,11 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         changeVolume = false;
         changeSpeed = false;
         changeTime = false;
+        changeEpisode = false;
         center = false;
         touch = true;
+        lastVolume = (int) volume;
+        lastBright = bright;
         return true;
     }
 
@@ -126,14 +134,40 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         if (changeTime) listener.onSeek(time = (long) (deltaX * 50));
         if (changeBright) setBright(deltaY);
         if (changeVolume) setVolume(deltaY);
+        if (changeEpisode) dragEpisode(deltaY);
         return true;
+    }
+
+    /**
+     * 中间区域上下拖：视频跟着手指走，松手拖够了才换集。
+     * 原来是靠 onFling 判定的，表现是画面抖一下就直接跳集，完全不跟手。
+     */
+    private void dragEpisode(float deltaY) {
+        float limit = videoView.getHeight() / 3f;
+        videoView.setTranslationY(Math.max(-limit, Math.min(limit, -deltaY)));
+    }
+
+    private void onEpisodeEnd() {
+        float offset = videoView.getTranslationY();
+        float threshold = Math.max(ResUtil.dp2px(64), videoView.getHeight() * 0.12f);
+        if (Math.abs(offset) < threshold) {
+            videoView.animate().translationY(0).setDuration(150).withEndAction(() -> changeEpisode = false).start();
+            return;
+        }
+        boolean up = offset < 0;
+        videoView.animate().translationY(up ? -videoView.getHeight() / 3f : videoView.getHeight() / 3f).setDuration(150).withEndAction(() -> {
+            videoView.setTranslationY(0);
+            changeEpisode = false;
+            if (up) listener.onFlingUp();
+            else listener.onFlingDown();
+        }).start();
     }
 
     @Override
     public boolean onDoubleTap(@NonNull MotionEvent e) {
         if (isEdge(e) || changeScale || e.getPointerCount() > 1) return true;
         if (lock) return true;
-        int screenWidth = ResUtil.getScreenWidth(activity);
+        int screenWidth = videoWidth();
         float leftBoundary = screenWidth * 0.2f;
         float rightBoundary = screenWidth * 0.8f;
         boolean seekEnabled = Setting.isGestureDoubleTapSeek();
@@ -152,6 +186,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
 
     @Override
     public boolean onFling(MotionEvent e1, @NonNull MotionEvent e2, float velocityX, float velocityY) {
+        if (changeEpisode) return true;
         if (isEdge(e1) || changeScale || !center || animating || e1.getPointerCount() > 1) return true;
         checkFunc(e1, e2, velocityY);
         return true;
@@ -164,13 +199,13 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     }
 
     private void checkFunc(float distanceX, float distanceY, MotionEvent e2) {
-        int four = ResUtil.getScreenWidth(activity) / 4;
+        int four = videoWidth() / 4;
         
         // 在横屏模式下，调整中心区域的判断
         if (activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
             // 横屏模式下，扩大中心区域，更容易触发进度条调整
-            int centerStart = ResUtil.getScreenWidth(activity) / 3;
-            int centerEnd = ResUtil.getScreenWidth(activity) * 2 / 3;
+            int centerStart = videoWidth() / 3;
+            int centerEnd = videoWidth() * 2 / 3;
             if (e2.getX() > centerStart && e2.getX() < centerEnd) {
                 center = true;
             } else if (Math.abs(distanceX) < Math.abs(distanceY)) {
@@ -180,6 +215,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
             if (Setting.isGestureProgress() && Math.abs(distanceX) >= Math.abs(distanceY) * 0.7f) {
                 changeTime = true;
             }
+            if (center && !changeTime && Setting.isGestureEpisodeLand()) changeEpisode = true;
         } else {
             // 竖屏模式保持原有逻辑
             if (e2.getX() > four && e2.getX() < four * 3) {
@@ -190,6 +226,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
             if (Setting.isGestureProgress() && Math.abs(distanceX) >= Math.abs(distanceY)) {
                 changeTime = true;
             }
+            if (center && !changeTime && Setting.isGestureEpisodePort()) changeEpisode = true;
         }
         touch = false;
     }
@@ -202,8 +239,18 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         }
     }
 
+    /**
+     * 触摸监听挂在视频容器上，事件坐标本来就是相对视频的。
+     * 分区必须按视频宽度算——横屏分栏时视频只占左半边，
+     * 用屏幕宽度会把"右半边调音量"划到详情卡片上去。
+     */
+    private int videoWidth() {
+        int width = videoView.getWidth();
+        return width > 0 ? width : ResUtil.getScreenWidth(activity);
+    }
+
     private void checkSide(MotionEvent e2) {
-        int half = ResUtil.getScreenWidth(activity) / 2;
+        int half = videoWidth() / 2;
         if (e2.getX() > half) changeVolume = Setting.isGestureVolume();
         else changeBright = Setting.isGestureBrightness();
     }
@@ -214,6 +261,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         float brightness = deltaY * 2 / height + bright;
         if (brightness < 0) brightness = 0f;
         if (brightness > 1.0f) brightness = 1.0f;
+        if (Math.abs(brightness - lastBright) < 0.005f) return;
+        lastBright = brightness;
         WindowManager.LayoutParams attributes = activity.getWindow().getAttributes();
         attributes.screenBrightness = brightness;
         activity.getWindow().setAttributes(attributes);
@@ -227,6 +276,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         float index = volume + deltaV;
         if (index > maxVolume) index = maxVolume;
         if (index < 0) index = 0;
+        if ((int) index == lastVolume) return;
+        lastVolume = (int) index;
         manager.setStreamVolume(AudioManager.STREAM_MUSIC, (int) index, 0);
         listener.onVolume((int) (index / maxVolume * 100));
     }

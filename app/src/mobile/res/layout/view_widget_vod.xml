@@ -131,8 +131,8 @@
             android:id="@+id/brightProgress"
             android:layout_width="120dp"
             android:layout_height="wrap_content"
-            app:indicatorColor="@color/yellow_500"
-            app:trackColor="@color/grey_500" />
+            app:indicatorColor="@color/white"
+            app:trackColor="@color/white_30" />
 
     </LinearLayout>
 
@@ -159,8 +159,8 @@
             android:id="@+id/volumeProgress"
             android:layout_width="120dp"
             android:layout_height="wrap_content"
-            app:indicatorColor="@color/yellow_500"
-            app:trackColor="@color/grey_500" />
+            app:indicatorColor="@color/white"
+            app:trackColor="@color/white_30" />
 
     </LinearLayout>
 </FrameLayout>

@@ -13,9 +13,9 @@
     <string name="vod_home">推薦</string>
 
     <!-- Detail -->
-    <string name="detail_flag">線路</string>
+    <string name="detail_flag">播放線路</string>
     <string name="detail_more">更多</string>
-    <string name="detail_episode">選集</string>
+    <string name="detail_episode">劇集</string>
     <string name="detail_quality">畫質</string>
     <string name="detail_content">簡介</string>
     <string name="detail_search">快搜「<xliff:g name="name">%s</xliff:g>」</string>
@@ -57,5 +57,21 @@
         <item>關閉</item>
         <item>開啟</item>
     </string-array>
+
+    <string name="detail_rating">豆瓣評分</string>
+
+    <string name="detail_episode_all">全部<xliff:g name="count">%s</xliff:g>集</string>
+
+    <string name="detail_quick">其他站點資源</string>
+
+    <string name="detail_expand">展開</string>
+
+    <string name="detail_collapse">收起</string>
+
+    <string name="detail_director_tag">（導演）</string>
+
+    <string name="vod_filter">篩選</string>
+
+    <string name="detail_cast">演職人員：</string>
 
 </resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 无内置 tint 版本，由使用方 android:tint 着色 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M18,12l4,-4l-4,-4l0,3l-15,0l0,2l15,0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M6,12l-4,4l4,4l0,-3l15,0l0,-2l-15,0z" />
+</vector>

@@ -1,0 +1,6 @@
+<resources>
+
+    <!-- 横屏详情卡片宽度：留给左边视频至少一半以上的空间 -->
+    <dimen name="detail_sheet_width">360dp</dimen>
+
+</resources>

@@ -34,6 +34,9 @@ public class SettingOperationActivity extends BaseActivity {
         mBinding.gestureDoubleTapSeekSwitch.setChecked(Setting.isGestureDoubleTapSeek());
         mBinding.gestureBrightnessSwitch.setChecked(Setting.isGestureBrightness());
         mBinding.gestureVolumeSwitch.setChecked(Setting.isGestureVolume());
+        mBinding.gestureProgressSwitch.setChecked(Setting.isGestureProgress());
+        mBinding.gestureEpisodePortSwitch.setChecked(Setting.isGestureEpisodePort());
+        mBinding.gestureEpisodeLandSwitch.setChecked(Setting.isGestureEpisodeLand());
         updateGestureSeekSeconds();
         updateGestureSeekVisibility();
     }
@@ -46,11 +49,17 @@ public class SettingOperationActivity extends BaseActivity {
         mBinding.gestureDoubleTapSeekSwitch.setOnClickListener(this::setGestureDoubleTapSeek);
         mBinding.gestureBrightnessSwitch.setOnClickListener(this::setGestureBrightness);
         mBinding.gestureVolumeSwitch.setOnClickListener(this::setGestureVolume);
+        mBinding.gestureProgressSwitch.setOnClickListener(this::setGestureProgress);
+        mBinding.gestureEpisodePortSwitch.setOnClickListener(this::setGestureEpisodePort);
+        mBinding.gestureEpisodeLandSwitch.setOnClickListener(this::setGestureEpisodeLand);
         // 点击整行也可以切换开关
         mBinding.gestureDoubleTapPlay.setOnClickListener(view -> mBinding.gestureDoubleTapPlaySwitch.performClick());
         mBinding.gestureDoubleTapSeek.setOnClickListener(view -> mBinding.gestureDoubleTapSeekSwitch.performClick());
         mBinding.gestureBrightness.setOnClickListener(view -> mBinding.gestureBrightnessSwitch.performClick());
         mBinding.gestureVolume.setOnClickListener(view -> mBinding.gestureVolumeSwitch.performClick());
+        mBinding.gestureProgress.setOnClickListener(view -> mBinding.gestureProgressSwitch.performClick());
+        mBinding.gestureEpisodePort.setOnClickListener(view -> mBinding.gestureEpisodePortSwitch.performClick());
+        mBinding.gestureEpisodeLand.setOnClickListener(view -> mBinding.gestureEpisodeLandSwitch.performClick());
         mBinding.gestureSeekSeconds.setOnClickListener(this::setGestureSeekSeconds);
     }
 
@@ -69,6 +78,18 @@ public class SettingOperationActivity extends BaseActivity {
 
     private void setGestureVolume(View view) {
         Setting.putGestureVolume(!Setting.isGestureVolume());
+    }
+
+    private void setGestureProgress(View view) {
+        Setting.putGestureProgress(!Setting.isGestureProgress());
+    }
+
+    private void setGestureEpisodePort(View view) {
+        Setting.putGestureEpisodePort(!Setting.isGestureEpisodePort());
+    }
+
+    private void setGestureEpisodeLand(View view) {
+        Setting.putGestureEpisodeLand(!Setting.isGestureEpisodeLand());
     }
 
     private void setGestureSeekSeconds(View view) {

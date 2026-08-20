@@ -1,40 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
+    android:layout_width="104dp"
     android:layout_height="wrap_content"
-    android:layout_margin="8dp"
-    android:background="@drawable/shape_item"
+    android:background="@drawable/shape_vod"
     android:orientation="vertical">
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/image"
+        android:layout_width="match_parent"
+        android:layout_height="146dp"
+        android:background="@color/surface_secondary"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/Vod.Grid"
+        tools:src="@drawable/ic_img_loading" />
 
     <TextView
         android:id="@+id/name"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:singleLine="true"
-        android:textColor="@color/white"
-        android:textSize="14sp"
-        tools:text="蜘蛛人" />
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp"
+        tools:text="沉默的真相" />
 
     <TextView
         android:id="@+id/site"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
-        android:singleLine="true"
-        android:textColor="@color/white_90"
-        android:textSize="12sp"
-        tools:text="泥巴"
-        tools:visibility="visible" />
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        tools:text="瓜子" />
 
     <TextView
         android:id="@+id/remark"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
-        android:singleLine="true"
-        android:textColor="@color/white_80"
-        android:textSize="12sp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
         tools:text="1080p" />
 
 </LinearLayout>

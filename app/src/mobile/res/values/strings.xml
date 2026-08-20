@@ -18,9 +18,9 @@
     <string name="detail_download_list">Download List</string>
 
     <!-- Detail -->
-    <string name="detail_flag">Flag</string>
+    <string name="detail_flag">Source</string>
     <string name="detail_more">More</string>
-    <string name="detail_episode">Episode</string>
+    <string name="detail_episode">Episodes</string>
     <string name="download">Download</string>
     <string name="download_empty">No downloads yet</string>
     <string name="download_completed">Completed</string>
@@ -68,5 +68,21 @@
         <item>Off</item>
         <item>On</item>
     </string-array>
+
+    <string name="detail_rating">Douban</string>
+
+    <string name="detail_episode_all">All <xliff:g name="count">%s</xliff:g></string>
+
+    <string name="detail_quick">More sources</string>
+
+    <string name="detail_expand">Expand</string>
+
+    <string name="detail_collapse">Collapse</string>
+
+    <string name="detail_director_tag">(Director)</string>
+
+    <string name="vod_filter">Filter</string>
+
+    <string name="detail_cast">Cast &amp; crew: </string>
 
 </resources>

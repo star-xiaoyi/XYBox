@@ -5,6 +5,7 @@ import android.content.DialogInterface;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 
 import androidx.appcompat.app.AlertDialog;
 
@@ -199,8 +200,23 @@ public class Updater implements Download.Callback {
                 .setCancelable(false)
                 .create();
         dialog.show();
+        capDescHeight(activity);
         dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(this::confirm);
         dialog.getButton(DialogInterface.BUTTON_NEGATIVE).setOnClickListener(this::cancel);
+    }
+
+    /**
+     * 更新说明是 wrap_content 的，条目一多整块自定义视图就把对话框的按钮挤出可视区。
+     * 弹出后量一次，超过屏幕四成高度就钉死，多出来的内容让它自己滚。
+     */
+    private void capDescHeight(Activity activity) {
+        binding.scroll.post(() -> {
+            int max = (int) (activity.getResources().getDisplayMetrics().heightPixels * 0.4f);
+            if (binding.scroll.getHeight() <= max) return;
+            ViewGroup.LayoutParams params = binding.scroll.getLayoutParams();
+            params.height = max;
+            binding.scroll.setLayoutParams(params);
+        });
     }
 
     private void cancel(View view) {

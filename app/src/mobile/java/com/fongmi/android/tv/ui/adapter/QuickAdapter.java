@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.AdapterQuickBinding;
+import com.fongmi.android.tv.utils.ImgUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -65,6 +66,7 @@ public class QuickAdapter extends RecyclerView.Adapter<QuickAdapter.ViewHolder> 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Vod item = mItems.get(position);
+        ImgUtil.rect(item.getVodName(), item.getVodPic(), holder.binding.image);
         holder.binding.name.setText(item.getVodName());
         holder.binding.site.setText(item.getSiteName());
         holder.binding.remark.setText(item.getVodRemarks());

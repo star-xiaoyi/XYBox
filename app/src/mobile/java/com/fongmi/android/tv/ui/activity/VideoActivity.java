@@ -20,6 +20,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.Html;
+import android.text.Layout;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
@@ -27,12 +28,17 @@ import android.text.TextUtils;
 import android.text.format.DateFormat;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
+import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.media.AudioManager;
+import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -90,6 +96,7 @@ import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.base.ViewType;
 import com.fongmi.android.tv.ui.custom.CustomKeyDownVod;
 import com.fongmi.android.tv.ui.custom.CustomMovement;
+import com.fongmi.android.tv.ui.custom.LinkMovement;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.ui.dialog.CastDialog;
 import com.fongmi.android.tv.ui.dialog.ControlDialog;
@@ -159,6 +166,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean useParse;
     private boolean redirect;
     private boolean rotate;
+    private boolean castExpanded;
+    private boolean contentExpanded;
+    private float mHandleDown;
+    private boolean mDragging;
+    private boolean mPortraitLock;
+    private int mVideoBase;
+    private ValueAnimator mWidthAnimator;
     private boolean stop;
     private boolean lock;
     private Runnable mR1;
@@ -278,11 +292,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private boolean isLand() {
-        return mBinding.getRoot().getTag().equals("land");
+        return ResUtil.isLand(this);
     }
 
     private boolean isPort() {
-        return mBinding.getRoot().getTag().equals("port");
+        return !isLand();
     }
 
     @Override
@@ -464,6 +478,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     @SuppressLint("ClickableViewAccessibility")
     protected void initEvent() {
+        mBinding.detailBack.setOnClickListener(view -> onBackPressed());
+        mBinding.castExpand.setOnClickListener(view -> onCastExpand());
+        mBinding.contentExpand.setOnClickListener(view -> onContent());
+        mBinding.handle.setOnTouchListener(this::onHandleTouch);
+        mBinding.handleLand.setOnTouchListener(this::onHandleTouch);
         mBinding.name.setOnClickListener(view -> onName());
         mBinding.more.setOnClickListener(view -> onMore());
         mBinding.content.setOnClickListener(view -> onContent());
@@ -513,6 +532,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.flag.setItemAnimator(null);
         mBinding.flag.addItemDecoration(new SpaceItemDecoration(8));
         mBinding.flag.setAdapter(mFlagAdapter = new FlagAdapter(this));
+        mBinding.quick.setHasFixedSize(true);
+        mBinding.quick.addItemDecoration(new SpaceItemDecoration(8));
         mBinding.quick.setAdapter(mQuickAdapter = new QuickAdapter(this));
         mBinding.episode.setHasFixedSize(true);
         mBinding.episode.setItemAnimator(null);
@@ -534,7 +555,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         ExoUtil.setSubtitleView(mBinding.exo);
         mPlayers.setDanmakuView(mBinding.danmaku);
         mPlayers.setTag(tag = UUID.randomUUID().toString());
-        if (isPort() && ResUtil.isLand(this)) enterFullscreen();
+        applyOrientation();
         mBinding.control.action.decode.setText(mPlayers.getDecodeText());
         mBinding.control.action.danmaku.setVisibility(Setting.isDanmakuLoad() ? View.VISIBLE : View.GONE);
         mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
@@ -627,16 +648,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.progressLayout.showContent();
         mBinding.video.setTag(item.getVodPic(getPic()));
         mBinding.name.setText(item.getVodName(getName()));
-        setText(mBinding.remark, 0, item.getVodRemarks());
-        setText(mBinding.site, R.string.detail_site, getSite().getName());
         setText(mBinding.content, 0, Html.fromHtml(item.getVodContent()).toString());
-        setActorText(mBinding.actor, R.string.detail_actor, item.getVodActor(), CastMember.CastType.ACTOR);
-        setActorText(mBinding.director, R.string.detail_director, item.getVodDirector(), CastMember.CastType.DIRECTOR);
+        setCast(item);
+        updateContentExpand();
         mBinding.contentLayout.setVisibility(mBinding.content.getVisibility());
         mFlagAdapter.addAll(item.getVodFlags());
-        setOther(mBinding.other, item);
+        setMeta(item);
+        setTags(item);
         setArtwork(item.getVodPic());
-        setPoster(item.getVodPic(getPic()));  // 加载详情页海报
         App.removeCallbacks(mR4);
         checkHistory(item);
         checkFlag(item);
@@ -644,50 +663,71 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
     
     /**
-     * 设置演员/导演文本，每个名字都可点击
+     * 演职人员合并成一段：导演名后跟"（导演）"，再接演员，中间用斜杠分隔。
+     * 默认最多两行，超出时右下角出现展开按钮。
      */
-    private void setActorText(TextView view, int resId, String text, CastMember.CastType type) {
-        if (text == null || text.isEmpty()) {
-            view.setVisibility(View.GONE);
-            return;
-        }
-        
-        // 解析演员/导演列表
-        String cleanText = Html.fromHtml(text).toString();
-        List<CastMember> members = CastUtil.parseCastMembers(cleanText, type);
-        
+    private void setCast(Vod item) {
+        List<CastMember> members = new ArrayList<>();
+        String director = item.getVodDirector();
+        String actor = item.getVodActor();
+        if (director != null && !director.isEmpty()) members.addAll(CastUtil.parseCastMembers(Html.fromHtml(director).toString(), CastMember.CastType.DIRECTOR));
+        int directors = members.size();
+        if (actor != null && !actor.isEmpty()) members.addAll(CastUtil.parseCastMembers(Html.fromHtml(actor).toString(), CastMember.CastType.ACTOR));
         if (members.isEmpty()) {
-            view.setVisibility(View.GONE);
+            mBinding.castText.setVisibility(View.GONE);
+            mBinding.castExpand.setVisibility(View.GONE);
             return;
         }
-        
-        // 构建带标签的文本
-        String label = getString(resId, "");
-        SpannableStringBuilder span = new SpannableStringBuilder(label);
-        
-        // 添加每个演员/导演名字，用逗号分隔
+        SpannableStringBuilder span = new SpannableStringBuilder(getString(R.string.detail_cast));
         for (int i = 0; i < members.size(); i++) {
             CastMember member = members.get(i);
             int start = span.length();
             span.append(member.getName());
-            int end = span.length();
-            
-            // 设置点击事件
-            span.setSpan(getCastClickSpan(member), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            
-            // 添加分隔符
-            if (i < members.size() - 1) {
-                span.append(" / ");
-            }
+            span.setSpan(getCastClickSpan(member), start, span.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if (i < directors) span.append(getString(R.string.detail_director_tag));
+            if (i < members.size() - 1) span.append("  /  ");
         }
-        
-        view.setText(span, TextView.BufferType.SPANNABLE);
-        view.setVisibility(View.VISIBLE);
-        view.setLinkTextColor(MDColor.YELLOW_500);
-        view.setMovementMethod(LinkMovementMethod.getInstance());
-        view.setMaxLines(Integer.MAX_VALUE);  // 完全显示，不折叠
+        castExpanded = false;
+        mBinding.castText.setText(span, TextView.BufferType.SPANNABLE);
+        mBinding.castText.setVisibility(View.VISIBLE);
+        mBinding.castText.setLinkTextColor(getColor(R.color.text_primary));
+        mBinding.castText.setMovementMethod(LinkMovement.getInstance());
+        setExpandState(mBinding.castExpand, false);
+        checkOverflow(mBinding.castText, mBinding.castExpand, 2);
     }
-    
+
+    private void onCastExpand() {
+        castExpanded = !castExpanded;
+        mBinding.castText.setMaxLines(castExpanded ? Integer.MAX_VALUE : 2);
+        setExpandState(mBinding.castExpand, castExpanded);
+    }
+
+    private void updateContentExpand() {
+        contentExpanded = false;
+        setExpandState(mBinding.contentExpand, false);
+        checkOverflow(mBinding.content, mBinding.contentExpand, 3);
+    }
+
+    private void setExpandState(TextView toggle, boolean expanded) {
+        toggle.setText(expanded ? R.string.detail_collapse : R.string.detail_expand);
+        toggle.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, expanded ? R.drawable.ic_detail_collapse : R.drawable.ic_detail_expand, 0);
+    }
+
+    /**
+     * 折叠状态下测量一次，只有真的被截断才显示展开按钮。
+     * 必须等排版完成，所以放到 post 里跑。
+     */
+    private void checkOverflow(TextView text, TextView toggle, int collapsed) {
+        text.setMaxLines(collapsed);
+        toggle.setVisibility(View.GONE);
+        text.post(() -> {
+            Layout layout = text.getLayout();
+            if (layout == null) return;
+            boolean overflow = layout.getLineCount() > collapsed || layout.getEllipsisCount(Math.max(0, layout.getLineCount() - 1)) > 0;
+            toggle.setVisibility(overflow ? View.VISIBLE : View.GONE);
+        });
+    }
+
     /**
      * 创建演员/导演点击事件
      */
@@ -743,13 +783,41 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         };
     }
 
-    private void setOther(TextView view, Vod item) {
-        StringBuilder sb = new StringBuilder();
-        if (!item.getVodYear().isEmpty()) sb.append(getString(R.string.detail_year, item.getVodYear())).append("  ");
-        if (!item.getVodArea().isEmpty()) sb.append(getString(R.string.detail_area, item.getVodArea())).append("  ");
-        if (!item.getTypeName().isEmpty()) sb.append(getString(R.string.detail_type, item.getTypeName())).append("  ");
-        view.setVisibility(sb.length() == 0 ? View.GONE : View.VISIBLE);
-        view.setText(Util.substring(sb.toString(), 2));
+    /**
+     * 标题下方的一行摘要：年份 · 地区 · 更新状态 · 站点。
+     * 年份只取前 4 位数字，站源常见的 "2019-01-18" 这类完整日期在这一行显得太长。
+     */
+    private void setMeta(Vod item) {
+        List<String> parts = new ArrayList<>();
+        String year = item.getVodYear().trim();
+        if (year.length() >= 4 && TextUtils.isDigitsOnly(year.substring(0, 4))) year = year.substring(0, 4);
+        if (!year.isEmpty()) parts.add(year);
+        if (!item.getVodArea().trim().isEmpty()) parts.add(item.getVodArea().trim());
+        if (!item.getVodRemarks().trim().isEmpty()) parts.add(item.getVodRemarks().trim());
+        if (!getSite().getName().trim().isEmpty()) parts.add(getSite().getName().trim());
+        mBinding.meta.setText(TextUtils.join("  ·  ", parts));
+        mBinding.meta.setVisibility(parts.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    /**
+     * 类型标签：把站源的分类字符串按常见分隔符拆开，逐个塞成灰色胶囊。
+     */
+    private void setTags(Vod item) {
+        mBinding.tags.removeAllViews();
+        String type = item.getTypeName().trim();
+        List<String> tags = new ArrayList<>();
+        if (!type.isEmpty()) for (String tag : type.split("[,，/、|]")) if (!tag.trim().isEmpty() && !tags.contains(tag.trim())) tags.add(tag.trim());
+        for (String tag : tags) {
+            TextView view = new TextView(this);
+            view.setText(tag);
+            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            view.setTextColor(getColor(R.color.text_secondary));
+            view.setBackgroundResource(R.drawable.shape_detail_tag);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            params.setMarginEnd(ResUtil.dp2px(8));
+            mBinding.tags.addView(view, params);
+        }
+        mBinding.tagScroll.setVisibility(tags.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     private void getPlayer(Flag flag, Episode episode, boolean replay) {
@@ -764,7 +832,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void setPlayer(Result result) {
         result.getUrl().set(mQualityAdapter.getPosition());
-        if (!result.getDesc().isEmpty()) setText(mBinding.content, R.string.detail_content, Html.fromHtml(result.getDesc()).toString());
+        if (!result.getDesc().isEmpty()) {
+            setText(mBinding.content, R.string.detail_content, Html.fromHtml(result.getDesc()).toString());
+            updateContentExpand();
+        }
         setUseParse(VodConfig.hasParse() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags().contains(result.getFlag())) || result.getJx() == 1));
         if (mControlDialog != null && mControlDialog.isVisible()) mControlDialog.setParseVisible(isUseParse());
         mBinding.control.parse.setVisibility(isFullscreen() && isUseParse() ? View.VISIBLE : View.GONE);
@@ -830,6 +901,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.episode.setVisibility(items.size() == 0 ? View.GONE : View.VISIBLE);
         mBinding.reverse.setVisibility(items.size() < 2 ? View.GONE : View.VISIBLE);
         mBinding.more.setVisibility(items.size() < 10 ? View.GONE : View.VISIBLE);
+        mBinding.more.setText(getString(R.string.detail_episode_all, String.valueOf(items.size())));
         mEpisodeAdapter.addAll(items);
     }
 
@@ -867,7 +939,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onContent() {
-        mBinding.content.setMaxLines(mBinding.content.getMaxLines() == 2 ? Integer.MAX_VALUE : 2);
+        contentExpanded = !contentExpanded;
+        mBinding.content.setMaxLines(contentExpanded ? Integer.MAX_VALUE : 3);
+        setExpandState(mBinding.contentExpand, contentExpanded);
     }
 
     private void onReverse() {
@@ -952,7 +1026,174 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         showControl();
     }
 
+    /**
+     * 详情卡片的把手：竖屏在卡片顶部往下拖，横屏在卡片左边缘往右拖。
+     *
+     * 竖屏拖动时视频跟着往下走，位移取卡片的一半 —— 卡片正好落到屏幕底部时，
+     * 视频也正好停在屏幕竖直中央，接上竖屏全屏就没有跳变。
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private boolean onHandleTouch(View view, MotionEvent event) {
+        boolean land = isLand();
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                mDragging = true;
+                mVideoBase = mBinding.video.getWidth();
+                mHandleDown = land ? event.getRawX() : event.getRawY();
+                return true;
+            case MotionEvent.ACTION_MOVE:
+                // 被 DragSheetLayout 拦截进来时不会有 DOWN，第一帧就地取基准点
+                if (!mDragging) {
+                    mDragging = true;
+                    mVideoBase = mBinding.video.getWidth();
+                    mHandleDown = land ? event.getRawX() : event.getRawY();
+                    return true;
+                }
+                dragSheet(land, Math.max(0, (land ? event.getRawX() : event.getRawY()) - mHandleDown));
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (!mDragging) return false;
+                mDragging = false;
+                float distance = Math.max(0, (land ? event.getRawX() : event.getRawY()) - mHandleDown);
+                if (distance > getSheetTravel(land) * 0.2f) slideOutSheet(land);
+                else resetSheet(land);
+                return true;
+        }
+        return false;
+    }
+
+    private int getSheetTravel(boolean land) {
+        return land ? mBinding.swipeLayout.getWidth() : mBinding.swipeLayout.getHeight();
+    }
+
+    /**
+     * 竖屏：视频在上、详情在下；横屏：视频在左、详情在右。
+     * VideoActivity 声明了 configChanges="orientation"，转屏不会重建，
+     * 所以只能自己改 LayoutParams，不能靠 layout-land 资源目录。
+     */
+    private void applyOrientation() {
+        boolean land = isLand();
+        RelativeLayout.LayoutParams video = (RelativeLayout.LayoutParams) mBinding.video.getLayoutParams();
+        RelativeLayout.LayoutParams sheet = (RelativeLayout.LayoutParams) mBinding.swipeLayout.getLayoutParams();
+        if (!(video.width == RelativeLayout.LayoutParams.MATCH_PARENT && video.height == RelativeLayout.LayoutParams.MATCH_PARENT)) {
+            // 全屏时 video 被换成了一个新的 MATCH_PARENT 参数，这里不要把它当成正常态缓存
+            mFrameParams = video;
+        }
+        if (land) {
+            sheet.width = getSheetWidth();
+            sheet.height = RelativeLayout.LayoutParams.MATCH_PARENT;
+            sheet.removeRule(RelativeLayout.BELOW);
+            sheet.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+            sheet.addRule(RelativeLayout.ALIGN_PARENT_END);
+            video.width = RelativeLayout.LayoutParams.MATCH_PARENT;
+            video.height = RelativeLayout.LayoutParams.MATCH_PARENT;
+            video.addRule(RelativeLayout.START_OF, R.id.swipeLayout);
+            mBinding.progressLayout.setBackgroundResource(R.drawable.shape_detail_sheet_land);
+        } else {
+            sheet.width = RelativeLayout.LayoutParams.MATCH_PARENT;
+            sheet.height = RelativeLayout.LayoutParams.MATCH_PARENT;
+            sheet.removeRule(RelativeLayout.ALIGN_PARENT_TOP);
+            sheet.removeRule(RelativeLayout.ALIGN_PARENT_END);
+            sheet.addRule(RelativeLayout.BELOW, R.id.video);
+            video.width = RelativeLayout.LayoutParams.MATCH_PARENT;
+            video.height = ResUtil.dp2px(220);
+            video.removeRule(RelativeLayout.START_OF);
+            mBinding.progressLayout.setBackgroundResource(R.drawable.shape_detail_sheet);
+        }
+        mBinding.handleBar.setVisibility(land ? View.GONE : View.VISIBLE);
+        mBinding.handleLand.setVisibility(land ? View.VISIBLE : View.GONE);
+        mBinding.swipeLayout.setVisibility(View.VISIBLE);
+        mBinding.video.setLayoutParams(video);
+        mBinding.swipeLayout.setLayoutParams(sheet);
+        mFrameParams = video;
+        clearDrag();
+    }
+
+    /**
+     * 详情栏宽度按屏幕宽度取比例，再夹在一个合理区间里，
+     * 免得写死 dp 后在窄屏平板上挤掉视频、在超宽屏上又显得空。
+     */
+    private int getSheetWidth() {
+        int screen = getResources().getDisplayMetrics().widthPixels;
+        return Math.max(ResUtil.dp2px(280), Math.min(ResUtil.dp2px(460), (int) (screen * 0.36f)));
+    }
+
+    private void clearDrag() {
+        mDragging = false;
+        if (mWidthAnimator != null) mWidthAnimator.cancel();
+        mBinding.swipeLayout.animate().cancel();
+        mBinding.video.animate().cancel();
+        mBinding.handleLand.animate().cancel();
+        mBinding.handleLand.setTranslationX(0);
+        mBinding.swipeLayout.setTranslationX(0);
+        mBinding.swipeLayout.setTranslationY(0);
+        mBinding.video.setTranslationX(0);
+        mBinding.video.setTranslationY(0);
+    }
+
+    private void dragSheet(boolean land, float moved) {
+        float distance = Math.min(moved, getSheetTravel(land));
+        if (land) {
+            mBinding.swipeLayout.setTranslationX(distance);
+            mBinding.handleLand.setTranslationX(distance);
+            setVideoWidth(mVideoBase + (int) distance);
+        } else {
+            mBinding.swipeLayout.setTranslationY(distance);
+            mBinding.video.setTranslationY(distance / 2);
+        }
+    }
+
+    /**
+     * 横屏下 video 同时锚了 alignParentStart 和 toStartOf(swipeLayout)，
+     * 两端都被约束时 RelativeLayout 会忽略显式宽度 —— 必须先摘掉右锚点，
+     * 显式宽度才生效。退出拖动由 applyOrientation() 把锚点加回去。
+     */
+    private void setVideoWidth(int width) {
+        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBinding.video.getLayoutParams();
+        if (params.width == width) return;
+        params.removeRule(RelativeLayout.START_OF);
+        params.width = width;
+        mBinding.video.setLayoutParams(params);
+    }
+
+    private void resetSheet(boolean land) {
+        mBinding.swipeLayout.animate().translationX(0).translationY(0).setDuration(180).start();
+        mBinding.handleLand.animate().translationX(0).setDuration(180).start();
+        if (land) animateVideoWidth(mVideoBase, 180, this::applyOrientation);
+        else mBinding.video.animate().translationY(0).setDuration(180).start();
+    }
+
+    private void slideOutSheet(boolean land) {
+        int target = getSheetTravel(land);
+        if (land) {
+            mBinding.swipeLayout.animate().translationX(target).setDuration(220).start();
+            mBinding.handleLand.animate().translationX(target).setDuration(220).start();
+            animateVideoWidth(mVideoBase + target, 220, () -> enterFullscreen(false));
+        } else {
+            mPortraitLock = true;
+            mBinding.swipeLayout.animate().translationY(target).setDuration(220).start();
+            mBinding.video.animate().translationY(target / 2f).setDuration(220).withEndAction(() -> enterFullscreen(true)).start();
+        }
+    }
+
+    /** 横屏拖动结算：把视频宽度补到目标值，画面是连续放大的，接上全屏不会跳一下 */
+    private void animateVideoWidth(int target, int duration, Runnable end) {
+        if (mWidthAnimator != null) mWidthAnimator.cancel();
+        mWidthAnimator = ValueAnimator.ofInt(mBinding.video.getWidth(), target);
+        mWidthAnimator.setDuration(duration);
+        mWidthAnimator.addUpdateListener(animation -> setVideoWidth((int) animation.getAnimatedValue()));
+        if (end != null) mWidthAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                end.run();
+            }
+        });
+        mWidthAnimator.start();
+    }
+
     private void onRotate() {
+        mPortraitLock = false;
         setR1Callback();
         setRotate(!isRotate());
         setRequestedOrientation(ResUtil.isLand(this) ? ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
@@ -1104,11 +1345,19 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void enterFullscreen() {
+        enterFullscreen(mPlayers.isPortrait());
+    }
+
+    private void enterFullscreen(boolean portrait) {
         if (isFullscreen()) return;
-        App.post(() -> mBinding.video.setLayoutParams(new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT)), 50);
-        setRequestedOrientation(mPlayers.isPortrait() ? ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        clearDrag();
+        mBinding.video.setLayoutParams(new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT));
+        setRequestedOrientation(portrait ? ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         mBinding.control.full.setVisibility(View.GONE);
-        setRotate(mPlayers.isPortrait(), true);
+        mBinding.swipeLayout.setVisibility(View.GONE);
+        mBinding.handleLand.setVisibility(View.GONE);
+        mBinding.detailBack.setVisibility(View.GONE);
+        setRotate(portrait, true);
         mPlayers.setDanmakuSize(1.0f);
         Util.hideSystemUI(this);
         mKeyDown.resetScale();
@@ -1118,10 +1367,18 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void exitFullscreen() {
         if (!isFullscreen()) return;
-        setRequestedOrientation(isPort() ? ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
         App.post(() -> mBinding.episode.scrollToPosition(mEpisodeAdapter.getPosition()), 50);
         mBinding.control.full.setVisibility(View.VISIBLE);
-        mBinding.video.setLayoutParams(mFrameParams);
+        mBinding.swipeLayout.setVisibility(View.VISIBLE);
+        mBinding.swipeLayout.setTranslationX(0);
+        mBinding.swipeLayout.setTranslationY(0);
+        mBinding.video.setTranslationX(0);
+        mBinding.video.setTranslationY(0);
+        mPortraitLock = false;
+        mBinding.detailBack.setVisibility(View.VISIBLE);
+        mBinding.detailBack.setBackgroundResource(R.drawable.shape_detail_back);
+        applyOrientation();
         mPlayers.setDanmakuSize(0.8f);
         setRotate(false, false);
         mKeyDown.resetScale();
@@ -1175,20 +1432,23 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void showControl() {
         if (mPiP.isInMode(this)) return;
         mBinding.control.danmaku.setVisibility(isLock() || !mPlayers.haveDanmaku() ? View.GONE : View.VISIBLE);
-        mBinding.control.setting.setVisibility(mHistory == null || isFullscreen() ? View.GONE : View.VISIBLE);
+        mBinding.control.setting.setVisibility(!isFullscreen() || mPlayers.isEmpty() ? View.GONE : View.VISIBLE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.keep.setVisibility(mHistory == null || isFullscreen() ? View.GONE : View.VISIBLE);
-        mBinding.control.back.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
+        // 竖屏用悬浮返回键，这里留 INVISIBLE 只为把标题挤到返回键右边
+        mBinding.control.back.setVisibility(isFullscreen() ? (isLock() ? View.GONE : View.VISIBLE) : View.INVISIBLE);
         mBinding.control.parse.setVisibility(isFullscreen() && isUseParse() ? View.VISIBLE : View.GONE);
         mBinding.control.action.getRoot().setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
         mBinding.control.right.lock.setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
-        mBinding.control.info.setVisibility(mPlayers.isEmpty() ? View.GONE : View.VISIBLE);
+        mBinding.control.info.setVisibility(mPlayers.isEmpty() || !isFullscreen() ? View.GONE : View.VISIBLE);
         mBinding.control.cast.setVisibility(mPlayers.isEmpty() ? View.GONE : View.VISIBLE);
-        mBinding.control.pip.setVisibility(mPlayers.isEmpty() || PiP.noPiP() ? View.GONE : View.VISIBLE);
+        mBinding.control.pip.setVisibility(mPlayers.isEmpty() || PiP.noPiP() || !isFullscreen() ? View.GONE : View.VISIBLE);
         mBinding.control.center.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.bottom.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.top.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.getRoot().setVisibility(View.VISIBLE);
+        // 控制层出现时返回键去掉圆形底，避免和控制层的深色蒙版叠成两层
+        if (!isFullscreen()) mBinding.detailBack.setBackground(null);
         updateTimeBattery();
         setR1Callback();
         checkPlayImg();
@@ -1196,6 +1456,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void hideControl() {
         mBinding.control.getRoot().setVisibility(View.GONE);
+        if (!isFullscreen()) mBinding.detailBack.setBackgroundResource(R.drawable.shape_detail_back);
         App.removeCallbacks(mR1);
     }
 
@@ -1229,24 +1490,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             @Override
             public void onLoadFailed(@Nullable Drawable error) {
                 mBinding.exo.setDefaultArtwork(error);
-            }
-
-            @Override
-            public void onLoadCleared(@Nullable Drawable placeholder) {
-            }
-        });
-    }
-
-    private void setPoster(String url) {
-        ImgUtil.load(url, R.drawable.radio, new CustomTarget<>(100 * 3, 140 * 3) {
-            @Override
-            public void onResourceReady(@NonNull Drawable resource, @Nullable Transition<? super Drawable> transition) {
-                mBinding.poster.setImageDrawable(resource);
-            }
-
-            @Override
-            public void onLoadFailed(@Nullable Drawable error) {
-                mBinding.poster.setImageResource(R.drawable.radio);
             }
 
             @Override
@@ -1416,6 +1659,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void checkOrientation() {
+        // 用户是自己下拉进的竖屏全屏，切下一集时不能因为片源是横的又把屏幕转过去
+        if (mPortraitLock) return;
         if (isFullscreen() && !isRotate() && mPlayers.isPortrait()) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
             setRotate(true);
@@ -1537,6 +1782,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         Iterator<Vod> iterator = items.iterator();
         while (iterator.hasNext()) if (mismatch(iterator.next())) iterator.remove();
         mBinding.quick.setVisibility(View.VISIBLE);
+        mBinding.quickText.setVisibility(View.VISIBLE);
         mQuickAdapter.addAll(items);
         if (isInitAuto()) nextSite();
         if (items.isEmpty()) return;
@@ -1920,8 +2166,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        if (isAutoRotate() && isPort() && newConfig.orientation == Configuration.ORIENTATION_PORTRAIT && !isRotate()) exitFullscreen();
-        if (isAutoRotate() && isPort() && newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) enterFullscreen();
+        if (!isFullscreen()) applyOrientation();
         if (isFullscreen()) Util.hideSystemUI(this);
         updateTimeBattery();
     }
@@ -2046,10 +2291,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onBackPressed() {
-        if (isVisible(mBinding.control.getRoot())) {
-            hideControl();
-        } else if (isFullscreen() && !isLock()) {
+        if (isFullscreen() && !isLock()) {
             exitFullscreen();
+        } else if (isVisible(mBinding.control.getRoot())) {
+            hideControl();
         } else if (!isLock()) {
             stopSearch();
             super.onBackPressed();
