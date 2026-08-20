@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 输入光标：跟随日夜主题，不再固定白色 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <corners android:radius="8dp" />
-    <solid android:color="#33FFFFFF" />
+
+    <size android:width="2dp" />
+
+    <solid android:color="@color/cursor" />
+
 </shape>

@@ -24,11 +24,6 @@ public class CrashActivity extends BaseActivity {
     private ActivityCrashBinding mBinding;
 
     @Override
-    protected boolean customWall() {
-        return false;
-    }
-
-    @Override
     protected ViewBinding getBinding() {
         return mBinding = ActivityCrashBinding.inflate(getLayoutInflater());
     }

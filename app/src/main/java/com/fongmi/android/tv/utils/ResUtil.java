@@ -16,6 +16,7 @@ import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 
 import androidx.annotation.AnimRes;
+import androidx.annotation.AttrRes;
 import androidx.annotation.ArrayRes;
 import androidx.annotation.ColorRes;
 import androidx.annotation.DrawableRes;
@@ -120,6 +121,13 @@ public class ResUtil {
 
     public static int getColor(@ColorRes int resId) {
         return ContextCompat.getColor(App.get(), resId);
+    }
+
+    /** 解析当前 Activity 主题里的颜色属性，注意不能用 App.get()，那上面没挂主题覆盖层。 */
+    public static int getThemeColor(Context context, @AttrRes int attr) {
+        TypedValue value = new TypedValue();
+        context.getTheme().resolveAttribute(attr, value, true);
+        return value.resourceId != 0 ? ContextCompat.getColor(context, value.resourceId) : value.data;
     }
 
     public static Animation getAnim(@AnimRes int resId) {

@@ -30,10 +30,6 @@ import java.util.zip.ZipFile;
 
 public class FileUtil {
 
-    public static File getWall(int index) {
-        return Path.files("wallpaper_" + index);
-    }
-
     public static void openFile(File file) {
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);

@@ -25,7 +25,6 @@ import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.Updater;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
-import com.fongmi.android.tv.api.config.WallConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.bean.Site;
@@ -50,7 +49,6 @@ import com.fongmi.android.tv.ui.dialog.ProxyDialog;
 import com.fongmi.android.tv.ui.dialog.RestoreDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
 import com.fongmi.android.tv.ui.dialog.SyncSettingsDialog;
-import com.fongmi.android.tv.ui.dialog.WallDialog;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -112,10 +110,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     protected void initView() {
         setSourceHintText(mBinding.vodUrl, VodConfig.getDesc(), R.string.source_hint_setting);
         setSourceHintText(mBinding.liveUrl, LiveConfig.getDesc(), R.string.source_hint_live);
-        // setSourceHintText(mBinding.wallUrl, WallConfig.getDesc(), R.string.source_hint_wall); // 壁纸功能已移除
         mBinding.versionText.setText(getString(R.string.setting_version) + " " + BuildConfig.VERSION_NAME);
-        mBinding.wall.setVisibility(View.GONE);
-        mBinding.wallDivider.setVisibility(View.GONE);
 
         setOtherText();
         setCacheText();
@@ -131,7 +126,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.liveTabVisibleSwitch.setChecked(Setting.isLiveTabVisible());
         mBinding.historyVisibleSwitch.setChecked(Setting.isHistoryVisible());
         mBinding.sizeText.setText((size = ResUtil.getStringArray(R.array.select_size))[Setting.getSize()]);
-        mBinding.wallText.setText(getWallText());
         mBinding.themeText.setText(getThemeNames()[Setting.getThemeMode()]);
         mBinding.accentText.setText(getAccentNames()[Setting.getAccentColor()]);
         mBinding.accentPreview.setBackgroundTintList(ColorStateList.valueOf(requireContext().getColor(ThemeUtil.getAccentColorResource())));
@@ -144,12 +138,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
 
     private String[] getAccentNames() {
         return new String[]{getString(R.string.setting_accent_yellow), getString(R.string.setting_accent_blue), getString(R.string.setting_accent_green), getString(R.string.setting_accent_purple)};
-    }
-
-    private String getWallText() {
-        int wallIndex = Setting.getWall();
-        if (wallIndex == 0) return "本地图片";
-        return "内置壁纸 " + wallIndex;
     }
 
     private void setLiveSettingsVisibility() {
@@ -171,7 +159,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.syncSettings.setOnClickListener(this::onSyncSettings);
         mBinding.vod.setOnClickListener(this::onVod);
         mBinding.live.setOnClickListener(this::onLive);
-        // mBinding.wall.setOnClickListener(this::onWall); // 壁纸功能已移除
         mBinding.proxy.setOnClickListener(this::onProxy);
         mBinding.cache.setOnClickListener(this::onCache);
         mBinding.webdav.setOnClickListener(this::onWebDAV);
@@ -184,17 +171,13 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.vodHome.setOnClickListener(this::onVodHome);
         mBinding.live.setOnLongClickListener(this::onLiveEdit);
         mBinding.liveHome.setOnClickListener(this::onLiveHome);
-        // mBinding.wall.setOnLongClickListener(this::onWallEdit); // 壁纸功能已移除
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.version.setOnLongClickListener(this::onVersionDev);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
-        // mBinding.wallDefault.setOnClickListener(this::setWallDefault); // 壁纸功能已移除
-        // mBinding.wallRefresh.setOnClickListener(this::setWallRefresh); // 壁纸功能已移除
         mBinding.incognitoSwitch.setOnClickListener(this::setIncognito);
         mBinding.liveTabVisibleSwitch.setOnClickListener(this::setLiveTabVisible);
         mBinding.historyVisibleSwitch.setOnClickListener(this::setHistoryVisible);
         mBinding.size.setOnClickListener(this::setSize);
-        mBinding.wall.setOnClickListener(this::onWall);
         mBinding.doh.setOnClickListener(this::setDoh);
         mBinding.theme.setOnClickListener(this::setTheme);
         mBinding.accent.setOnClickListener(this::setAccent);
@@ -244,13 +227,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
                         mBinding.liveUrl.setText(config.getDesc());
                     }
                     break;
-                case 2:
-                    Notify.progress(getActivity());
-                    WallConfig.load(config, getCallback(2));
-                    // if (mBinding != null && mBinding.wallUrl != null) { // 壁纸功能已移除
-                    //     mBinding.wallUrl.setText(config.getDesc());
-                    // }
-                    break;
             }
         } catch (Exception e) {
             Logger.e("Error", e);
@@ -288,8 +264,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
                         setSourceHintText(mBinding.liveUrl, LiveConfig.getDesc(), R.string.source_hint_live);
                         break;
                     case 2:
-                        // setSourceHintText(mBinding.wallUrl, WallConfig.getDesc(), R.string.source_hint_wall); // 壁纸功能已移除
-                        break;
+                                        break;
                 }
             }
         };
@@ -304,8 +279,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
                 RefreshEvent.config();
                 setSourceHintText(mBinding.vodUrl, VodConfig.getDesc(), R.string.source_hint_setting);
                 setSourceHintText(mBinding.liveUrl, LiveConfig.getDesc(), R.string.source_hint_live);
-                // setSourceHintText(mBinding.wallUrl, WallConfig.getDesc(), R.string.source_hint_wall); // 壁纸功能已移除
-                break;
+                        break;
             case 1:
                 setCacheText();
                 Notify.dismiss();
@@ -315,8 +289,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
             case 2:
                 setCacheText();
                 Notify.dismiss();
-                // setSourceHintText(mBinding.wallUrl, WallConfig.getDesc(), R.string.source_hint_wall); // 壁纸功能已移除
-                break;
+                        break;
         }
     }
 
@@ -363,10 +336,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         ConfigDialog.create(this).type(type = 1).show();
     }
 
-    private void onWall(View view) {
-        WallDialog.create(this).show();
-    }
-
     private boolean onVodEdit(View view) {
         ConfigDialog.create(this).type(type = 0).edit().show();
         return true;
@@ -374,11 +343,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
 
     private boolean onLiveEdit(View view) {
         ConfigDialog.create(this).type(type = 1).edit().show();
-        return true;
-    }
-
-    private boolean onWallEdit(View view) {
-        ConfigDialog.create(this).type(type = 2).edit().show();
         return true;
     }
 
@@ -413,21 +377,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     private boolean onVersionDev(View view) {
         Updater.create().force().dev().start(getActivity());
         return true;
-    }
-
-    private void setWallDefault(View view) {
-        WallConfig.refresh(Setting.getWall() == 4 ? 1 : Setting.getWall() + 1);
-    }
-
-    private void setWallRefresh(View view) {
-        Notify.progress(getActivity());
-        WallConfig.get().load(new Callback() {
-            @Override
-            public void success() {
-                Notify.dismiss();
-                setCacheText();
-            }
-        });
     }
 
     private void setIncognito(View view) {
@@ -568,7 +517,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     }
 
     private void initConfig() {
-        WallConfig.get().init();
         LiveConfig.get().init().load();
         VodConfig.get().init().load(getCallback(0));
     }
@@ -587,10 +535,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onRefreshEvent(RefreshEvent event) {
-        if (event.getType() == RefreshEvent.Type.WALL) {
-            // 壁纸切换后刷新文字显示
-            if (mBinding != null) mBinding.wallText.setText(getWallText());
-        } else if (event.getType() == RefreshEvent.Type.CONFIG) {
+        if (event.getType() == RefreshEvent.Type.CONFIG) {
             // Config refresh handling
         }
     }
@@ -600,7 +545,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         if (hidden) return;
         setSourceHintText(mBinding.vodUrl, VodConfig.getDesc(), R.string.source_hint_setting);
         setSourceHintText(mBinding.liveUrl, LiveConfig.getDesc(), R.string.source_hint_live);
-        // setSourceHintText(mBinding.wallUrl, WallConfig.getDesc(), R.string.source_hint_wall); // 壁纸功能已移除
         setCacheText();
         setOtherText();
     }
@@ -608,13 +552,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        // 壁纸图库选择回调
-        if (requestCode == WallDialog.REQUEST_PICK_WALLPAPER) {
-            WallDialog.handleActivityResult(requestCode, resultCode, data, getActivity());
-            // 延迟刷新文字（等待异步写入完成）
-            mBinding.getRoot().postDelayed(() -> mBinding.wallText.setText(getWallText()), 1500);
-            return;
-        }
         if (resultCode != Activity.RESULT_OK || requestCode != FileChooser.REQUEST_PICK_FILE) return;
         setConfig(Config.find("file:/" + FileChooser.getPathFromUri(getContext(), data.getData()).replace(Path.rootPath(), ""), type));
     }

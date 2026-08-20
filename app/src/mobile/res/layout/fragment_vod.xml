@@ -287,7 +287,7 @@
         app:backgroundTint="?attr/colorPrimary"
         app:layout_anchor="@id/swipeLayout"
         app:layout_anchorGravity="end|bottom"
-        app:layout_behavior="com.fongmi.android.tv.ui.custom.CustomFabBehavior"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.App.Fab"
         app:srcCompat="@drawable/ic_fab_filter"
         app:tint="?attr/colorOnPrimary"
         tools:visibility="visible" />
@@ -300,7 +300,7 @@
         app:backgroundTint="?attr/colorPrimary"
         app:layout_anchor="@id/swipeLayout"
         app:layout_anchorGravity="end|bottom"
-        app:layout_behavior="com.fongmi.android.tv.ui.custom.CustomFabBehavior"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.App.Fab"
         app:srcCompat="@drawable/ic_fab_link"
         app:tint="?attr/colorOnPrimary"
         tools:visibility="visible" />
@@ -315,7 +315,7 @@
         app:backgroundTint="?attr/colorPrimary"
         app:layout_anchor="@id/swipeLayout"
         app:layout_anchorGravity="end|bottom"
-        app:layout_behavior="com.fongmi.android.tv.ui.custom.CustomFabBehavior"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.App.Fab"
         app:srcCompat="@drawable/ic_fab_top"
         app:tint="?attr/colorOnPrimary"
         tools:visibility="visible" />

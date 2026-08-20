@@ -70,7 +70,6 @@
     <!-- Setting -->
     <string name="setting_vod">视频</string>
     <string name="setting_live">直播</string>
-    <string name="setting_wall">壁纸</string>
     <string name="setting_subscription">订阅管理</string>
     <string name="setting_player">播放设置</string>
     <string name="setting_incognito">无痕模式</string>
@@ -103,7 +102,6 @@
     <string name="setting_accent_blue">蓝色</string>
     <string name="setting_accent_green">绿色</string>
     <string name="setting_accent_purple">紫色</string>
-    <string name="setting_wallpaper">壁纸</string>
     <string name="setting_webdav">WebDAV 同步</string>
     <string name="setting_webdav_summary">通过云端同步记录、播放源和偏好</string>
     <string name="setting_lan_sync">局域网设备同步</string>
@@ -259,6 +257,6 @@
     <string name="add_source">添加源</string>
     <string name="source_hint_setting">添加视频源</string>
     <string name="source_hint_live">添加直播源</string>
-    <string name="source_hint_wall">添加壁纸源</string>
 
+    <string name="no_history_config">暂无其他导入记录</string>
 </resources>

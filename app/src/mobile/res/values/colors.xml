@@ -21,6 +21,9 @@
     <color name="text_primary">#FF1C1C1E</color>
     <color name="text_secondary">#FF6C6C70</color>
     <color name="separator">#263C3C43</color>
+    <!-- 底栏底色：与系统手势条区域共用，做沉浸小白条 -->
+    <color name="nav_background">#FFF2F2F7</color>
+    <color name="cursor">#FF1C1C1E</color>
     <color name="accent_yellow">#FFFFCC00</color>
     <color name="accent_blue">#FF0A84FF</color>
     <color name="accent_green">#FF30D158</color>

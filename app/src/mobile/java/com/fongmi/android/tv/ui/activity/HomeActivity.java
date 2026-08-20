@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.activity;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.MenuItem;
@@ -11,6 +12,9 @@ import android.widget.RelativeLayout;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.pm.ShortcutInfoCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.core.content.pm.ShortcutManagerCompat;
 import androidx.core.graphics.drawable.IconCompat;
 import androidx.fragment.app.Fragment;
@@ -22,7 +26,6 @@ import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.Updater;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
-import com.fongmi.android.tv.api.config.WallConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.ActivityHomeBinding;
 import com.fongmi.android.tv.db.AppDatabase;
@@ -52,6 +55,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     private static final String STATE_POSITION = "home_position";
     private FragmentStateManager mManager;
     private ActivityHomeBinding mBinding;
+    private int mTopInset;
+    private int mBottomInset;
     private int currentPosition;
     private int orientation;
     private int windowWidthDp;
@@ -69,18 +74,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        // 检查隐私协议
-        if (!Setting.isPrivacyAgreed()) {
-            Intent intent = new Intent(this, PrivacyAgreementActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-            finish();
-            return;
-        }
-        
-        // 确保通知渠道已创建（用户已同意协议的情况）
+        // 确保通知渠道已创建
         com.fongmi.android.tv.utils.Notify.createChannel();
-        
+
+        applyWindowInsets();
         orientation = getResources().getConfiguration().orientation;
         windowWidthDp = ResUtil.getWindowWidthDp(this);
         currentPosition = savedInstanceState == null ? 0 : savedInstanceState.getInt(STATE_POSITION, 0);
@@ -91,6 +88,31 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         setNavigation();
         mBinding.navigation.setSelectedItemId(currentPosition == 1 ? R.id.setting : R.id.vod);
         setSettingsChrome(currentPosition == 1);
+    }
+
+    /**
+     * 布局不吃系统栏内边距，手动把状态栏高度补给内容区、把手势条高度补给底栏，
+     * 这样底栏底色会一直铺到屏幕最底部，系统小白条区域和底栏融为一体。
+     */
+    private void applyWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(mBinding.getRoot(), (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            mTopInset = bars.top;
+            mBottomInset = bars.bottom;
+            mBinding.navigation.setPadding(0, 0, 0, mBottomInset);
+            applyContainerPadding();
+            return insets;
+        });
+    }
+
+    /**
+     * 底栏在时由底栏自己垫手势条；底栏隐藏时（比如搜索结果页）由内容区垫，
+     * 垫出来的那块是页面背景色，所以看不到系统那条白色矩形。
+     */
+    private void applyContainerPadding() {
+        if (mBinding == null) return;
+        boolean navVisible = mBinding.navigation.getVisibility() == View.VISIBLE;
+        mBinding.container.setPadding(0, mTopInset, 0, navVisible ? 0 : mBottomInset);
     }
 
     @Override
@@ -124,7 +146,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void initConfig() {
-        WallConfig.get().init();
         LiveConfig.get().init().load();
         VodConfig.get().init().load(getCallback());
     }
@@ -186,15 +207,15 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void setSettingsChrome(boolean settings) {
-        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
         boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         if (!night) {
             flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
         }
         getWindow().getDecorView().setSystemUiVisibility(flags);
-        getWindow().setStatusBarColor(getColor(R.color.screen_background));
-        getWindow().setNavigationBarColor(getColor(R.color.screen_background));
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
         mBinding.getRoot().setBackgroundColor(getColor(R.color.screen_background));
     }
 
@@ -206,6 +227,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         params.removeRule(RelativeLayout.ABOVE);
         if (show) params.addRule(RelativeLayout.ABOVE, R.id.navigation);
         mBinding.container.setLayoutParams(params);
+        applyContainerPadding();
     }
 
     @Override
@@ -280,7 +302,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void onDestroy() {
-        WallConfig.get().clear();
         LiveConfig.get().clear();
         VodConfig.get().clear();
         OkHttp.get().clear();

@@ -2,7 +2,6 @@ package com.fongmi.android.tv.ui.base;
 
 import android.app.Activity;
 import android.graphics.Color;
-import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.DisplayCutout;
@@ -16,13 +15,9 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.viewbinding.ViewBinding;
 
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.engine.DiskCacheStrategy;
-import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.event.RefreshEvent;
-import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.ThemeUtil;
 
@@ -30,7 +25,6 @@ import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
-import java.io.File;
 
 public abstract class BaseActivity extends AppCompatActivity {
 
@@ -49,21 +43,11 @@ public abstract class BaseActivity extends AppCompatActivity {
         initEvent();
     }
 
-    @Override
-    public void setContentView(View view) {
-        super.setContentView(view);
-        refreshWall();
-    }
-
     protected Activity getActivity() {
         return this;
     }
 
     protected boolean transparent() {
-        return true;
-    }
-
-    protected boolean customWall() {
         return true;
     }
 
@@ -120,54 +104,16 @@ public abstract class BaseActivity extends AppCompatActivity {
     private void setTransparent(Activity activity) {
         activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
         activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-        int flags = View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
         boolean night = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         if (!night) flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
         activity.getWindow().getDecorView().setSystemUiVisibility(flags);
         activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
-    }
-
-    private void refreshWall() {
-        try {
-            if (!customWall()) return;
-            int wallIndex = Setting.getWall();
-            int screenWidth = ResUtil.getScreenWidth();
-            int screenHeight = ResUtil.getScreenHeight();
-            // 使用 Glide 动态裁剪到屏幕尺寸
-            Glide.with(App.get())
-                    .asBitmap()
-                    .load(wallIndex == 0 ? FileUtil.getWall(0) : ResUtil.getDrawable("wallpaper_" + wallIndex))
-                    .override(screenWidth, screenHeight)
-                    .transform(new com.bumptech.glide.load.resource.bitmap.CenterCrop())
-                    .skipMemoryCache(true)
-                    .diskCacheStrategy(DiskCacheStrategy.NONE)
-                    .into(new com.bumptech.glide.request.target.CustomTarget<android.graphics.Bitmap>() {
-                        @Override
-                        public void onResourceReady(@NonNull android.graphics.Bitmap resource, @Nullable com.bumptech.glide.request.transition.Transition<? super android.graphics.Bitmap> transition) {
-                            // 使用 BitmapDrawable 并设置重力为填充
-                            android.graphics.drawable.BitmapDrawable drawable = new android.graphics.drawable.BitmapDrawable(getResources(), resource);
-                            drawable.setGravity(android.view.Gravity.FILL);
-                            getWindow().setBackgroundDrawable(drawable);
-                        }
-
-                        @Override
-                        public void onLoadCleared(@Nullable Drawable placeholder) {
-                        }
-
-                        @Override
-                        public void onLoadFailed(@Nullable Drawable errorDrawable) {
-                            super.onLoadFailed(errorDrawable);
-                            getWindow().setBackgroundDrawableResource(R.drawable.wallpaper_6);
-                        }
-                    });
-        } catch (Exception e) {
-            getWindow().setBackgroundDrawableResource(R.drawable.wallpaper_6);
-        }
+        activity.getWindow().setNavigationBarColor(Color.TRANSPARENT);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onRefreshEvent(RefreshEvent event) {
-        if (event.getType() == RefreshEvent.Type.WALL) refreshWall();
     }
 
     @Override

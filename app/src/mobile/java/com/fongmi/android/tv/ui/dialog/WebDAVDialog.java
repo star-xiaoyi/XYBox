@@ -274,8 +274,8 @@ public class WebDAVDialog {
                         return;
                     }
                     binding.syncButton.setEnabled(true);
+                    // 结果直接显示在按钮下方的状态栏里，不再额外弹 Toast
                     showStatus(result.message, result.success);
-                    Notify.tip(result.message);
                 });
             } catch (Exception e) {
                 App.post(() -> {
@@ -285,7 +285,6 @@ public class WebDAVDialog {
                     }
                     binding.syncButton.setEnabled(true);
                     showStatus("同步失败：" + e.getMessage(), false);
-                    Notify.tip("同步失败");
                     Logger.e("WebDAV: 同步失败: " + e.getMessage());
                 });
             }
