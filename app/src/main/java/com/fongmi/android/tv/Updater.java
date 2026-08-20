@@ -198,13 +198,15 @@ public class Updater implements Download.Callback {
         binding = DialogUpdateBinding.inflate(LayoutInflater.from(activity));
         binding.title.setText(App.get().getString(R.string.update_version, version));
         binding.desc.setText(TextUtils.isEmpty(desc) ? "有新版本可用，建议更新。" : desc.trim());
-        dialog = new AlertDialog.Builder(activity).setView(binding.getRoot()).setCancelable(false).create();
+        dialog = new AlertDialog.Builder(activity).setView(binding.getRoot()).setCancelable(true).create();
+        dialog.setOnCancelListener(d -> { if (download != null) download.cancel(); });
         if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         dialog.show();
         setDialogWidth(activity);
         capDescHeight(activity);
         binding.positive.setOnClickListener(this::confirm);
         binding.negative.setOnClickListener(this::cancel);
+        binding.cancel.setOnClickListener(this::cancel);
     }
 
     private void setDialogWidth(Activity activity) {
@@ -254,20 +256,26 @@ public class Updater implements Download.Callback {
         }
     }
 
+    // Download 已经切回主线程了，这里不用再 post 一层
     @Override
     public void progress(int progress) {
-        App.post(() -> {
-            if (binding == null) return;
-            binding.progress.setIndeterminate(false);
-            binding.progress.setProgress(progress);
-            binding.progressText.setText(String.format(Locale.getDefault(), "正在下载 %d%%", progress));
-        });
+        if (binding == null || progress < 0) return;
+        binding.progress.setIndeterminate(false);
+        binding.progress.setProgressCompat(progress, true);
+        binding.progressText.setText(String.format(Locale.getDefault(), "正在下载 %d%%", progress));
+    }
+
+    @Override
+    public void retry() {
+        if (binding == null) return;
+        binding.progressText.setText(R.string.update_retrying);
     }
 
     @Override
     public void success(File file) {
         App.post(() -> {
             if (binding != null) {
+                binding.cancel.setVisibility(View.GONE);
                 binding.progress.setIndeterminate(false);
                 binding.progress.setProgress(100);
                 binding.progressText.setText("下载完成，正在安装…");
