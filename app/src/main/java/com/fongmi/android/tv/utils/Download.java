@@ -4,7 +4,6 @@ import com.fongmi.android.tv.App;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Logger;
 import com.github.catvod.utils.Path;
-import com.google.common.net.HttpHeaders;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -67,7 +66,7 @@ public class Download {
             App.execute(this::doInBackgroundWithFallback);
         }
     }
-    
+
     /**
      * 带智能回退的下载方法
      * 先尝试主URL（通常是jsDelivr CDN），失败后回退到备用URL
@@ -78,26 +77,27 @@ public class Download {
         if (mainSuccess) {
             return;
         }
-        
+
         // 主URL失败，如果有回退URL，尝试回退URL
         if (fallbackUrl != null && !fallbackUrl.equals(url)) {
             Logger.d("Download: 主URL下载失败，回退到备用URL: " + fallbackUrl);
             doInBackground(fallbackUrl, "备用URL");
         }
     }
-    
+
     /**
      * 使用指定URL下载文件（带重试机制）
      */
     private boolean doInBackground(String downloadUrl, String source) {
         Exception lastException = null;
-        
+
         for (int attempt = 1; attempt <= MAX_RETRY_COUNT; attempt++) {
             try {
-                if (callback != null) {
-                    App.post(() -> callback.progress(0));
+                // 这里原本会把进度打回 0：重试一次进度条就退回原点，看着就是"下到 1% 又归零"
+                if (callback != null && attempt > 1) {
+                    App.post(() -> callback.retry());
                 }
-                
+
                 boolean success = downloadWithUrl(downloadUrl, source, attempt);
                 if (success) {
                     return true;
@@ -105,7 +105,7 @@ public class Download {
             } catch (Exception e) {
                 lastException = e;
                 Logger.w("Download: 下载失败 (来源: " + source + ", 尝试 " + attempt + "/" + MAX_RETRY_COUNT + "): " + e.getMessage());
-                
+
                 // 如果不是最后一次尝试，等待后重试
                 if (attempt < MAX_RETRY_COUNT) {
                     try {
@@ -119,7 +119,7 @@ public class Download {
                 }
             }
         }
-        
+
         // 所有尝试都失败
         if (callback != null && lastException != null) {
             String errorMsg = lastException.getMessage();
@@ -127,7 +127,7 @@ public class Download {
         }
         return false;
     }
-    
+
     /**
      * 使用指定URL下载文件
      */
@@ -138,53 +138,43 @@ public class Download {
         if (file == null) {
             throw new Exception("保存文件路径为空");
         }
-        
+
         Response res = null;
         InputStream inputStream = null;
         try {
             res = OkHttp.newCall(downloadUrl, downloadUrl).execute();
-            
+
             // 检查HTTP响应状态码
             if (!res.isSuccessful()) {
                 throw new Exception("下载失败: HTTP " + res.code() + " " + (res.message() != null ? res.message() : "未知错误"));
             }
-            
+
             // 检查响应体是否存在
             if (res.body() == null) {
                 throw new Exception("下载失败: 响应体为空");
             }
-            
+
             // 获取输入流
             inputStream = res.body().byteStream();
             if (inputStream == null) {
                 throw new Exception("下载失败: 无法获取输入流");
             }
-            
+
             Path.create(file);
-            
-            // 获取文件大小，如果无法获取则使用-1表示未知大小
-            String contentLengthStr = res.header(HttpHeaders.CONTENT_LENGTH);
-            long expectedLength = -1;
-            if (contentLengthStr != null && !contentLengthStr.isEmpty()) {
-                try {
-                    expectedLength = Long.parseLong(contentLengthStr);
-                    if (expectedLength < 0) {
-                        expectedLength = -1;
-                    }
-                } catch (NumberFormatException e) {
-                    Logger.w("Download: 无法解析Content-Length: " + contentLengthStr);
-                    expectedLength = -1;
-                }
-            }
-            
+
+            // 用 body 的长度而不是原始 Content-Length 头：响应被 gzip 压缩时头里是压缩后的字节数，
+            // 拿它去校验解压后的文件必然对不上，会误判成"文件损坏"并一直重试。
+            long expectedLength = res.body().contentLength();
+            if (expectedLength <= 0) expectedLength = -1;
+
             // 下载文件
             download(inputStream, expectedLength);
-            
+
             // 验证下载的文件（如果知道预期大小）
             if (expectedLength > 0 && !verifyDownloadedFile(file, expectedLength)) {
                 throw new Exception("下载的文件可能已损坏，请重试");
             }
-            
+
             Logger.d("Download: 下载成功 (来源: " + source + ", 尝试 " + attempt + "/" + MAX_RETRY_COUNT + ")");
             if (callback != null) {
                 App.post(() -> callback.success(file));
@@ -216,7 +206,7 @@ public class Download {
             }
         }
     }
-    
+
     public void cancel() {
         OkHttp.cancel(url);
         if (fallbackUrl != null) {
@@ -230,27 +220,25 @@ public class Download {
         if (is == null) {
             throw new Exception("输入流为空，无法下载");
         }
-        
+
         try (BufferedInputStream input = new BufferedInputStream(is); FileOutputStream os = new FileOutputStream(file)) {
-            byte[] buffer = new byte[4096];
+            byte[] buffer = new byte[8192];
             int readBytes;
             long totalBytes = 0;
+            int lastPercent = -1;
             while ((readBytes = input.read(buffer)) != -1) {
                 totalBytes += readBytes;
                 os.write(buffer, 0, readBytes);
-                
-                // 只有当知道文件大小时才计算进度
-                if (length > 0 && callback != null) {
-                    int progress = (int) (totalBytes * 100.0 / length);
-                    final int finalProgress = Math.min(progress, 100); // 确保不超过100%，并设为final
-                    App.post(() -> callback.progress(finalProgress));
-                } else if (callback != null) {
-                    // 不知道文件大小时，显示不确定进度
-                    App.post(() -> callback.progress(-1));
-                }
+                if (length <= 0 || callback == null) continue;
+                // 按整数百分比节流：37MB 的包按 8KB 回调会往主线程丢四千多条消息，
+                // 进度条光排队就跟不上，看着像卡住甚至往回跳。
+                int percent = Math.min((int) (totalBytes * 100 / length), 100);
+                if (percent == lastPercent) continue;
+                lastPercent = percent;
+                App.post(() -> callback.progress(percent));
             }
-            
-            // 下载完成后，如果不知道文件大小，显示100%
+
+            // 不知道文件大小时全程走不确定态，结束补一个 100
             if (length <= 0 && callback != null) {
                 App.post(() -> callback.progress(100));
             }
@@ -264,19 +252,19 @@ public class Download {
                 Logger.e("File verification failed: file does not exist or is empty");
                 return false;
             }
-            
+
             // 如果知道预期大小，检查文件大小是否匹配
             if (expectedLength > 0 && file.length() != expectedLength) {
                 Logger.e("File size mismatch: expected " + expectedLength + ", actual " + file.length());
                 return false;
             }
-            
+
             // 检查APK文件头 (ZIP文件头)
             if (file.length() < 4) {
                 Logger.e("File too small: " + file.length() + " bytes");
                 return false;
             }
-            
+
             try (FileInputStream fis = new FileInputStream(file)) {
                 byte[] header = new byte[4];
                 int bytesRead = fis.read(header);
@@ -284,14 +272,14 @@ public class Download {
                     Logger.e("Cannot read file header");
                     return false;
                 }
-                
+
                 // ZIP文件头应该是 0x504B0304 (PK..)
                 if (header[0] != 0x50 || header[1] != 0x4B || header[2] != 0x03 || header[3] != 0x04) {
                     Logger.e("Invalid APK file header: " + String.format("%02X %02X %02X %02X", header[0], header[1], header[2], header[3]));
                     return false;
                 }
             }
-            
+
             Logger.d("APK file verification passed: " + file.getName() + " (" + file.length() + " bytes)");
             return true;
         } catch (Exception e) {
@@ -304,6 +292,10 @@ public class Download {
     public interface Callback {
 
         void progress(int progress);
+
+        /** 一次尝试失败、即将重试：进度条保持原样，只提示状态 */
+        default void retry() {
+        }
 
         void error(String msg);
 

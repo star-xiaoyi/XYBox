@@ -106,4 +106,6 @@ Make sure both are on the same Wi-Fi</string>
 
     <string name="about_github">My links</string>
 
+    <string name="update_retrying">Connection failed, retrying…</string>
+
 </resources>

@@ -97,4 +97,6 @@
 
     <string name="about_github">我的链接</string>
 
+    <string name="update_retrying">连接失败，正在重试…</string>
+
 </resources>
