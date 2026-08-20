@@ -199,13 +199,15 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     }
 
     private void checkFunc(float distanceX, float distanceY, MotionEvent e2) {
-        int four = videoWidth() / 4;
+        // 竖屏同样把中间收到 1/4
+        int narrow = (int) (videoWidth() * 0.375f);
         
         // 在横屏模式下，调整中心区域的判断
         if (activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
             // 横屏模式下，扩大中心区域，更容易触发进度条调整
-            int centerStart = videoWidth() / 3;
-            int centerEnd = videoWidth() * 2 / 3;
+            // 中间只留 1/4，左右各让出 3/8 给亮度和音量
+            int centerStart = (int) (videoWidth() * 0.375f);
+            int centerEnd = (int) (videoWidth() * 0.625f);
             if (e2.getX() > centerStart && e2.getX() < centerEnd) {
                 center = true;
             } else if (Math.abs(distanceX) < Math.abs(distanceY)) {
@@ -218,7 +220,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
             if (center && !changeTime && Setting.isGestureEpisodeLand()) changeEpisode = true;
         } else {
             // 竖屏模式保持原有逻辑
-            if (e2.getX() > four && e2.getX() < four * 3) {
+            if (e2.getX() > narrow && e2.getX() < videoWidth() - narrow) {
                 center = true;
             } else if (Math.abs(distanceX) < Math.abs(distanceY)) {
                 checkSide(e2);

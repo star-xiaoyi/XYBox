@@ -3,41 +3,59 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="8dp"
-    android:background="@drawable/shape_accent"
+    android:background="@drawable/shape_device_row"
     android:gravity="center_vertical"
-    android:orientation="horizontal">
+    android:orientation="horizontal"
+    android:paddingStart="4dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="4dp"
+    android:paddingBottom="8dp">
 
     <ImageView
         android:id="@+id/type"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@drawable/shape_device_icon"
+        android:padding="8dp"
+        android:scaleType="fitCenter"
+        android:tint="@color/text_primary"
         tools:src="@drawable/ic_cast_tv" />
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
         android:orientation="vertical">
 
         <TextView
             android:id="@+id/name"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
             android:singleLine="true"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="14sp"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
             tools:text="Google Chrome Cast" />
 
         <TextView
             android:id="@+id/host"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
+            android:ellipsize="end"
             android:singleLine="true"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/text_secondary"
             android:textSize="12sp"
-            tools:text="127.0.0.1" />
+            tools:text="192.168.1.20" />
 
     </LinearLayout>
+
+    <ImageView
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_detail_chevron"
+        android:tint="@color/text_secondary" />
+
 </LinearLayout>

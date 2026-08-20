@@ -46,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.lifecycle.Observer;
@@ -179,6 +180,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private Runnable mR2;
     private Runnable mR3;
     private Runnable mR4;
+    private Runnable mR5;
     private Runnable mHideGestureFeedback;
     private Clock mClock;
     private String tag;
@@ -339,6 +341,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mR2 = this::setTraffic;
         mR3 = this::setOrient;
         mR4 = this::showEmpty;
+        mR5 = () -> initSearch(mBinding.name.getText().toString(), false);
         mPiP = new PiP();
         checkDanmakuImg();
         setRecyclerView();
@@ -516,6 +519,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.action.opening.setOnClickListener(view -> onOpening());
         mBinding.control.action.danmaku.setOnClickListener(view -> onDanmaku());
         mBinding.control.action.episodes.setOnClickListener(view -> onEpisodes());
+        mBinding.control.action.exit.setOnClickListener(view -> exitFullscreen());
         mBinding.control.action.text.setOnLongClickListener(view -> onTextLong());
         mBinding.control.action.speed.setOnLongClickListener(view -> onSpeedLong());
         mBinding.control.action.reset.setOnLongClickListener(view -> onResetToggle());
@@ -557,7 +561,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mPlayers.setTag(tag = UUID.randomUUID().toString());
         applyOrientation();
         mBinding.control.action.decode.setText(mPlayers.getDecodeText());
-        mBinding.control.action.danmaku.setVisibility(Setting.isDanmakuLoad() ? View.VISIBLE : View.GONE);
         mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
         mBinding.video.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> mPiP.update(getActivity(), view));
     }
@@ -660,6 +663,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         checkHistory(item);
         checkFlag(item);
         checkKeepImg();
+        checkQuick();
     }
     
     /**
@@ -1443,6 +1447,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.info.setVisibility(mPlayers.isEmpty() || !isFullscreen() ? View.GONE : View.VISIBLE);
         mBinding.control.cast.setVisibility(mPlayers.isEmpty() ? View.GONE : View.VISIBLE);
         mBinding.control.pip.setVisibility(mPlayers.isEmpty() || PiP.noPiP() || !isFullscreen() ? View.GONE : View.VISIBLE);
+        setActionVisible();
         mBinding.control.center.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.bottom.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.top.setVisibility(isLock() ? View.GONE : View.VISIBLE);
@@ -1454,6 +1459,28 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         checkPlayImg();
     }
 
+    /**
+     * 全屏动作条：内核选择和弹幕开关一律不出；竖屏全屏再收掉解码、轨道和选集，
+     * 只留自动、倍速、原始、刷新、片头、片尾。
+     */
+    private void setActionVisible() {
+        boolean land = isLand();
+        mBinding.control.action.player.setVisibility(View.GONE);
+        mBinding.control.action.danmaku.setVisibility(View.GONE);
+        mBinding.control.action.decode.setVisibility(land ? View.VISIBLE : View.GONE);
+        mBinding.control.action.exit.setVisibility(land && isFullscreen() ? View.VISIBLE : View.GONE);
+        // 两个分支都要显式赋值：只写隐藏那一半的话，竖屏收起来的按钮转到横屏就再也回不来
+        if (land) {
+            mBinding.control.action.episodes.setVisibility(mEpisodeAdapter.getItemCount() < 2 ? View.GONE : View.VISIBLE);
+            setTrackVisible();
+        } else {
+            mBinding.control.action.text.setVisibility(View.GONE);
+            mBinding.control.action.audio.setVisibility(View.GONE);
+            mBinding.control.action.video.setVisibility(View.GONE);
+            mBinding.control.action.episodes.setVisibility(View.GONE);
+        }
+    }
+
     private void hideControl() {
         mBinding.control.getRoot().setVisibility(View.GONE);
         if (!isFullscreen()) mBinding.detailBack.setBackgroundResource(R.drawable.shape_detail_back);
@@ -1462,7 +1489,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void hideSheet() {
         for (Dialog dialog : mDialogs) dialog.dismiss();
-        for (Fragment fragment : getSupportFragmentManager().getFragments()) if (fragment instanceof BottomSheetDialogFragment) ((BottomSheetDialogFragment) fragment).dismiss();
+        for (Fragment fragment : getSupportFragmentManager().getFragments()) if (fragment instanceof DialogFragment) ((DialogFragment) fragment).dismiss();
         mDialogs.clear();
     }
 
@@ -1739,9 +1766,22 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         else nextFlag(position);
     }
 
+    /**
+     * 播放失败时的兜底：列表里已经有别的源就直接换过去。
+     * 现在详情页一进来就会主动搜，所以这里基本都走 nextSite 分支。
+     */
     private void checkSearch(boolean force) {
         if (mQuickAdapter.isEmpty()) initSearch(mBinding.name.getText().toString(), true);
-        else if (isAutoMode() || force) nextSite();
+        else nextSite();
+    }
+
+    /**
+     * 详情加载完主动搜一遍别的站点，把结果留在页面上供用户自己换源。
+     * 用 auto=false，否则 setSearch 会立刻 nextSite 把结果消费掉，列表永远是空的。
+     */
+    private void checkQuick() {
+        if (!mQuickAdapter.isEmpty() || mExecutor != null) return;
+        App.post(mR5, 1000);
     }
 
     private void initSearch(String keyword, boolean auto) {
@@ -1765,6 +1805,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void stopSearch() {
+        App.removeCallbacks(mR5);
         if (mExecutor == null) return;
         mExecutor.shutdownNow();
         mExecutor = null;
@@ -2168,6 +2209,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         super.onConfigurationChanged(newConfig);
         if (!isFullscreen()) applyOrientation();
         if (isFullscreen()) Util.hideSystemUI(this);
+        // 转屏后动作条要按新方向重算，否则一直停在进入时那一套
+        if (isVisible(mBinding.control.getRoot())) showControl();
+        else setActionVisible();
         updateTimeBattery();
     }
 
@@ -2311,7 +2355,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         RefreshEvent.history();
         PlaybackService.stop();
         mHandler.removeCallbacksAndMessages(null);
-        App.removeCallbacks(mR1, mR2, mR3, mR4);
+        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5);
         EventBus.getDefault().unregister(this);
         mViewModel.result.removeObserver(mObserveDetail);
         mViewModel.player.removeObserver(mObservePlayer);

@@ -1,19 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="@drawable/shape_center_dialog"
     android:orientation="vertical"
-    android:paddingStart="24dp"
-    android:paddingTop="16dp"
-    android:paddingEnd="24dp">
+    android:paddingStart="20dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="12dp">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_primary"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        tools:text="点播源" />
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/input"
         style="@style/Widget.App.TextInputLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
+        android:layout_marginTop="16dp"
         android:hint="@string/dialog_config_name"
         android:visibility="gone">
 
@@ -34,6 +46,7 @@
         style="@style/Widget.App.TextInputLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
         android:hint="@string/dialog_config_hint"
         app:endIconDrawable="@drawable/ic_action_choose"
         app:endIconMode="custom">
@@ -54,8 +67,31 @@
         style="@style/Widget.App.Button.OutlinedButton.SiteDialog"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
         android:text="@string/dialog_paste"
         app:icon="@drawable/ic_setting_paste"
         app:iconGravity="textStart" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/negative"
+            style="@style/DialogTextButton"
+            android:text="@string/dialog_negative" />
+
+        <TextView
+            android:id="@+id/positive"
+            style="@style/DialogTextButton"
+            android:layout_marginStart="4dp"
+            android:textColor="@color/accent_blue"
+            android:textStyle="bold"
+            tools:text="@string/dialog_positive" />
+
+    </LinearLayout>
+
 </LinearLayout>

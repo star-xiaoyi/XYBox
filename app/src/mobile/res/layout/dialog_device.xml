@@ -4,14 +4,17 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical">
+    android:background="@drawable/shape_center_dialog"
+    android:orientation="vertical"
+    android:paddingTop="20dp"
+    android:paddingBottom="12dp">
 
+    <!-- 标题行：标题 + 扫码 + 刷新 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="16dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="12dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -20,45 +23,95 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/device_select"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="16sp" />
+            android:textColor="@color/text_primary"
+            android:textSize="17sp"
+            android:textStyle="bold" />
 
         <ImageView
             android:id="@+id/mode"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="16dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="8dp"
             android:src="@drawable/ic_sync_two"
             android:tag="0"
-            android:visibility="gone"
-            tools:visibility="visible" />
+            android:tint="@color/text_secondary"
+            android:visibility="gone" />
 
         <ImageView
             android:id="@+id/scan"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="16dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_action_scan" />
+            android:contentDescription="@string/device_scan"
+            android:padding="8dp"
+            android:src="@drawable/ic_action_scan"
+            android:tint="@color/text_secondary" />
 
         <ImageView
             android:id="@+id/refresh"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_action_refresh" />
+            android:contentDescription="@string/device_refresh"
+            android:padding="8dp"
+            android:src="@drawable/ic_action_refresh"
+            android:tint="@color/text_secondary" />
 
     </LinearLayout>
+
+    <!-- 搜索中：转圈 + 文案 -->
+    <LinearLayout
+        android:id="@+id/searching"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ProgressBar
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:indeterminateTint="@color/text_secondary" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/device_searching"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+    <!-- 没搜到设备 -->
+    <TextView
+        android:id="@+id/empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="24dp"
+        android:gravity="center"
+        android:lineSpacingExtra="4dp"
+        android:text="@string/device_empty"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp"
+        android:visibility="gone"
+        tools:visibility="visible" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:clipChildren="false"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
         android:clipToPadding="false"
         android:overScrollMode="never"
-        android:padding="8dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:scrollbars="none"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
         tools:listitem="@layout/adapter_device" />
 

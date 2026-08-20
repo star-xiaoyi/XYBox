@@ -32,7 +32,7 @@
     <string name="detail_search">Searching <xliff:g name="name">%s</xliff:g></string>
 
     <!-- Device -->
-    <string name="device_select">Select devices</string>
+    <string name="device_select">Cast to device</string>
     <string name="device_offline">Device is offline</string>
     <string name="device_scan">Please scan QR Code to bind</string>
 
@@ -84,5 +84,26 @@
     <string name="vod_filter">Filter</string>
 
     <string name="detail_cast">Cast &amp; crew: </string>
+
+    <string name="device_refresh">Refresh</string>
+
+    <string name="device_searching">Searching for devices…</string>
+
+    <string name="device_empty">No devices found
+Make sure both are on the same Wi-Fi</string>
+
+    <string name="play_exit_full">Exit</string>
+
+    <string name="about_dev_title">Development</string>
+
+    <string name="about_dev_body">This project is for learning Android development only. Based on FongMi/TV.</string>
+
+    <string name="about_disclaimer_title">Disclaimer</string>
+
+    <string name="about_disclaimer_body">1. For study and communication only, not for commercial use
+2. All content comes from the internet; contact us to remove any infringement
+3. You bear all consequences of using this app</string>
+
+    <string name="about_github">My links</string>
 
 </resources>

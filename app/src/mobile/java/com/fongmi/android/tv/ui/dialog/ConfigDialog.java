@@ -68,12 +68,22 @@ public class ConfigDialog {
     }
 
     private void initDialog() {
-        dialog = new MaterialAlertDialogBuilder(binding.getRoot().getContext()).setTitle(type == 0 ? R.string.setting_vod : R.string.setting_live).setView(binding.getRoot()).setPositiveButton(edit ? R.string.dialog_edit : R.string.dialog_positive, this::onPositive).setNegativeButton(R.string.dialog_negative, this::onNegative).create();
-        dialog.getWindow().setDimAmount(0);
+        // 标题和按钮都画在布局里，AlertDialog 只当容器用，窗口背景必须透明否则圆角外露白底
+        dialog = new AlertDialog.Builder(binding.getRoot().getContext()).setView(binding.getRoot()).create();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            dialog.getWindow().setDimAmount(0.3f);
+        }
         dialog.show();
+        Context context = binding.getRoot().getContext();
+        int screen = context.getResources().getDisplayMetrics().widthPixels;
+        int width = Math.min((int) (screen * 0.88f), com.fongmi.android.tv.utils.ResUtil.dp2px(400));
+        if (dialog.getWindow() != null) dialog.getWindow().setLayout(width, LinearLayout.LayoutParams.WRAP_CONTENT);
     }
 
     private void initView() {
+        binding.title.setText(type == 0 ? R.string.setting_vod : R.string.setting_live);
+        binding.positive.setText(edit ? R.string.dialog_edit : R.string.dialog_positive);
         binding.name.setText(getConfig().getName());
         binding.url.setText(ori = getConfig().getUrl());
         binding.input.setVisibility(edit ? View.VISIBLE : View.GONE);
@@ -82,6 +92,8 @@ public class ConfigDialog {
 
     private void initEvent() {
         binding.choose.setEndIconOnClickListener(this::onChoose);
+        binding.positive.setOnClickListener(v -> onPositive(dialog, 0));
+        binding.negative.setOnClickListener(v -> onNegative(dialog, 0));
         binding.paste.setOnClickListener(this::onPaste);
         binding.url.addTextChangedListener(new CustomTextListener() {
             @Override
@@ -90,7 +102,7 @@ public class ConfigDialog {
             }
         });
         binding.url.setOnEditorActionListener((textView, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_DONE) dialog.getButton(DialogInterface.BUTTON_POSITIVE).performClick();
+            if (actionId == EditorInfo.IME_ACTION_DONE) binding.positive.performClick();
             return true;
         });
     }

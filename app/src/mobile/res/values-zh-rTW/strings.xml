@@ -21,7 +21,7 @@
     <string name="detail_search">快搜「<xliff:g name="name">%s</xliff:g>」</string>
 
     <!-- Device -->
-    <string name="device_select">選擇裝置</string>
+    <string name="device_select">投螢幕到裝置</string>
     <string name="device_offline">裝置已離線</string>
     <string name="device_scan">請掃描影視 QRCode 進行綁定</string>
 
@@ -73,5 +73,26 @@
     <string name="vod_filter">篩選</string>
 
     <string name="detail_cast">演職人員：</string>
+
+    <string name="device_refresh">重新整理</string>
+
+    <string name="device_searching">正在搜尋裝置…</string>
+
+    <string name="device_empty">沒有找到可用裝置
+請確認兩台裝置在同一個 Wi-Fi 下</string>
+
+    <string name="play_exit_full">退出全螢幕</string>
+
+    <string name="about_dev_title">開發說明</string>
+
+    <string name="about_dev_body">本項目僅用於學習 Android 開發，程式碼改自 FongMi/TV 專案。</string>
+
+    <string name="about_disclaimer_title">免責聲明</string>
+
+    <string name="about_disclaimer_body">1. 本項目僅供學習交流使用，不得用於商業用途
+2. 項目中的內容均來自網路，如有侵權請聯繫刪除
+3. 使用本項目產生的一切後果由使用者自行承擔</string>
+
+    <string name="about_github">我的連結</string>
 
 </resources>
