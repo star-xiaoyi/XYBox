@@ -89,7 +89,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     private void onSync(View view) {
         WebDAVSyncManager manager = WebDAVSyncManager.get();
         if (!manager.isConfigured()) {
-            Notify.show("请先在设置中配置 WebDAV");
+            Notify.tip("请先在设置中配置 WebDAV");
             return;
         }
         view.setEnabled(false);
@@ -98,7 +98,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
             App.post(() -> {
                 view.setEnabled(true);
                 getKeep();
-                Notify.show(result.message);
+                Notify.tip(result.message);
             });
         });
     }

@@ -6,7 +6,6 @@ XYBox 是一个安卓影视 App（点播 + 直播 + 投屏 + 下载），基于 
 
 - 仓库：https://github.com/star-xiaoyi/XYBox
 - 包名：`com.xybox.app`，当前版本 0.1.1
-- 开发规范文档：根目录 `XYBox修改计划书.md`（**做任何改动前先读它**，用户要求修改必须严格遵循计划书）
 
 ## 构建环境（重要）
 
@@ -78,7 +77,6 @@ app/src/leanback/ → 电视端（当前不构建）
 ## 用户偏好（务必遵守）
 
 - 项目数据必须真实，不允许编造。
-- 修改严格遵循 `XYBox修改计划书.md`。
 - 只做手机端；UI 改动参考现有元素风格但保持独立设计，不直接照抄。
 - 改完通常要求：编译 release → adb 安装到手机（设备已连接时）→ 用户真机验收。
 - 发布流程：升 `app/build.gradle` 的 versionName/versionCode → 编译 → git 提交推送 → `gh release create vX.Y.Z <apk路径>` 发布。

@@ -1344,7 +1344,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         long position, duration;
         mHistory.setPosition(position = mPlayers.getPosition());
         mHistory.setDuration(duration = mPlayers.getDuration());
-        if (position >= 0 && duration > 0 && !Setting.isIncognito()) App.execute(() -> mHistory.update());
+        if (position >= 0 && duration > 0 && !Setting.isIncognito()) App.execute(() -> mHistory.updateProgress());
         if (mHistory.getEnding() > 0 && duration > 0 && mHistory.getEnding() + position >= duration) {
             checkEnded(false);
         }
@@ -1432,6 +1432,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             checkNext(notify);
             checkPlayImg();
+            flushProgress();
         }
     }
 
@@ -1576,6 +1577,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mPlayers.pause();
         checkPlayImg();
+        flushProgress();
     }
 
     private void onPlay() {
@@ -1956,11 +1958,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     protected void onStop() {
         super.onStop();
-        savePlaybackProgress();
-        com.fongmi.android.tv.utils.WebDAVSyncManager.get().flushPendingSync();
+        flushProgress();
         if (Setting.isBackgroundOff()) onPaused();
         if (Setting.isBackgroundOff()) mClock.stop();
         setStop(true);
+    }
+
+    /** 暂停 / 播完 / 退出播放器时把最新进度落库并立刻上传，静默无提示。 */
+    private void flushProgress() {
+        savePlaybackProgress();
+        com.fongmi.android.tv.utils.WebDAVSyncManager.get().flushPendingSync();
     }
 
     private void savePlaybackProgress() {

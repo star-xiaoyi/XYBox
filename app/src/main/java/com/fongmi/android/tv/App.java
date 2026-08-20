@@ -301,9 +301,10 @@ public class App extends Application {
 
     private void checkWebDAVAutoSync() {
         removeCallbacks(webdavSyncTask);
-        if (!Setting.isWebDAVAutoSync()) return;
         WebDAVSyncManager manager = WebDAVSyncManager.get();
+        if (!manager.isAutoSyncEnabled()) return;
         if (webdavForegroundSyncPending) {
+            // 冷启动或回到前台：无条件拉一次云端，保证能看到其他设备的最新变化
             webdavForegroundSyncPending = false;
             execute(manager::syncNow);
         } else {
@@ -313,8 +314,8 @@ public class App extends Application {
     }
 
     private void doWebDAVAutoSync() {
-        if (!Setting.isWebDAVAutoSync()) return;
         WebDAVSyncManager manager = WebDAVSyncManager.get();
+        if (!manager.isAutoSyncEnabled()) return;
         execute(manager::performAutoSync);
         post(webdavSyncTask, manager.getAutoSyncIntervalMillis());
     }
@@ -326,7 +327,7 @@ public class App extends Application {
             manager.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
                 @Override
                 public void onAvailable(@NonNull Network network) {
-                    if (Setting.isWebDAVAutoSync()) execute(() -> WebDAVSyncManager.get().syncNow());
+                    if (WebDAVSyncManager.get().isAutoSyncEnabled()) execute(() -> WebDAVSyncManager.get().syncNow());
                 }
             });
         } catch (Exception e) {

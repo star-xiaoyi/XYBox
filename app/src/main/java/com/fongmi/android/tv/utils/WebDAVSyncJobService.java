@@ -8,7 +8,6 @@ import android.content.ComponentName;
 import android.content.Context;
 
 import com.fongmi.android.tv.App;
-import com.fongmi.android.tv.Setting;
 
 import java.util.concurrent.TimeUnit;
 
@@ -29,7 +28,7 @@ public class WebDAVSyncJobService extends JobService {
     }
 
     private static void schedule(boolean immediate) {
-        if (!Setting.isWebDAVAutoSync()) return;
+        if (!WebDAVSyncManager.get().isAutoSyncEnabled()) return;
         JobScheduler scheduler = (JobScheduler) App.get().getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if (scheduler == null) return;
         if (immediate) {

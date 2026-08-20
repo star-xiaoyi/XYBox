@@ -86,7 +86,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
     private void onSync(View view) {
         WebDAVSyncManager manager = WebDAVSyncManager.get();
         if (!manager.isConfigured()) {
-            Notify.show("请先在设置中配置 WebDAV");
+            Notify.tip("请先在设置中配置 WebDAV");
             return;
         }
         view.setEnabled(false);
@@ -95,7 +95,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
             App.post(() -> {
                 view.setEnabled(true);
                 getHistory();
-                Notify.show(result.message);
+                Notify.tip(result.message);
             });
         });
     }

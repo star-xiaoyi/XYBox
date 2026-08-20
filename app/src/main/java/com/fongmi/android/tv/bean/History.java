@@ -297,11 +297,25 @@ public class History {
     }
 
     public History save() {
+        return save(false);
+    }
+
+    /** 播放进度更新：本地照常落库，云端按节流上传。 */
+    public void updateProgress() {
+        try {
+            merge(find(), false);
+            save(true);
+        } catch (Exception e) {
+            com.github.catvod.utils.Logger.e("History.updateProgress: 更新失败 - " + e.getMessage());
+        }
+    }
+
+    private History save(boolean progressOnly) {
         boolean isNew = AppDatabase.get().getHistoryDao().find(getCid(), getKey()) == null;
         AppDatabase.get().getHistoryDao().insertOrUpdate(this);
         com.fongmi.android.tv.utils.WebDAVSyncManager manager = com.fongmi.android.tv.utils.WebDAVSyncManager.get();
-        manager.requestSync();
-        if (isNew) manager.flushPendingSync();
+        if (progressOnly && !isNew) manager.requestProgressSync();
+        else manager.requestSync();
         return this;
     }
 

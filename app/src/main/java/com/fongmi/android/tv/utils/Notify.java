@@ -62,6 +62,12 @@ public class Notify {
         get().makeText(text);
     }
 
+    /** 系统默认样式的轻量提示，跟随日夜主题，用于用户主动触发的操作结果。 */
+    public static void tip(String text) {
+        if (TextUtils.isEmpty(text)) return;
+        App.post(() -> Toast.makeText(App.get(), text, Toast.LENGTH_SHORT).show());
+    }
+
     public static void showCenter(int resId) {
         if (resId != 0) showCenter(ResUtil.getString(resId));
     }
