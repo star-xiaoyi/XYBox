@@ -283,7 +283,7 @@
     <string name="crash_details_title">错误详情</string>
     <string name="crash_details_close">关闭</string>
     <string name="crash_log">错误日志：</string>
-    <string name="crash_copy">复制日志</string>
+    <string name="crash_copy">复制报错信息</string>
 
     <!-- History Visible -->
     <string name="setting_history_visible">显示首页历史</string>

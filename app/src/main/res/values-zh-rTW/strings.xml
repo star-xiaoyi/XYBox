@@ -172,7 +172,7 @@
     <string name="crash_details_title">錯誤詳情</string>
     <string name="crash_details_close">關閉</string>
     <string name="crash_log">錯誤日誌：</string>
-    <string name="crash_copy">複製日誌</string>
+    <string name="crash_copy">複製錯誤資訊</string>
 
     <!-- Hint -->
     <string name="copied">已複製</string>
