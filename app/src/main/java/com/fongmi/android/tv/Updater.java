@@ -1,7 +1,8 @@
 package com.fongmi.android.tv;
 
 import android.app.Activity;
-import android.content.DialogInterface;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -12,11 +13,11 @@ import androidx.appcompat.app.AlertDialog;
 import com.fongmi.android.tv.databinding.DialogUpdateBinding;
 import com.fongmi.android.tv.utils.Download;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.UpdateInstaller;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Logger;
 import com.github.catvod.utils.Path;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -188,21 +189,29 @@ public class Updater implements Download.Callback {
         return anyApk;
     }
 
+    /**
+     * 自绘的居中弹窗：标题、更新说明、进度条、按钮全在同一张卡片里，
+     * 点"立即更新"就地把按钮换成进度条，不再另开一层。
+     */
     private void show(Activity activity, String version, String desc) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
         binding = DialogUpdateBinding.inflate(LayoutInflater.from(activity));
+        binding.title.setText(App.get().getString(R.string.update_version, version));
         binding.desc.setText(TextUtils.isEmpty(desc) ? "有新版本可用，建议更新。" : desc.trim());
-        dialog = new MaterialAlertDialogBuilder(activity)
-                .setTitle(App.get().getString(R.string.update_version, version))
-                .setView(binding.getRoot())
-                .setPositiveButton(R.string.update_confirm, null)
-                .setNegativeButton(R.string.dialog_negative, null)
-                .setCancelable(false)
-                .create();
+        dialog = new AlertDialog.Builder(activity).setView(binding.getRoot()).setCancelable(false).create();
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         dialog.show();
+        setDialogWidth(activity);
         capDescHeight(activity);
-        dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(this::confirm);
-        dialog.getButton(DialogInterface.BUTTON_NEGATIVE).setOnClickListener(this::cancel);
+        binding.positive.setOnClickListener(this::confirm);
+        binding.negative.setOnClickListener(this::cancel);
+    }
+
+    private void setDialogWidth(Activity activity) {
+        if (dialog.getWindow() == null) return;
+        int screen = activity.getResources().getDisplayMetrics().widthPixels;
+        int width = Math.min((int) (screen * 0.88f), ResUtil.dp2px(400));
+        dialog.getWindow().setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
     /**
@@ -230,8 +239,7 @@ public class Updater implements Download.Callback {
             Notify.tip("无法获取下载链接");
             return;
         }
-        dialog.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(false);
-        dialog.getButton(DialogInterface.BUTTON_NEGATIVE).setText(R.string.dialog_negative);
+        binding.buttonGroup.setVisibility(View.GONE);
         binding.progressGroup.setVisibility(View.VISIBLE);
         binding.progress.setIndeterminate(true);
         binding.progressText.setText(R.string.update_downloading);
@@ -272,11 +280,10 @@ public class Updater implements Download.Callback {
     @Override
     public void error(String msg) {
         App.post(() -> {
-            if (binding != null) {
-                binding.progress.setIndeterminate(false);
-                binding.progressText.setText("下载失败：" + msg);
-            }
-            if (dialog != null) dialog.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(true);
+            if (binding == null) return;
+            binding.progress.setIndeterminate(false);
+            binding.progressText.setText("下载失败：" + msg);
+            binding.buttonGroup.setVisibility(View.VISIBLE);
         });
     }
 }

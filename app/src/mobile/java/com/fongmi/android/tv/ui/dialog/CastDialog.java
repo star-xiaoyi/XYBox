@@ -7,7 +7,9 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.FragmentActivity;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
 
 import com.android.cast.dlna.dmc.DLNACastManager;
@@ -33,7 +35,6 @@ import com.fongmi.android.tv.utils.ScanTask;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Path;
 import com.github.catvod.utils.Util;
-import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
 
 import org.fourthline.cling.support.lastchange.EventedValue;
 import org.fourthline.cling.support.model.TransportState;
@@ -50,7 +51,7 @@ import okhttp3.FormBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Response;
 
-public class CastDialog extends BaseDialog implements DeviceAdapter.OnClickListener, ScanTask.Listener, OnDeviceRegistryListener, OnDeviceControlListener, ServiceActionCallback<Unit>, okhttp3.Callback {
+public class CastDialog extends BaseCenterDialog implements DeviceAdapter.OnClickListener, ScanTask.Listener, OnDeviceRegistryListener, OnDeviceControlListener, ServiceActionCallback<Unit>, okhttp3.Callback {
 
     private final FormBody.Builder body;
     private final OkHttpClient client;
@@ -62,6 +63,12 @@ public class CastDialog extends BaseDialog implements DeviceAdapter.OnClickListe
     private Listener listener;
     private CastVideo video;
     private boolean fm;
+
+    private final Runnable mStopSearching = () -> {
+        if (binding == null) return;
+        binding.searching.setVisibility(View.GONE);
+        checkEmpty();
+    };
 
     public static CastDialog create() {
         return new CastDialog();
@@ -96,7 +103,7 @@ public class CastDialog extends BaseDialog implements DeviceAdapter.OnClickListe
     }
 
     public void show(FragmentActivity activity) {
-        for (Fragment f : activity.getSupportFragmentManager().getFragments()) if (f instanceof BottomSheetDialogFragment) return;
+        for (Fragment f : activity.getSupportFragmentManager().getFragments()) if (f instanceof DialogFragment && f.isAdded()) return;
         show(activity.getSupportFragmentManager(), null);
         this.listener = (Listener) activity;
     }
@@ -113,6 +120,23 @@ public class CastDialog extends BaseDialog implements DeviceAdapter.OnClickListe
         setRecyclerView();
         getDevice();
         initDLNA();
+        startSearching();
+    }
+
+    /**
+     * DLNA 搜索没有"结束"回调，这里用一个固定时长的转圈表示正在找，
+     * 超时就收起来，列表还空就给出提示。
+     */
+    private void startSearching() {
+        binding.searching.setVisibility(View.VISIBLE);
+        binding.empty.setVisibility(View.GONE);
+        App.removeCallbacks(mStopSearching);
+        App.post(mStopSearching, 8000);
+    }
+
+    private void checkEmpty() {
+        boolean searching = binding.searching.getVisibility() == View.VISIBLE;
+        binding.empty.setVisibility(adapter.getItemCount() == 0 && !searching ? View.VISIBLE : View.GONE);
     }
 
     @Override
@@ -122,8 +146,13 @@ public class CastDialog extends BaseDialog implements DeviceAdapter.OnClickListe
     }
 
     private void setRecyclerView() {
-        binding.recycler.setHasFixedSize(true);
         binding.recycler.setAdapter(adapter = new DeviceAdapter(this));
+        adapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override
+            public void onChanged() {
+                checkEmpty();
+            }
+        });
     }
 
     private void getDevice() {
@@ -144,6 +173,7 @@ public class CastDialog extends BaseDialog implements DeviceAdapter.OnClickListe
         if (fm) scanTask.start(adapter.getIps());
         DLNACastManager.INSTANCE.search(null);
         adapter.clear();
+        startSearching();
     }
 
     private void onCasted() {
@@ -213,6 +243,7 @@ public class CastDialog extends BaseDialog implements DeviceAdapter.OnClickListe
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        App.removeCallbacks(mStopSearching);
         DLNADevice.get().disconnect();
         EventBus.getDefault().unregister(this);
         DLNACastManager.INSTANCE.unregisterListener(this);

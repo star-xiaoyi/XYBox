@@ -96,5 +96,12 @@
             style="@style/Control.Action"
             android:text="@string/detail_episode" />
 
+        <TextView
+            android:id="@+id/exit"
+            style="@style/Control.Action"
+            android:text="@string/play_exit_full"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
     </LinearLayout>
 </HorizontalScrollView>
