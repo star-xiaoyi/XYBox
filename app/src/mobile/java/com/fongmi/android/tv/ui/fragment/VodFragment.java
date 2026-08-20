@@ -756,7 +756,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
                 if (mBinding == null) return;
                 loadHistory();
                 setRefreshing(false);
-                Notify.show(result.message);
+                Notify.tip(result.message);
             });
         });
     }

@@ -275,7 +275,7 @@ public class WebDAVDialog {
                     }
                     binding.syncButton.setEnabled(true);
                     showStatus(result.message, result.success);
-                    Notify.show(result.message);
+                    Notify.tip(result.message);
                 });
             } catch (Exception e) {
                 App.post(() -> {
@@ -285,7 +285,7 @@ public class WebDAVDialog {
                     }
                     binding.syncButton.setEnabled(true);
                     showStatus("同步失败：" + e.getMessage(), false);
-                    Notify.show("同步失败");
+                    Notify.tip("同步失败");
                     Logger.e("WebDAV: 同步失败: " + e.getMessage());
                 });
             }
@@ -337,23 +337,22 @@ public class WebDAVDialog {
 
         // 验证输入
         if (TextUtils.isEmpty(url)) {
-            Notify.show("请选择服务提供商或输入服务器地址");
+            Notify.tip("请选择服务提供商或输入服务器地址");
             return;
         }
         if (TextUtils.isEmpty(username)) {
-            Notify.show("请输入用户名");
+            Notify.tip("请输入用户名");
             return;
         }
         if (TextUtils.isEmpty(password)) {
-            Notify.show("请输入密码");
+            Notify.tip("请输入密码");
             return;
         }
 
-        // 保存配置（配置了 WebDAV 即默认开启自动同步）
+        // 保存配置（配置了 WebDAV 即自动同步，不需要额外开关）
         Setting.putWebDAVUrl(url);
         Setting.putWebDAVUsername(username);
         Setting.putWebDAVPassword(password);
-        Setting.putWebDAVAutoSync(true);
 
         // 重新加载配置
         syncManager.reloadConfig();
@@ -361,21 +360,15 @@ public class WebDAVDialog {
         // 配置保存后，立即执行一次同步（下载远程数据）
         // 这样新设备配置后就能立即看到其他设备的历史记录
         if (syncManager.isConfigured()) {
-            Notify.show("WebDAV配置已保存，正在同步数据...");
             App.execute(() -> {
                 try {
-                    WebDAVSyncManager.SyncResult result = syncManager.syncNow();
-                    App.post(() -> {
-                        Notify.show(result.message);
-                    });
+                    Notify.tip(syncManager.syncNow().message);
                 } catch (Exception e) {
-                    App.post(() -> {
-                        Notify.show("同步失败，请检查网络连接");
-                    });
+                    Notify.tip("同步失败，请检查网络连接");
                 }
             });
         } else {
-            Notify.show("WebDAV配置已保存");
+            Notify.tip("WebDAV配置已保存");
         }
         
         dialog.dismiss();

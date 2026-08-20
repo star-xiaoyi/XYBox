@@ -519,8 +519,14 @@ public class Setting {
         Prefers.put("webdav_public_url", url);
     }
 
+    /**
+     * 不再提供「自动同步」开关：只要配置了 WebDAV 就按既定策略自动同步。
+     * 保留方法名是为了兼容旧调用点。
+     */
     public static boolean isWebDAVAutoSync() {
-        return Prefers.getBoolean("webdav_auto_sync", false);
+        return !android.text.TextUtils.isEmpty(getWebDAVUrl())
+                && !android.text.TextUtils.isEmpty(getWebDAVUsername())
+                && !android.text.TextUtils.isEmpty(getWebDAVPassword());
     }
 
     public static void putWebDAVAutoSync(boolean autoSync) {

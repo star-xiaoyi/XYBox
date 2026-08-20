@@ -55,7 +55,12 @@ public final class WebDAVSyncManager {
 
     private static final int SCHEMA_VERSION = 3;
     private static final int MAX_ATTEMPTS = 3;
-    private static final long ACTIVE_SYNC_DELAY = 5L * 60 * 1000;
+    /** 本机变更后的上传防抖：连续操作合并成一次同步。 */
+    private static final long DIRTY_SYNC_DELAY = 3L * 1000;
+    /** 播放进度的最小上传间隔：本地每秒保存，云端最多这个频率。 */
+    private static final long PROGRESS_SYNC_INTERVAL = 45L * 1000;
+    /** 前台轮询周期，同时作为 performAutoSync 的跳过阈值。 */
+    private static final long PERIODIC_SYNC_INTERVAL = 5L * 60 * 1000;
     private static final long TOMBSTONE_RETENTION = 120L * 24 * 60 * 60 * 1000;
     private static final String SYNC_FILE = "xybox_sync_v2.json";
     private static final String BACKUP_FILE = "xybox_sync_v2.backup.json";
@@ -67,6 +72,7 @@ public final class WebDAVSyncManager {
     private static final String PREF_SETTINGS_HASH = "webdav_settings_hash_v2";
     private static final String PREF_SETTINGS_TIME = "webdav_settings_time_v2";
     private static final String PREF_LAST_SUCCESS = "webdav_last_success_v2";
+    private static final String PREF_LAST_PROGRESS = "webdav_last_progress_v2";
     private static final String PREF_LAST_ATTEMPT = "webdav_last_attempt_v2";
     private static final String PREF_LAST_STATUS = "webdav_last_status_v2";
     private static final String PREF_PENDING_SYNC = "webdav_pending_sync_v2";
@@ -81,19 +87,13 @@ public final class WebDAVSyncManager {
             .setObjectToNumberStrategy(ToNumberPolicy.LAZILY_PARSED_NUMBER)
             .create();
 
+    /**
+     * 只有真正需要跨设备共享的偏好才进入同步文件。海报大小、界面布局、外观、
+     * 播放器/手势等一律是本机设置，不上传也不接受云端覆盖。
+     * 这里保留的两项是「当前选中的点播源 / 直播源」。
+     */
     private static final Set<String> SETTINGS_WHITELIST = new HashSet<>(Arrays.asList(
-            "wall", "decode", "player_engine", "render", "quality", "size", "viewType",
-            "scale", "scale_live", "buffer", "background", "site_mode", "boot_live",
-            "invert", "across", "change", "caption", "tunnel", "audio_prefer", "prefer_aac",
-            "danmaku_load", "danmaku_size", "danmaku_show", "zhuyin", "speed",
-            "subtitle_text_size", "subtitle_position", "gesture_double_tap_play",
-            "gesture_double_tap_seek", "gesture_seek_seconds", "gesture_brightness",
-            "gesture_volume", "gesture_progress", "live_tab_visible", "history_visible",
-            "ai_ad_block", "config_0", "config_1"
-    ));
-
-    private static final Set<String> FLOAT_SETTINGS = new HashSet<>(Arrays.asList(
-            "danmaku_size", "speed", "subtitle_text_size", "subtitle_position"
+            "config_0", "config_1"
     ));
 
     private static volatile WebDAVSyncManager instance;
@@ -245,8 +245,8 @@ public final class WebDAVSyncManager {
     }
 
     public void performAutoSync() {
-        if (!Setting.isWebDAVAutoSync() || !isConfigured()) return;
-        if (!hasPendingSync() && System.currentTimeMillis() - getLong(PREF_LAST_SUCCESS) < ACTIVE_SYNC_DELAY) return;
+        if (!isAutoSyncEnabled()) return;
+        if (!hasPendingSync() && System.currentTimeMillis() - getLong(PREF_LAST_SUCCESS) < PERIODIC_SYNC_INTERVAL) return;
         syncNow();
     }
 
@@ -261,29 +261,70 @@ public final class WebDAVSyncManager {
         WebDAVSyncJobService.cancel();
     }
 
+    /** 配置了 WebDAV 就自动同步，不再依赖单独的开关。 */
+    public boolean isAutoSyncEnabled() {
+        return isConfigured();
+    }
+
     public void requestSync() {
-        if (!Setting.isWebDAVAutoSync() || !isConfigured()) return;
+        if (!isAutoSyncEnabled()) return;
+        markDirty();
+        scheduleDirtySync(DIRTY_SYNC_DELAY);
+    }
+
+    /**
+     * 播放进度专用：本地已经高频保存，这里只按 {@link #PROGRESS_SYNC_INTERVAL} 节流上传，
+     * 未到窗口时仅记脏，等下一次窗口或 flush（暂停/退出/播完/进后台）时一起带走。
+     */
+    public void requestProgressSync() {
+        if (!isAutoSyncEnabled()) return;
+        markDirty();
+        long last = getLong(PREF_LAST_PROGRESS);
+        long now = System.currentTimeMillis();
+        if (last != 0 && now - last < PROGRESS_SYNC_INTERVAL) return;
+        putLong(PREF_LAST_PROGRESS, now);
+        scheduleDirtySync(DIRTY_SYNC_DELAY);
+    }
+
+    private void markDirty() {
         synchronized (this) {
             dirtyGeneration++;
             if (!Prefers.getBoolean(PREF_PENDING_SYNC)) {
                 Prefers.getPrefers().edit().putBoolean(PREF_PENDING_SYNC, true).commit();
             }
-            WebDAVSyncJobService.schedule();
+        }
+        WebDAVSyncJobService.schedule();
+    }
+
+    private void scheduleDirtySync(long delay) {
+        synchronized (this) {
             if (dirtySyncScheduled) return;
             dirtySyncScheduled = true;
         }
-        App.post(dirtySyncTask, ACTIVE_SYNC_DELAY);
+        App.post(dirtySyncTask, delay);
     }
 
+    /**
+     * 立刻把未同步的数据送上云端。进程还活着时直接在后台线程同步，
+     * 前台服务与 JobScheduler 只作为进程被杀后的兜底。
+     */
     public void flushPendingSync() {
         synchronized (this) {
             if (dirtyGeneration == 0 && !Prefers.getBoolean(PREF_PENDING_SYNC)) return;
             dirtySyncScheduled = false;
-            if (syncing) flushAfterSync = true;
+            if (syncing) {
+                flushAfterSync = true;
+                return;
+            }
         }
         App.removeCallbacks(dirtySyncTask);
-        WebDAVSyncJobService.scheduleImmediate();
-        WebDAVSyncService.start();
+        App.execute(() -> {
+            SyncResult result = syncNow();
+            if (!result.success || hasPendingSync()) {
+                WebDAVSyncJobService.scheduleImmediate();
+                WebDAVSyncService.start();
+            }
+        });
     }
 
     public synchronized boolean hasPendingSync() {
@@ -299,7 +340,7 @@ public final class WebDAVSyncManager {
     }
 
     public long getAutoSyncIntervalMillis() {
-        return ACTIVE_SYNC_DELAY;
+        return PERIODIC_SYNC_INTERVAL;
     }
 
     public String getLastStatus() {
@@ -634,12 +675,17 @@ public final class WebDAVSyncManager {
                 && TextUtils.equals(first.getName(), second.getName());
     }
 
+    /** 提示只给用户主动触发的同步看，所以尽量短：同步完成 / 同步完成：新增5条，删除1条。 */
     private String buildSyncMessage(SyncDelta downloaded, SyncDelta uploaded) {
-        List<String> changes = new ArrayList<>();
-        if (downloaded.hasChanges()) changes.add("下载" + downloaded.describe());
-        if (uploaded.hasChanges()) changes.add("上传" + uploaded.describe());
-        if (changes.isEmpty()) return "同步完成：没有新变化";
-        return "同步完成：" + String.join("；", changes);
+        int added = downloaded.added() + uploaded.added();
+        int updated = downloaded.updated() + uploaded.updated();
+        int deleted = downloaded.deleted() + uploaded.deleted();
+        List<String> items = new ArrayList<>();
+        if (added > 0) items.add("新增" + added + "条");
+        if (updated > 0) items.add("更新" + updated + "条");
+        if (deleted > 0) items.add("删除" + deleted + "条");
+        if (items.isEmpty()) return "同步完成";
+        return "同步完成：" + String.join("，", items);
     }
 
     private void pruneTombstones(Map<String, Long> tombstones) {
@@ -822,6 +868,7 @@ public final class WebDAVSyncManager {
     private void rememberSuccessfulState(SyncEnvelope merged) {
         long now = System.currentTimeMillis();
         putLong(PREF_LAST_SUCCESS, now);
+        putLong(PREF_LAST_PROGRESS, now);
         putLong(PREF_SETTINGS_TIME, merged.settingsUpdatedAt);
         Prefers.put(PREF_SETTINGS_HASH, settingsHash(merged.settings));
         saveLocalTombstones(merged.tombstones);
@@ -841,11 +888,10 @@ public final class WebDAVSyncManager {
     }
 
     private Object normalizeSettingValue(String key, Object value) {
-        if (!(value instanceof Number)) return value;
-        Number number = (Number) value;
-        return FLOAT_SETTINGS.contains(key) ? number.floatValue() : number.intValue();
+        return value;
     }
 
+    /** 云端只回写「当前选中的源」，其余本机设置一律不受同步影响。 */
     private void applySettings(Map<String, Object> settings) {
         if (settings == null) return;
         for (Map.Entry<String, Object> entry : settings.entrySet()) {
@@ -979,6 +1025,7 @@ public final class WebDAVSyncManager {
     }
 
     private SyncResult finish(boolean success, String message, int histories, int keeps) {
+        if (!success && !message.startsWith("同步失败")) message = "同步失败：" + message;
         Prefers.put(PREF_LAST_STATUS, message);
         if (success) Logger.d("WebDAV: " + message); else Logger.e("WebDAV: " + message);
         return new SyncResult(success, message, histories, keeps);
@@ -988,16 +1035,14 @@ public final class WebDAVSyncManager {
         String message = error == null ? "未知错误" : error.getMessage();
         if (message == null) message = error.getClass().getSimpleName();
         String lower = message.toLowerCase();
-        if (lower.contains("401") || lower.contains("unauthorized")) {
-            return "认证失败，请确认用户名和应用密码；坚果云不能使用登录密码";
-        }
-        if (lower.contains("403") || lower.contains("forbidden")) return "服务器拒绝写入，请检查WebDAV权限";
-        if (lower.contains("409") || lower.contains("conflict")) return "服务器拒绝创建同步文件，请检查同步目录是否可写";
-        if (lower.contains("404") || lower.contains("not found")) return "同步目录不存在或地址填写错误";
-        if (lower.contains("timeout")) return "连接超时，联网后会自动重试";
-        if (lower.contains("unknownhost") || lower.contains("unreachable")) return "无法连接服务器，请检查网络和地址";
+        if (lower.contains("401") || lower.contains("unauthorized")) return "认证失败，请检查用户名和应用密码";
+        if (lower.contains("403") || lower.contains("forbidden")) return "服务器拒绝写入，请检查 WebDAV 权限";
+        if (lower.contains("409") || lower.contains("conflict")) return "同步目录不可写";
+        if (lower.contains("404") || lower.contains("not found")) return "同步目录不存在或地址有误";
+        if (lower.contains("timeout")) return "连接超时";
+        if (lower.contains("unknownhost") || lower.contains("unreachable")) return "无法连接 WebDAV";
         if (lower.contains("ssl") || lower.contains("certificate")) return "服务器证书校验失败";
-        return "同步失败：" + message;
+        return message;
     }
 
     private long getLong(String key) {
@@ -1102,30 +1147,19 @@ public final class WebDAVSyncManager {
         boolean metadataChanged;
 
         boolean hasChanges() {
-            return historyAdded + historyUpdated + historyDeleted
-                    + keepAdded + keepUpdated + keepDeleted
-                    + configAdded + configUpdated + configDeleted > 0
-                    || settingsChanged || metadataChanged;
+            return added() + updated() + deleted() > 0 || settingsChanged || metadataChanged;
         }
 
-        String describe() {
-            List<String> items = new ArrayList<>();
-            add(items, historyAdded, "新增", "条观看记录");
-            add(items, historyUpdated, "更新", "条观看记录");
-            add(items, historyDeleted, "删除", "条观看记录");
-            add(items, keepAdded, "新增", "条收藏");
-            add(items, keepUpdated, "更新", "条收藏");
-            add(items, keepDeleted, "删除", "条收藏");
-            add(items, configAdded, "新增", "个播放源");
-            add(items, configUpdated, "更新", "个播放源");
-            add(items, configDeleted, "删除", "个播放源");
-            if (settingsChanged) items.add("更新设置");
-            if (items.isEmpty() && metadataChanged) items.add("更新删除状态");
-            return String.join("、", items);
+        int added() {
+            return historyAdded + keepAdded + configAdded;
         }
 
-        private void add(List<String> items, int count, String action, String unit) {
-            if (count > 0) items.add(action + count + unit);
+        int updated() {
+            return historyUpdated + keepUpdated + configUpdated;
+        }
+
+        int deleted() {
+            return historyDeleted + keepDeleted + configDeleted;
         }
     }
 }
