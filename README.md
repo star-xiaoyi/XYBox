@@ -29,9 +29,9 @@
 
 ## 开源协议
 
-本项目基于 [FongMi/TV](https://github.com/FongMi/TV) 二次开发，遵循 **GNU General Public License v3.0** 协议开源，完整条款见 [LICENSE.md](LICENSE.md)。
+本项目基于 [FongMi/TV](https://github.com/FongMi/TV)，并参考 [Tosencen/XMBOX](https://github.com/Tosencen/XMBOX)（v3.1.6）二次开发，遵循 **GNU General Public License v3.0** 协议开源，完整条款见 [LICENSE.md](LICENSE.md)。
 
-任何基于本项目的分发或修改版本，同样必须以 GPL-3.0 协议开源。
+感谢上述项目及其贡献者。任何基于本项目的分发或修改版本，同样必须以 GPL-3.0 协议开源。
 
 ## 免责声明
 
