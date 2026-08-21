@@ -3,6 +3,7 @@ package com.fongmi.android.tv.download;
 import android.media.MediaMetadataRetriever;
 import android.text.TextUtils;
 
+import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.bean.Download;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.RefreshEvent;
@@ -21,13 +22,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 离线缓存队列：同时最多跑 {@link #MAX_RUNNING} 集，其余排队。
+ * 离线缓存队列：同时最多跑 {@link Setting#getDownloadTask()} 集，其余排队。
  * 状态全部落库，界面靠 {@link RefreshEvent#download()} 刷新，进程被杀后重进也能接着看到进度。
  */
 public class DownloadManager {
 
     private static final String TAG = "DownloadManager";
-    private static final int MAX_RUNNING = 2;
+    /**
+     * 进度落库的最小间隔。跑满带宽时进度回调每秒能来上百次，
+     * 而 SQLite 一次写盘就是几毫秒——全写下去光等磁盘就把速度吃掉了。
+     * 内存里的值随时是新的，一秒落一次库足够界面和通知栏用。
+     */
+    private static final long PERSIST_INTERVAL = 1000;
 
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Map<String, Task> running = new ConcurrentHashMap<>();
@@ -153,7 +159,7 @@ public class DownloadManager {
     }
 
     private synchronized void schedule() {
-        while (running.size() < MAX_RUNNING && !queue.isEmpty()) {
+        while (running.size() < Setting.getDownloadTask() && !queue.isEmpty()) {
             String id = queue.poll();
             Download item = Download.find(id);
             if (item == null || !item.isPending()) continue;
@@ -161,6 +167,22 @@ public class DownloadManager {
             running.put(id, task);
             executor.execute(task);
         }
+    }
+
+    /** 设置里改了同时下载数：调大就把排队的补上来；调小不动已经在跑的，等它们自己下完。 */
+    public synchronized void applyLimit() {
+        schedule();
+        if (isBusy()) DownloadService.ensure();
+        notifyChanged(true);
+    }
+
+    /**
+     * 单集能开几条连接。设置里那个值是上限，实际还要按当前在跑的集数摊薄：
+     * 5 集各开 16 条就是 80 个并发请求，手机扛得住但源站不会给好脸色，
+     * 总量压在预算内既保住了单集速度，也不至于被当成刷流量。
+     */
+    private int threads() {
+        return Math.max(2, Math.min(Setting.getDownloadThread(), Setting.DOWNLOAD_BUDGET / Math.max(1, running.size())));
     }
 
     private void notifyChanged(boolean force) {
@@ -184,6 +206,10 @@ public class DownloadManager {
         synchronized (this) {
             running.remove(id);
             removed.remove(id);
+            // 这一集跑着的时候被删掉又重新加过：那次 enqueue 会因为它还在 running 里被丢掉，
+            // 不在这儿补一次的话它就会永远停在"等待中"，直到重启 App 才被 restore 捡回来
+            Download item = Download.find(id);
+            if (item != null && item.isPending()) enqueue(id);
             schedule();
         }
         notifyChanged(true);
@@ -196,6 +222,24 @@ public class DownloadManager {
         return null;
     }
 
+    /** 通知栏关心的是"这会儿总共跑多快"，单看某一集的速率会让人以为带宽没吃满。 */
+    public long getTotalSpeed() {
+        long speed = 0;
+        for (Task task : running.values()) speed += task.item.getSpeed();
+        return speed;
+    }
+
+    /** 同时跑多集时通知栏只有一条进度条，取平均值才对得上"整体下到哪了"。 */
+    public int getAverageProgress() {
+        int count = 0;
+        int total = 0;
+        for (Task task : running.values()) {
+            total += task.item.getProgress();
+            count++;
+        }
+        return count == 0 ? 0 : total / count;
+    }
+
     public int getPendingCount() {
         return queue.size();
     }
@@ -204,6 +248,7 @@ public class DownloadManager {
 
         private final Download item;
         private volatile boolean cancelled;
+        private volatile long lastPersist;
 
         Task(Download item) {
             this.item = item;
@@ -228,6 +273,10 @@ public class DownloadManager {
             item.setDoneSeg(doneSeg);
             item.setTotalSeg(totalSeg);
             item.setSpeed(speed);
+            // 这里跑在下载线程上，落库和刷界面都得让路，节流后才不会拖慢下载
+            long now = System.currentTimeMillis();
+            if (now - lastPersist < PERSIST_INTERVAL) return;
+            lastPersist = now;
             persist(item);
             notifyChanged(false);
         }
@@ -279,13 +328,14 @@ public class DownloadManager {
             File dir = item.dir();
             File output;
             long duration;
+            int threads = threads();
             boolean hls = address.isHls() || Http.isPlaylist(address.getUrl(), address.getHeaders());
             if (hls) {
-                HlsFetcher fetcher = new HlsFetcher(address.getHeaders(), dir, this);
+                HlsFetcher fetcher = new HlsFetcher(address.getHeaders(), dir, threads, this);
                 output = fetcher.download(address.getUrl());
                 duration = fetcher.getDuration();
             } else {
-                output = new FileFetcher(address.getHeaders(), dir, this).download(address.getUrl());
+                output = new FileFetcher(address.getHeaders(), dir, threads, this).download(address.getUrl());
                 duration = duration(output);
             }
             if (isCancelled()) throw new Http.CancelException();

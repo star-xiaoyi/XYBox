@@ -13,6 +13,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -27,22 +34,32 @@ public class HlsFetcher {
     private static final String TAG = "HlsFetcher";
     private static final Pattern ATTR = Pattern.compile("([A-Z0-9-]+)=(\"[^\"]*\"|[^,]*)");
     private static final int MAX_REDIRECT = 3;
-    private static final int MAX_RETRY = 3;
     public static final String INDEX = "index.m3u8";
 
     private final Map<String, String> headers;
     private final Progress progress;
+    private final int threads;
     private final File dir;
 
     private final List<Item> items = new ArrayList<>();
     private final List<String> lines = new ArrayList<>();
     private final Map<String, Long> cursor = new HashMap<>();
+    private final AtomicInteger doneCount = new AtomicInteger();
+    private final AtomicLong doneBytes = new AtomicLong();
+    private final AtomicLong window = new AtomicLong();
+    /** 报进度用 tryLock 而不是 synchronized：抢不到就跳过这次，绝不让下载线程互相等。 */
+    private final ReentrantLock reporting = new ReentrantLock();
+    private long windowStart = System.currentTimeMillis();
+    private long lastReport;
+    private int lastPercent;
+    private long speed;
     private int keyIndex;
     private int mapIndex;
     private double seconds;
 
-    public HlsFetcher(Map<String, String> headers, File dir, Progress progress) {
+    public HlsFetcher(Map<String, String> headers, File dir, int threads, Progress progress) {
         this.headers = headers == null ? new HashMap<>() : headers;
+        this.threads = Math.max(1, threads);
         this.progress = progress;
         this.dir = dir;
     }
@@ -53,6 +70,9 @@ public class HlsFetcher {
         Playlist playlist = fetchMedia(url, 0);
         parse(playlist.url, playlist.text);
         if (items.isEmpty()) throw new Exception("播放列表里没有分片");
+        // 非 http 的地址（skd:// 之类的 DRM 密钥、data:）根本下不了，
+        // 早点说清楚，别等到发请求时抛个 IllegalArgumentException 把线程带走
+        for (Item item : items) if (!item.url.startsWith("http")) throw new Exception("不支持的分片地址：" + item.url);
         writeIndex();
         fetchItems();
         return new File(dir, INDEX);
@@ -160,91 +180,122 @@ public class HlsFetcher {
         Path.write(new File(dir, INDEX), sb.toString().getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * 并发拉分片。串行下载时每片都要重新走一遍 DNS/TLS/首字节等待，
+     * 单片才几百 KB，RTT 直接把带宽吃光——并发是这里唯一有意义的提速手段。
+     */
     private void fetchItems() throws Exception {
-        long done = 0;
-        int index = 0;
-        long[] window = {System.currentTimeMillis(), 0, 0}; // 窗口起点 / 窗口字节 / 当前速度
-        long[] flight = new long[1];
-        // 续传时先把已有分片点清楚、按真实进度报一次，
-        // 否则界面会从 0% 重新爬一遍，看起来像是白下了
+        List<Item> todo = new ArrayList<>();
         for (Item item : items) {
             File target = new File(dir, item.name);
-            if (!target.exists() || target.length() == 0) continue;
-            done += target.length();
-            ++index;
-        }
-        report(index, done, 0);
-        done = 0;
-        index = 0;
-        for (Item item : items) {
-            if (progress.isCancelled()) throw new Http.CancelException();
-            File target = new File(dir, item.name);
+            // 续传时先把已有分片点清楚，进度才不会从 0% 重新爬一遍
             if (target.exists() && target.length() > 0) {
-                // 已经在盘上的分片直接跳过，进度没变化就不必再报
-                done += target.length();
-                ++index;
-                continue;
+                doneCount.incrementAndGet();
+                doneBytes.addAndGet(target.length());
+            } else {
+                todo.add(item);
             }
+        }
+        report(true);
+        if (todo.isEmpty()) return;
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(threads, todo.size()));
+        CountDownLatch latch = new CountDownLatch(todo.size());
+        AtomicReference<Exception> error = new AtomicReference<>();
+        for (Item item : todo) pool.execute(() -> fetchItem(item, error, latch));
+        latch.await();
+        pool.shutdownNow();
+        if (progress.isCancelled()) throw new Http.CancelException();
+        if (error.get() != null) throw error.get();
+        // 逐个对账。只看"有没有人报错"是不够的：线程可能因为取消标记中途翻回来、
+        // 或者撞上非 IO 的意外而悄悄退场，latch 照样减到零。
+        // 少一片就是花屏或直接播不了，宁可报失败也不能交一个残缺的视频出去
+        for (Item item : items) {
+            File target = new File(dir, item.name);
+            if (!target.exists() || target.length() == 0) throw new Exception("分片缺失：" + item.name);
+        }
+    }
+
+    private void fetchItem(Item item, AtomicReference<Exception> error, CountDownLatch latch) {
+        try {
+            if (progress.isCancelled() || error.get() != null) return;
+            File target = new File(dir, item.name);
             IOException last = null;
-            final long base = done;
-            final int current = index;
-            for (int retry = 0; retry < MAX_RETRY; retry++) {
-                if (progress.isCancelled()) throw new Http.CancelException();
+            for (int attempt = 0; ; attempt++) {
+                if (progress.isCancelled() || error.get() != null) return;
                 try {
-                    flight[0] = 0;
                     Http.download(item.url, headers, target, item.range, bytes -> {
-                        if (progress.isCancelled()) return false;
-                        flight[0] += bytes;
-                        tick(window, bytes);
-                        report(current, base + flight[0], window[2]);
+                        if (progress.isCancelled() || error.get() != null) return false;
+                        doneBytes.addAndGet(bytes);
+                        window.addAndGet(bytes);
+                        report(false);
                         return true;
                     });
                     last = null;
                     break;
                 } catch (Http.CancelException e) {
-                    throw e;
+                    return;
                 } catch (IOException e) {
                     last = e;
                     Logger.e(TAG, e);
-                    sleep(500L * (retry + 1));
+                    long wait = Http.backoff(e, attempt);
+                    if (wait < 0) break;
+                    Http.sleep(wait);
                 }
             }
             // 分片失败必须让整个任务失败，不能吞掉——否则会拼出一个缺片的残缺视频还报成功
-            if (last != null) throw new Exception("分片 " + (index + 1) + "/" + items.size() + " 下载失败：" + last.getMessage());
-            done += target.length();
-            report(++index, done, window[2]);
+            if (last != null) error.compareAndSet(null, new Exception("分片下载失败：" + last.getMessage()));
+            else {
+                doneCount.incrementAndGet();
+                report(true);
+            }
+        } catch (Throwable e) {
+            // 分片地址不是 http 时 Request.Builder 抛的是 IllegalArgumentException，
+            // 不接住的话线程直接死掉，还会顺着默认异常处理器把整个 App 带崩
+            Logger.e(TAG, e);
+            error.compareAndSet(null, e instanceof Exception ? (Exception) e : new Exception(e));
+        } finally {
+            latch.countDown();
         }
     }
 
-    /** 每秒结算一次速度，避免每读一块就算一次抖得没法看。 */
-    private void tick(long[] window, long bytes) {
-        window[1] += bytes;
-        long now = System.currentTimeMillis();
-        long elapsed = now - window[0];
-        if (elapsed < 1000) return;
-        window[2] = window[1] * 1000 / elapsed;
-        window[0] = now;
-        window[1] = 0;
-    }
-
-    private long lastReport;
-    private int lastPercent;
-
-    private void report(int index, long done, long speed) {
-        long now = System.currentTimeMillis();
-        if (now - lastReport < 400 && index < items.size()) return;
-        lastReport = now;
-        int percent = items.isEmpty() ? 0 : (int) (index * 100L / items.size());
-        // 进度只许往前，任何时候都不该让用户看见百分比倒退
-        lastPercent = percent = Math.max(percent, lastPercent);
-        progress.onProgress(percent, done, 0, index, items.size(), speed);
-    }
-
-    private void sleep(long millis) {
+    /**
+     * 多个线程都会往这里报数：每 400ms 出一次进度，每秒结算一次速度。
+     * 抢不到锁说明已经有线程在报了，直接放弃这一次——报进度要给下载让路，
+     * 用 synchronized 会让所有下载线程排队等写库，速度直接掉一截。
+     */
+    private void report(boolean force) {
+        if (!reporting.tryLock()) return;
         try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            long now = System.currentTimeMillis();
+            if (!force && now - lastReport < 400) return;
+            lastReport = now;
+            long elapsed = now - windowStart;
+            if (elapsed >= 1000) {
+                speed = window.getAndSet(0) * 1000 / elapsed;
+                windowStart = now;
+            }
+            int done = doneCount.get();
+            int percent = items.isEmpty() ? 0 : (int) (done * 100L / items.size());
+            // 进度只许往前，任何时候都不该让用户看见百分比倒退
+            lastPercent = percent = Math.max(percent, lastPercent);
+            progress.onProgress(percent, doneBytes.get(), 0, done, items.size(), speed);
+        } finally {
+            reporting.unlock();
+        }
+    }
+
+    /** 播放列表里所有 EXTINF 之和，秒。播本地 m3u8 时元数据读不出时长，靠它兜底。 */
+    public long getDuration() {
+        return (long) seconds;
+    }
+
+    private static double duration(String line) {
+        try {
+            String value = line.substring(line.indexOf(':') + 1);
+            int comma = value.indexOf(',');
+            return Double.parseDouble((comma == -1 ? value : value.substring(0, comma)).trim());
+        } catch (Exception e) {
+            return 0;
         }
     }
 
@@ -265,21 +316,6 @@ public class HlsFetcher {
             return new long[]{length, offset};
         } catch (Exception e) {
             return def;
-        }
-    }
-
-    /** 播放列表里所有 EXTINF 之和，秒。播本地 m3u8 时元数据读不出时长，靠它兜底。 */
-    public long getDuration() {
-        return (long) seconds;
-    }
-
-    private static double duration(String line) {
-        try {
-            String value = line.substring(line.indexOf(':') + 1);
-            int comma = value.indexOf(',');
-            return Double.parseDouble((comma == -1 ? value : value.substring(0, comma)).trim());
-        } catch (Exception e) {
-            return 0;
         }
     }
 

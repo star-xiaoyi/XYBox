@@ -31,6 +31,13 @@
     <string name="download_tasks">Caching</string>
     <string name="download_empty">Nothing cached yet</string>
     <string name="download_task_empty">No cache tasks</string>
+    <string name="download_setting">Cache speed</string>
+    <string name="download_concurrent_task">Episodes at once</string>
+    <string name="download_concurrent_task_value"><xliff:g name="count" example="3">%d</xliff:g></string>
+    <string name="download_concurrent_task_hint">More at once shares the bandwidth, so each episode gets slower.</string>
+    <string name="download_connection">Connections per episode</string>
+    <string name="download_connection_value"><xliff:g name="count" example="8">%d</xliff:g></string>
+    <string name="download_connection_hint">More connections go faster, but some servers throttle or reject them. Applies to episodes started from now on.</string>
     <string name="download_count">Cached <xliff:g name="count">%s</xliff:g></string>
     <string name="download_running_count">Caching <xliff:g name="count">%s</xliff:g></string>
     <string name="download_state_pending">Queued</string>

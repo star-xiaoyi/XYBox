@@ -16,6 +16,7 @@ import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.ui.adapter.DownloadAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
+import com.fongmi.android.tv.ui.dialog.DownloadSettingDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.greenrobot.eventbus.Subscribe;
@@ -55,6 +56,7 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
     protected void initEvent() {
         mBinding.back.setOnClickListener(v -> finish());
         mBinding.delete.setOnClickListener(this::onDelete);
+        mBinding.setting.setOnClickListener(v -> DownloadSettingDialog.create(this).show());
     }
 
     private void refresh() {

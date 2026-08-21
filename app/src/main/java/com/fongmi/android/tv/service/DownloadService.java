@@ -102,11 +102,15 @@ public class DownloadService extends Service {
     /**
      * 通知栏排版：标题是片名，副标题是集名，正文写状态和速率，右侧带百分比进度条。
      * 一眼要能分清"在缓存哪部剧的哪一集、进度多少"。
+     * <p>
+     * 同时缓存多集时改成汇总视角：只挑其中一集显示会让人以为带宽只跑了那么点，
+     * 标题换成集数、速率取总和、进度取平均，才对得上用户实际看到的下载量。
      */
     private Notification build() {
         DownloadManager download = DownloadManager.get();
         Download item = download.getCurrent();
         int pending = download.getPendingCount();
+        int running = download.getRunningCount();
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_action_download)
                 .setContentIntent(intent())
@@ -119,18 +123,20 @@ public class DownloadService extends Service {
             builder.setProgress(0, 0, true);
             return builder.build();
         }
-        builder.setContentTitle(item.getVodName());
-        builder.setContentText(text(item));
-        if (!TextUtils.isEmpty(item.getEpisodeName())) builder.setSubText(item.getEpisodeName());
+        boolean multi = running > 1;
+        int progress = multi ? download.getAverageProgress() : item.getProgress();
+        builder.setContentTitle(multi ? getString(R.string.download_running_title, String.valueOf(running)) : item.getVodName());
+        builder.setContentText(text(item, download.getTotalSpeed()));
+        if (!multi && !TextUtils.isEmpty(item.getEpisodeName())) builder.setSubText(item.getEpisodeName());
         if (pending > 0) builder.setContentInfo(getString(R.string.download_queued, String.valueOf(pending)));
-        builder.setProgress(100, item.getProgress(), item.getProgress() <= 0);
+        builder.setProgress(100, progress, progress <= 0);
         return builder.build();
     }
 
     /** 正文：状态 · 速率，速率还没算出来时就只留状态。 */
-    private String text(Download item) {
+    private String text(Download item, long total) {
         String state = getString(item.isRunning() ? R.string.download_state_running : R.string.download_state_pending);
-        String speed = speed(item.getSpeed());
+        String speed = speed(total);
         return TextUtils.isEmpty(speed) ? state : state + "  ·  " + speed;
     }
 

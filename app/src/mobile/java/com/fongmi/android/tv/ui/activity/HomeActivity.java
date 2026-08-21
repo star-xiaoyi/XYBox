@@ -171,7 +171,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
             public void error(String msg) {
                 RefreshEvent.config();
                 StateEvent.empty();
-                Notify.show(msg);
+                // 断网时配置当然拉不下来，别把"配置获取失败"甩给用户，先说清是网络问题
+                Notify.show(com.fongmi.android.tv.utils.Util.isNetworkAvailable() ? msg : getString(R.string.error_network));
             }
         };
     }

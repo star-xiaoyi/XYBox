@@ -17,6 +17,14 @@ public class Setting {
     public static final int ACCENT_BLUE = 1;
     public static final int ACCENT_GREEN = 2;
     public static final int ACCENT_PURPLE = 3;
+    public static final int DOWNLOAD_TASK_MAX = 5;
+    public static final int DOWNLOAD_THREAD_MIN = 2;
+    public static final int DOWNLOAD_THREAD_MAX = 16;
+    /**
+     * 全局连接预算。5 集各开 16 条就是 80 个并发请求，手机扛得住但源站不一定，
+     * 单集的连接数会按当前在跑的集数摊到这个预算里。
+     */
+    public static final int DOWNLOAD_BUDGET = 32;
 
     public static int getThemeMode() {
         int mode = Prefers.getInt("theme_mode", THEME_DARK);
@@ -154,6 +162,28 @@ public class Setting {
 
     public static void putBuffer(int buffer) {
         Prefers.put("buffer", buffer);
+    }
+
+    /** 同时缓存几集。太多会把带宽摊薄，单集反而更慢，所以封顶 5。 */
+    public static int getDownloadTask() {
+        return Math.min(Math.max(Prefers.getInt("download_task", 3), 1), DOWNLOAD_TASK_MAX);
+    }
+
+    public static void putDownloadTask(int count) {
+        Prefers.put("download_task", count);
+    }
+
+    /**
+     * 单集开几条连接。串行下载时每个分片都要重走 DNS/TLS/首字节等待，
+     * 光 RTT 就把带宽吃光了，并发是这里唯一有意义的提速手段；
+     * 但源站限流大多按连接数算，开太多会挨 403/429，所以封顶 16。
+     */
+    public static int getDownloadThread() {
+        return Math.min(Math.max(Prefers.getInt("download_thread", 8), DOWNLOAD_THREAD_MIN), DOWNLOAD_THREAD_MAX);
+    }
+
+    public static void putDownloadThread(int thread) {
+        Prefers.put("download_thread", thread);
     }
 
     public static int getBackground() {

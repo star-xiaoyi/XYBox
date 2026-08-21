@@ -13,6 +13,7 @@
     <string name="download_title">正在缓存</string>
     <string name="download_pending">准备中…</string>
     <string name="download_queued">还有 <xliff:g name="count">%s</xliff:g> 集</string>
+    <string name="download_running_title">正在缓存 <xliff:g name="count">%s</xliff:g> 集</string>
 
     <!-- Live -->
     <string name="live_pass">密码</string>

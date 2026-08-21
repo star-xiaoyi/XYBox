@@ -11,6 +11,7 @@ import java.io.RandomAccessFile;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import okhttp3.ConnectionPool;
 import okhttp3.Headers;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -19,13 +20,25 @@ import okhttp3.Response;
 /** 单个 HTTP 资源的下载，负责断点续传、限速统计和取消。 */
 final class Http {
 
-    private static final int BUFFER = 64 * 1024;
+    private static final int BUFFER = 128 * 1024;
+    private static volatile OkHttpClient client;
 
     private Http() {
     }
 
+    /**
+     * 下载专用的 client：并发拉分片时连接池要够大，否则每个分片都要重新握手，
+     * 光 TLS 往返就把速度吃掉了。沿用 App 的 DoH / 代理设置。
+     */
     static OkHttpClient client() {
-        return OkHttp.client(TimeUnit.SECONDS.toMillis(30));
+        if (client != null) return client;
+        synchronized (Http.class) {
+            if (client == null) client = OkHttp.client(TimeUnit.SECONDS.toMillis(30)).newBuilder()
+                    .connectionPool(new ConnectionPool(64, 5, TimeUnit.MINUTES))
+                    .retryOnConnectionFailure(true)
+                    .build();
+        }
+        return client;
     }
 
     static Headers headers(Map<String, String> headers) {
@@ -42,7 +55,7 @@ final class Http {
     static String string(String url, Map<String, String> headers) throws IOException {
         Request request = new Request.Builder().url(url).headers(headers(headers)).build();
         try (Response response = client().newCall(request).execute()) {
-            if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
+            if (!response.isSuccessful()) throw new CodeException(response.code());
             return response.body().string();
         }
     }
@@ -89,7 +102,7 @@ final class Http {
         Request request = builder.build();
         try (Response response = client().newCall(request).execute()) {
             int code = response.code();
-            if (code != 200 && code != 206) throw new IOException("HTTP " + code);
+            if (code != 200 && code != 206) throw new CodeException(code);
             // 服务端不认 Range 就整份重来，否则会把响应体接在半截文件后面拼成坏文件
             boolean append = from > 0 && code == 206;
             if (from > 0 && !append) from = 0;
@@ -150,10 +163,53 @@ final class Http {
         }
     }
 
+    private static final int MAX_RETRY = 3;
+    private static final int MAX_RETRY_THROTTLED = 6;
+
+    /**
+     * 这次失败后该睡多久，返回负数表示别再试了。
+     * <p>
+     * 并发调高以后 429/403 会变成常态，那不是"源挂了"而是"你太快了"，
+     * 判整集失败太粗暴——多给几次机会并指数退避，等源站放行；
+     * 普通错误还是重试三次就够，再多只是拖时间。
+     */
+    static long backoff(IOException e, int attempt) {
+        boolean throttled = e instanceof CodeException && ((CodeException) e).isThrottled();
+        if (attempt + 1 >= (throttled ? MAX_RETRY_THROTTLED : MAX_RETRY)) return -1;
+        return throttled ? Math.min(8000L, 1000L << attempt) : 500L * (attempt + 1);
+    }
+
+    static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     static class CancelException extends IOException {
 
         CancelException() {
             super("已取消");
+        }
+    }
+
+    /** 带状态码的失败，调用方靠它区分"源站限流"和"真的挂了"，退避策略完全不同。 */
+    static class CodeException extends IOException {
+
+        private final int code;
+
+        CodeException(int code) {
+            super("HTTP " + code);
+            this.code = code;
+        }
+
+        /**
+         * 限流类响应：再快也没用，只能等。403 也算进来是因为不少源站
+         * 并发超标时直接返回 403 而不是 429，用 429 的退避方式重试反而更容易活。
+         */
+        boolean isThrottled() {
+            return code == 429 || code == 503 || code == 403;
         }
     }
 }
