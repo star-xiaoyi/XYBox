@@ -81,9 +81,14 @@ public class Path {
         return mkdir(new File(cache() + File.separator + "thunder"));
     }
 
+    /**
+     * 离线缓存根目录。放应用私有目录（/Android/data/<pkg>/files/Download），
+     * Android 10+ 分区存储下无需任何存储权限即可读写，卸载时随应用一起清理。
+     */
     public static File download() {
-        // 使用外部存储的 TV/Download 目录，避免被系统清理
-        return mkdir(new File(tv() + File.separator + "Download"));
+        File external = Init.context().getExternalFilesDir(null);
+        File base = external == null ? files() : external;
+        return mkdir(new File(base + File.separator + "Download"));
     }
 
     public static File root(String name) {

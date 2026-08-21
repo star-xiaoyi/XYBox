@@ -66,6 +66,7 @@ import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.CastMember;
 import com.fongmi.android.tv.bean.CastVideo;
 import com.fongmi.android.tv.bean.Danmaku;
+import com.fongmi.android.tv.bean.Download;
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.History;
@@ -83,6 +84,7 @@ import com.fongmi.android.tv.event.CastEvent;
 import com.fongmi.android.tv.event.ErrorEvent;
 import com.fongmi.android.tv.event.PlayerEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.player.Players;
 import com.fongmi.android.tv.player.exo.ExoUtil;
@@ -102,6 +104,7 @@ import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.ui.dialog.CastDialog;
 import com.fongmi.android.tv.ui.dialog.ControlDialog;
 import com.fongmi.android.tv.ui.dialog.DanmakuDialog;
+import com.fongmi.android.tv.ui.dialog.DownloadEpisodeDialog;
 import com.fongmi.android.tv.ui.dialog.EpisodeGridDialog;
 import com.fongmi.android.tv.ui.dialog.EpisodeListDialog;
 import com.fongmi.android.tv.ui.dialog.InfoDialog;
@@ -172,6 +175,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private float mHandleDown;
     private boolean mDragging;
     private boolean mPortraitLock;
+    private int mCachedSize = -1;
     private int mVideoBase;
     private ValueAnimator mWidthAnimator;
     private boolean stop;
@@ -208,6 +212,24 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     public static void cast(Activity activity, History history) {
         start(activity, history.getSiteKey(), history.getVodId(), history.getVodName(), history.getVodPic());
+    }
+
+    /**
+     * 从离线缓存进来：仍然用原站源的 key/vodId 打开详情页，观看记录才不会被离线记录挤掉；
+     * 只是多带一个 offline 标记，让页面默认选中「离线缓存」那条线路。
+     */
+    public static void download(Activity activity, Download.Group group) {
+        Intent intent = new Intent(activity, VideoActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.putExtra("offline", true);
+        intent.putExtra("name", group.getVodName());
+        intent.putExtra("pic", group.getVodPic());
+        intent.putExtra("key", group.getSiteKey());
+        intent.putExtra("id", group.getVodId());
+        activity.startActivity(intent);
+    }
+
+    private boolean isOffline() {
+        return getIntent().getBooleanExtra("offline", false);
     }
 
     public static void collect(Activity activity, String key, String id, String name, String pic) {
@@ -488,6 +510,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.handleLand.setOnTouchListener(this::onHandleTouch);
         mBinding.name.setOnClickListener(view -> onName());
         mBinding.more.setOnClickListener(view -> onMore());
+        mBinding.download.setOnClickListener(view -> onDownload());
         mBinding.content.setOnClickListener(view -> onContent());
         mBinding.reverse.setOnClickListener(view -> onReverse());
         mBinding.name.setOnLongClickListener(view -> onChange());
@@ -619,7 +642,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void setDetail(Result result) {
         mBinding.swipeLayout.setRefreshing(false);
-        if (result.getList().isEmpty()) setEmpty(result.hasMsg());
+        Vod offline = result.getList().isEmpty() ? getOfflineVod() : null;
+        // 站源拉不到详情（多半是断网）而本地有缓存时，直接用缓存把页面撑起来
+        if (offline != null) setDetail(offline);
+        else if (result.getList().isEmpty()) setEmpty(result.hasMsg());
         else setDetail(result.getList().get(0));
         // 只在有错误或重要消息时显示提示
         if (result.hasMsg() && result.getList().isEmpty()) {
@@ -655,6 +681,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         setCast(item);
         updateContentExpand();
         mBinding.contentLayout.setVisibility(mBinding.content.getVisibility());
+        addOfflineFlag(item);
         mFlagAdapter.addAll(item.getVodFlags());
         setMeta(item);
         setTags(item);
@@ -662,6 +689,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         App.removeCallbacks(mR4);
         checkHistory(item);
         checkFlag(item);
+        checkOffline();
         checkKeepImg();
         checkQuick();
     }
@@ -906,7 +934,128 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.reverse.setVisibility(items.size() < 2 ? View.GONE : View.VISIBLE);
         mBinding.more.setVisibility(items.size() < 10 ? View.GONE : View.VISIBLE);
         mBinding.more.setText(getString(R.string.detail_episode_all, String.valueOf(items.size())));
+        markCached(items);
         mEpisodeAdapter.addAll(items);
+        setDownloadVisible(!items.isEmpty());
+    }
+
+    /** 当前这部剧的缓存聚合键就是片名，和观看记录一样跨源合并。 */
+    private String getGroupKey() {
+        return Download.buildGroupKey(getVodName());
+    }
+
+    /** 本地缓存拼出来的详情，只在站源那边什么都没拿到时用来兜底。 */
+    private Vod getOfflineVod() {
+        Result result = SiteViewModel.offlineResult(Download.buildGroupKey(getName()));
+        return result.getList().isEmpty() ? null : result.getList().get(0);
+    }
+
+    /**
+     * 本地有缓存就在线路列表末尾挂一条「离线缓存」。
+     * 放最后是为了不抢默认选中——有网时照常走站源线路，用户想省流量可以手动切过来。
+     */
+    private void addOfflineFlag(Vod item) {
+        Result result = SiteViewModel.offlineResult(Download.buildGroupKey(item.getVodName(getName())));
+        if (result.getList().isEmpty()) return;
+        List<Flag> flags = result.getList().get(0).getVodFlags();
+        if (flags.isEmpty()) return;
+        // 兜底出来的详情本身就是这条线路，别再挂一遍
+        if (item.getVodFlags().contains(flags.get(0))) return;
+        item.getVodFlags().add(flags.get(0));
+    }
+
+    /** 从缓存页进来、或者当前没网，就把默认线路切到「离线缓存」。 */
+    private void checkOffline() {
+        if (!isOffline() && Util.isNetworkAvailable()) return;
+        Flag offline = mFlagAdapter.find(ResUtil.getString(R.string.download_flag));
+        if (offline != null) onItemClick(offline);
+    }
+
+    private String getVodName() {
+        return mCurrentVod == null || mCurrentVod.getVodName().isEmpty() ? getName() : mCurrentVod.getVodName();
+    }
+
+    /** 给已经缓存好的集打标，剧集胶囊右侧会多一个小角标。 */
+    private void markCached(List<Episode> items) {
+        List<String> keys = getCachedKeys();
+        mCachedSize = keys.size();
+        for (Episode item : items) item.setCached(keys.contains(Download.episodeKey(item.getName())));
+    }
+
+    /** 用集号比对，别的源里集名写法不同（第01集 / 1）也能认出来是同一集。 */
+    private List<String> getCachedKeys() {
+        List<String> keys = new ArrayList<>();
+        if (SiteViewModel.DOWNLOAD_KEY.equals(getKey())) return keys;
+        for (Download item : Download.getByGroup(getGroupKey())) {
+            if (!item.isDone()) continue;
+            String key = Download.episodeKey(item.getEpisodeName());
+            if (!keys.contains(key)) keys.add(key);
+        }
+        return keys;
+    }
+
+    /** 离线播放进来的详情页本身就是缓存内容，没有再缓存一遍的道理。 */
+    private void setDownloadVisible(boolean visible) {
+        boolean enabled = visible && !SiteViewModel.DOWNLOAD_KEY.equals(getKey());
+        mBinding.download.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        if (enabled) setDownloadText();
+    }
+
+    /** 按钮平时是「缓存」，这部剧有任务在跑时直接变成「缓存中 45%」。 */
+    private void setDownloadText() {
+        if (mBinding.download.getVisibility() != View.VISIBLE) return;
+        List<Download> items = Download.getByGroup(getGroupKey());
+        int total = 0;
+        int count = 0;
+        for (Download item : items) {
+            if (item.isDone()) continue;
+            total += item.getProgress();
+            ++count;
+        }
+        if (count == 0) mBinding.download.setText(R.string.download_entry);
+        else mBinding.download.setText(getString(R.string.download_entry_progress, String.valueOf(total / count)));
+    }
+
+    /**
+     * 缓存状态变了：按钮上的进度实时刷；剧集角标只在「已缓存集数」真的变了才重绘，
+     * 进度事件每秒来两次，无脑重绘整排胶囊会闪。
+     */
+    private void onDownloadRefresh() {
+        setDownloadText();
+        if (mEpisodeAdapter.isEmpty()) return;
+        if (getCachedKeys().size() == mCachedSize) return;
+        markCached(mEpisodeAdapter.getItems());
+        notifyItemChanged(mEpisodeAdapter);
+    }
+
+    private void onDownload() {
+        if (mEpisodeAdapter.isEmpty()) return;
+        DownloadEpisodeDialog.create()
+                .episodes(mEpisodeAdapter.getItems())
+                .groupKey(getGroupKey())
+                .callback(this::startDownload)
+                .show(this);
+    }
+
+    private void startDownload(List<Episode> items) {
+        String name = getVodName();
+        String pic = mCurrentVod == null || mCurrentVod.getVodPic().isEmpty() ? getPic() : mCurrentVod.getVodPic();
+        String flag = getFlag().getFlag();
+        List<Download> downloads = new ArrayList<>();
+        for (Episode item : items) {
+            Download download = Download.create(getKey(), getId(), name, pic, flag, item);
+            // 简介等元信息一起存下来，离线详情页才不是一片空白
+            if (mCurrentVod != null) {
+                download.setVodContent(mCurrentVod.getVodContent());
+                download.setVodYear(mCurrentVod.getVodYear());
+                download.setVodArea(mCurrentVod.getVodArea());
+                download.setVodType(mCurrentVod.getTypeName());
+            }
+            downloads.add(download);
+        }
+        DownloadManager.get().add(downloads);
+        Notify.show(getString(R.string.download_added, String.valueOf(downloads.size())));
+        setDownloadText();
     }
 
     private void seamless(Flag flag) {
@@ -1671,6 +1820,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (isRedirect()) return;
         if (event.getType() == RefreshEvent.Type.DETAIL) getDetail();
         else if (event.getType() == RefreshEvent.Type.PLAYER) onRefresh();
+        else if (event.getType() == RefreshEvent.Type.DOWNLOAD) onDownloadRefresh();
         else if (event.getType() == RefreshEvent.Type.SUBTITLE) mPlayers.setSub(Sub.from(event.getPath()));
         else if (event.getType() == RefreshEvent.Type.DANMAKU) mPlayers.setDanmaku(Danmaku.from(event.getPath()));
     }

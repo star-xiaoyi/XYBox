@@ -26,25 +26,13 @@
             android:tint="@color/text_primary" />
 
         <TextView
-            android:id="@+id/title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/app_download"
+            android:text="@string/download_tasks"
             android:textColor="@color/text_primary"
             android:textSize="20sp"
             android:textStyle="bold" />
-
-        <ImageView
-            android:id="@+id/task"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginStart="12dp"
-            android:background="@drawable/shape_icon_circle"
-            android:contentDescription="@string/download_tasks"
-            android:padding="8dp"
-            android:src="@drawable/ic_action_download_list"
-            android:tint="@color/text_primary" />
 
         <ImageView
             android:id="@+id/delete"
@@ -68,14 +56,10 @@
             android:id="@+id/recycler"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_marginTop="-8dp"
             android:clipChildren="false"
             android:clipToPadding="false"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
             android:paddingBottom="8dp" />
 
-        <!-- 空状态Lottie动画 -->
         <include
             android:id="@+id/emptyLayout"
             layout="@layout/view_empty_lottie"

@@ -130,6 +130,10 @@ public class Vod implements Parcelable {
         return TextUtils.isEmpty(typeName) ? "" : typeName.trim();
     }
 
+    public void setTypeName(String typeName) {
+        this.typeName = typeName;
+    }
+
     public String getVodPic() {
         return TextUtils.isEmpty(vodPic) ? "" : vodPic.trim();
     }
@@ -146,8 +150,16 @@ public class Vod implements Parcelable {
         return TextUtils.isEmpty(vodYear) ? "" : vodYear.trim();
     }
 
+    public void setVodYear(String vodYear) {
+        this.vodYear = vodYear;
+    }
+
     public String getVodArea() {
         return TextUtils.isEmpty(vodArea) ? "" : vodArea.trim();
+    }
+
+    public void setVodArea(String vodArea) {
+        this.vodArea = vodArea;
     }
 
     public String getVodDirector() {
@@ -160,6 +172,10 @@ public class Vod implements Parcelable {
 
     public String getVodContent() {
         return TextUtils.isEmpty(vodContent) ? "" : vodContent.trim().replace("\n", "<br>");
+    }
+
+    public void setVodContent(String vodContent) {
+        this.vodContent = vodContent;
     }
 
     public String getVodPlayFrom() {

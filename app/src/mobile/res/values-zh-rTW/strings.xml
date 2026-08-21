@@ -12,6 +12,36 @@
     <!-- Vod -->
     <string name="vod_home">推薦</string>
 
+    <!-- Retry -->
+    <string name="retry">重試</string>
+    <string name="error_network">目前網路不可用，請檢查網路後重試</string>
+    <string name="error_source">資料源沒有回傳內容，可能是該源已失效</string>
+
+    <!-- Download -->
+    <string name="app_download">離線快取</string>
+    <string name="download_entry">快取</string>
+    <string name="download_entry_progress">快取中 <xliff:g name="percent">%s</xliff:g>%%</string>
+    <string name="download_select">選集快取</string>
+    <string name="download_select_all">全選</string>
+    <string name="download_start">快取選中（<xliff:g name="count">%s</xliff:g>）</string>
+    <string name="download_added">已加入快取佇列 <xliff:g name="count">%s</xliff:g> 集</string>
+    <string name="download_none">請先勾選要快取的劇集</string>
+    <string name="download_tasks">快取任務</string>
+    <string name="download_empty">還沒有快取內容</string>
+    <string name="download_task_empty">沒有進行中的快取任務</string>
+    <string name="download_count">已快取 <xliff:g name="count">%s</xliff:g> 集</string>
+    <string name="download_running_count">快取中 <xliff:g name="count">%s</xliff:g> 集</string>
+    <string name="download_state_pending">排隊中</string>
+    <string name="download_state_running">快取中</string>
+    <string name="download_state_paused">已暫停</string>
+    <string name="download_state_error">快取失敗</string>
+    <string name="download_state_done">已快取</string>
+    <string name="download_seg"><xliff:g name="done">%1$s</xliff:g>/<xliff:g name="total">%2$s</xliff:g> 片</string>
+    <string name="download_missing">快取檔案已遺失，請重新快取</string>
+    <string name="dialog_delete_download">快取內容將會全部刪除。</string>
+    <string name="dialog_delete_download_task">未完成的快取任務將會全部刪除。</string>
+    <string name="dialog_delete_download_item">刪除《<xliff:g name="name">%s</xliff:g>》的快取？</string>
+
     <!-- Detail -->
     <string name="detail_flag">播放線路</string>
     <string name="detail_more">更多</string>

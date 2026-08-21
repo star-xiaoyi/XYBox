@@ -15,6 +15,7 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.ThemeUtil;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
@@ -22,6 +23,15 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
 public abstract class BaseDialog extends BottomSheetDialogFragment {
 
     protected abstract ViewBinding getBinding(@NonNull LayoutInflater inflater, @Nullable ViewGroup container);
+
+    /**
+     * 底部弹窗用的是自己那套主题，Activity 上的强调色叠加层进不来，
+     * 这里按当前强调色挑对应的弹窗主题，否则弹窗里的胶囊/按钮会一直是默认色。
+     */
+    @Override
+    public int getTheme() {
+        return ThemeUtil.getBottomSheetTheme();
+    }
 
     @Nullable
     @Override

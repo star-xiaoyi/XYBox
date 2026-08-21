@@ -21,6 +21,8 @@ public class Episode implements Parcelable {
     private int number;
     private boolean activated;
     private boolean selected;
+    /** 这一集是否已离线缓存，只用于列表打标，不参与序列化。 */
+    private boolean cached;
 
     public static Episode create(String name, String url) {
         return new Episode(name, "", url);
@@ -74,6 +76,14 @@ public class Episode implements Parcelable {
 
     public boolean isActivated() {
         return activated;
+    }
+
+    public boolean isCached() {
+        return cached;
+    }
+
+    public void setCached(boolean cached) {
+        this.cached = cached;
     }
 
     public void setActivated(boolean activated) {

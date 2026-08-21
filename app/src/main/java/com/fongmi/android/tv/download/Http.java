@@ -1,0 +1,159 @@
+package com.fongmi.android.tv.download;
+
+import android.text.TextUtils;
+
+import com.github.catvod.net.OkHttp;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.RandomAccessFile;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.Headers;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+
+/** 单个 HTTP 资源的下载，负责断点续传、限速统计和取消。 */
+final class Http {
+
+    private static final int BUFFER = 64 * 1024;
+
+    private Http() {
+    }
+
+    static OkHttpClient client() {
+        return OkHttp.client(TimeUnit.SECONDS.toMillis(30));
+    }
+
+    static Headers headers(Map<String, String> headers) {
+        Headers.Builder builder = new Headers.Builder();
+        if (headers != null) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                if (TextUtils.isEmpty(entry.getKey()) || entry.getValue() == null) continue;
+                builder.set(entry.getKey(), entry.getValue());
+            }
+        }
+        return builder.build();
+    }
+
+    static String string(String url, Map<String, String> headers) throws IOException {
+        Request request = new Request.Builder().url(url).headers(headers(headers)).build();
+        try (Response response = client().newCall(request).execute()) {
+            if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
+            return response.body().string();
+        }
+    }
+
+    /**
+     * 地址没有 .m3u8 后缀不代表不是 HLS，很多源是伪装路径，
+     * 扒开头一小段看有没有 #EXTM3U 比只看后缀靠谱。
+     */
+    static boolean isPlaylist(String url, Map<String, String> headers) {
+        Request request = new Request.Builder().url(url).headers(headers(headers)).header("Range", "bytes=0-1023").build();
+        try (Response response = client().newCall(request).execute()) {
+            if (!response.isSuccessful()) return false;
+            String type = response.header("Content-Type");
+            if (type != null && (type.contains("mpegurl") || type.contains("m3u"))) return true;
+            return response.body().string().contains("#EXTM3U");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 下载到目标文件，支持 Range 续传。
+     *
+     * @param range   资源自带的字节区间（HLS BYTERANGE），为 null 表示整份下载
+     * @param counter 每读到一块回调一次，用于全局进度/速度统计；返回 false 表示取消
+     * @return 本次实际写入的字节数
+     */
+    static long download(String url, Map<String, String> headers, File target, long[] range, Counter counter) throws IOException {
+        File part = new File(target.getAbsolutePath() + ".part");
+        long from = part.exists() ? part.length() : 0;
+        // 有 BYTERANGE 的分片长度已知，续传到长度就说明这块早就下完了
+        if (range != null && from >= range[0]) {
+            rename(part, target);
+            return 0;
+        }
+        Request.Builder builder = new Request.Builder().url(url).headers(headers(headers));
+        if (range != null) {
+            long start = range[1] + from;
+            long end = range[1] + range[0] - 1;
+            builder.header("Range", "bytes=" + start + "-" + end);
+        } else if (from > 0) {
+            builder.header("Range", "bytes=" + from + "-");
+        }
+        Request request = builder.build();
+        try (Response response = client().newCall(request).execute()) {
+            int code = response.code();
+            if (code != 200 && code != 206) throw new IOException("HTTP " + code);
+            // 服务端不认 Range 就整份重来，否则会把响应体接在半截文件后面拼成坏文件
+            boolean append = from > 0 && code == 206;
+            if (from > 0 && !append) from = 0;
+            // BYTERANGE 分片遇到不支持 Range 的服务端：整份下来自己切出需要的那一段
+            long skip = range != null && code == 200 ? range[1] : 0;
+            long limit = range != null && code == 200 ? range[0] : -1;
+            if (counter != null) counter.onTotal(total(response, from, append));
+            if (part.getParentFile() != null) part.getParentFile().mkdirs();
+            long written = 0;
+            try (InputStream in = response.body().byteStream(); RandomAccessFile out = new RandomAccessFile(part, "rw")) {
+                out.setLength(append ? from : 0);
+                out.seek(append ? from : 0);
+                byte[] buffer = new byte[BUFFER];
+                int read;
+                while ((read = in.read(buffer)) != -1) {
+                    if (counter != null && !counter.onRead(read)) throw new CancelException();
+                    int offset = 0;
+                    int count = read;
+                    if (skip > 0) {
+                        int drop = (int) Math.min(skip, count);
+                        skip -= drop;
+                        offset += drop;
+                        count -= drop;
+                    }
+                    if (limit >= 0) count = (int) Math.min(count, limit - written);
+                    if (count <= 0) {
+                        if (limit >= 0 && written >= limit) break;
+                        continue;
+                    }
+                    out.write(buffer, offset, count);
+                    written += count;
+                    if (limit >= 0 && written >= limit) break;
+                }
+            }
+            rename(part, target);
+            return written;
+        }
+    }
+
+    private static void rename(File part, File target) throws IOException {
+        if (target.exists()) target.delete();
+        if (!part.renameTo(target)) throw new IOException("重命名失败：" + target.getName());
+    }
+
+    /** 206 时 Content-Length 只是剩余部分，要把已续传的字节加回来才是总长度。 */
+    private static long total(Response response, long from, boolean append) {
+        long length = response.body() == null ? -1 : response.body().contentLength();
+        if (length <= 0) return 0;
+        return append ? from + length : length;
+    }
+
+    interface Counter {
+
+        boolean onRead(int bytes);
+
+        /** 响应头给出的资源总长度（已含续传掉的部分），拿不到时为 0。 */
+        default void onTotal(long total) {
+        }
+    }
+
+    static class CancelException extends IOException {
+
+        CancelException() {
+            super("已取消");
+        }
+    }
+}

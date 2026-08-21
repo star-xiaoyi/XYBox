@@ -7,6 +7,13 @@
     <!-- Vod -->
     <string name="vod_last">上次看到<xliff:g name="name">%s</xliff:g></string>
 
+    <!-- Download -->
+    <string name="download_flag">离线缓存</string>
+    <string name="download_channel">离线缓存</string>
+    <string name="download_title">正在缓存</string>
+    <string name="download_pending">准备中…</string>
+    <string name="download_queued">还有 <xliff:g name="count">%s</xliff:g> 集</string>
+
     <!-- Live -->
     <string name="live_pass">密码</string>
     <string name="live_refresh">刷新</string>

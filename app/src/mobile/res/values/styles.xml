@@ -61,12 +61,47 @@
     </style>
 
     <style name="BottomSheetDialog" parent="Theme.Material3.DayNight.BottomSheetDialog">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">@color/primaryDark</item>
-        <item name="colorAccent">@color/accent</item>
+        <!-- 不在这里写死强调色：写死会盖掉 Activity 上的 accent 叠加层，弹窗里的胶囊/按钮就变成
+             和设置里选的主题色无关的颜色。真正的颜色由下面四个子样式给，BaseDialog 按当前强调色挑一个 -->
         <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowIsFloating">false</item>
         <item name="bottomSheetStyle">@style/ModalBottomSheetDialog</item>
+    </style>
+
+    <style name="BottomSheetDialog.Yellow">
+        <item name="colorPrimary">@color/accent_yellow</item>
+        <item name="colorPrimaryDark">@color/accent_yellow</item>
+        <item name="colorSecondary">@color/accent_yellow</item>
+        <item name="colorAccent">@color/accent_yellow</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <item name="colorControlActivated">@color/accent_yellow</item>
+    </style>
+
+    <style name="BottomSheetDialog.Blue">
+        <item name="colorPrimary">@color/accent_blue</item>
+        <item name="colorPrimaryDark">@color/accent_blue</item>
+        <item name="colorSecondary">@color/accent_blue</item>
+        <item name="colorAccent">@color/accent_blue</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorControlActivated">@color/accent_blue</item>
+    </style>
+
+    <style name="BottomSheetDialog.Green">
+        <item name="colorPrimary">@color/accent_green</item>
+        <item name="colorPrimaryDark">@color/accent_green</item>
+        <item name="colorSecondary">@color/accent_green</item>
+        <item name="colorAccent">@color/accent_green</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorControlActivated">@color/accent_green</item>
+    </style>
+
+    <style name="BottomSheetDialog.Purple">
+        <item name="colorPrimary">@color/accent_purple</item>
+        <item name="colorPrimaryDark">@color/accent_purple</item>
+        <item name="colorSecondary">@color/accent_purple</item>
+        <item name="colorAccent">@color/accent_purple</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorControlActivated">@color/accent_purple</item>
     </style>
 
     <style name="ModalBottomSheetDialog" parent="Widget.Material3.BottomSheet.Modal">

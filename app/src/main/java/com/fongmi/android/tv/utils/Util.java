@@ -90,12 +90,22 @@ public class Util {
         }
     }
 
-    public static int getDigit(String text) {
-        try {
+    public static int getDigit(String text) {        try {
             if (text.startsWith("上") || text.startsWith("下")) return -1;
             return Integer.parseInt(text.replaceAll("(?i)(mp4|H264|H265|720p|1080p|2160p|4K)", "").replaceAll("\\D+", ""));
         } catch (Exception e) {
             return -1;
+        }
+    }
+
+    /** 当前是否有可用网络，用来决定详情页默认走在线线路还是本地缓存。 */
+    public static boolean isNetworkAvailable() {
+        try {
+            android.net.ConnectivityManager manager = (android.net.ConnectivityManager) App.get().getSystemService(Context.CONNECTIVITY_SERVICE);
+            android.net.NetworkInfo info = manager == null ? null : manager.getActiveNetworkInfo();
+            return info != null && info.isConnected();
+        } catch (Exception e) {
+            return true;
         }
     }
 
