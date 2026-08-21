@@ -31,6 +31,7 @@ import com.bumptech.glide.request.target.Target;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Setting;
+import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Config;
@@ -56,7 +57,6 @@ import com.fongmi.android.tv.ui.activity.DownloadTaskActivity;
 import com.fongmi.android.tv.ui.activity.HistoryActivity;
 import com.fongmi.android.tv.ui.activity.KeepActivity;
 import com.fongmi.android.tv.ui.activity.VideoActivity;
-import com.airbnb.lottie.LottieAnimationView;
 import com.fongmi.android.tv.ui.adapter.DownloadCardAdapter;
 import com.fongmi.android.tv.ui.adapter.HistoryCardAdapter;
 import com.fongmi.android.tv.ui.adapter.SearchSuggestionAdapter;
@@ -216,6 +216,11 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.tabDownload.setOnClickListener(view -> setTab(true));
         mBinding.swipeLayout.setOnRefreshListener(this::onPullRefresh);
         mBinding.appBar.addOnOffsetChangedListener((appBarLayout, verticalOffset) -> mAppBarOffset = verticalOffset);
+        // 顶栏高度不是一开始就有的：观看记录和分类行都是异步加载出来的，加载一次长高一次。
+        // 居中的转圈和提示都以它为基准，所以它一变就立刻重算，否则圈会当众跳位置
+        mBinding.appBar.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (b - t != ob - ot) applyCenterInset();
+        });
         mBinding.swipeLayout.setOnChildScrollUpCallback((parent, child) -> {
             if (mAppBarOffset != 0) return true;
             TypeFragment fragment = getFragmentOrNull();
@@ -301,16 +306,11 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         if (mBinding.emptySourceHint == null) return;
         mBinding.emptySourceHint.setVisibility(isEmpty ? View.VISIBLE : View.GONE);
         if (!isEmpty) return;
+        centerInVisible(mBinding.emptySourceHint);
         mBinding.retryLayout.setVisibility(View.GONE);
         mBinding.emptySourceHint.setOnClickListener(this::onAddSource);
         if (mBinding.addSourceBtn != null) mBinding.addSourceBtn.setOnClickListener(this::onAddSource);
         hideFabButtons();
-        try {
-            LottieAnimationView lottieView = mBinding.emptySourceHint.findViewById(R.id.lottieAnimation);
-            if (lottieView != null) lottieView.playAnimation();
-        } catch (Exception e) {
-            // 忽略错误
-        }
     }
 
     /** 是否存在保存过的配置地址。 */
@@ -444,7 +444,47 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         boolean show = mAdapter.getItemCount() == 0 && hasConfig();
         mBinding.retryLayout.setVisibility(show ? View.VISIBLE : View.GONE);
         if (!show) return;
+        centerInVisible(mBinding.retryLayout);
         mBinding.retryText.setText(getRetryText(result));
+    }
+
+    /**
+     * 把居中的提示挪回可视区中央。
+     * <p>
+     * 内容区挂的是 appbar 滚动行为，而顶栏整块可滚走，于是 Material 给了内容区整屏高度、
+     * 再往下偏移一个顶栏——底边其实垂到了屏幕外。此时 layout_gravity="center" 居中的是那个
+     * 垂出去的框，看起来就偏低了一个顶栏的高度。
+     * <p>
+     * 补一块等于顶栏高度的底部内边距，视图外框变高，居中后内容正好落回可视区中央。
+     */
+    /** 顶栏当前高度。分页里的转圈和空态要靠它把自己抬回可视区中央。 */
+    public int getAppBarHeight() {
+        return mBinding == null ? 0 : mBinding.appBar.getHeight();
+    }
+
+    /**
+     * 把居中的转圈和提示挪回可视区中央——顶栏一测量出来就立刻应用，别等下次谁来调 showProgress。
+     * <p>
+     * 之前是在 showProgress 里现算的，而第一次调用发生在 initStartupState，那会儿顶栏还没测量、
+     * 高度是 0，等于没挪；直到配置加载完再次 showProgress 才补上，圈就在半秒后当众跳了一下。
+     * 用户看到的"两个重叠的圈"其实就是同一个圈跳了位置。
+     * <p>
+     * 两个圈的参照系不同：这个圈铺满整页（含顶栏那块），分页里的圈只铺顶栏以下，
+     * 所以一个补顶部内边距、一个补底部，圆心才落在同一点。
+     */
+    private void applyCenterInset() {
+        if (mBinding == null) return;
+        int inset = mBinding.appBar.getHeight();
+        View progress = mBinding.progress.getRoot();
+        if (progress.getPaddingTop() != inset) progress.setPadding(0, inset, 0, 0);
+        centerInVisible(mBinding.retryLayout);
+        centerInVisible(mBinding.emptySourceHint);
+    }
+
+    private void centerInVisible(View view) {
+        int bottom = mBinding.appBar.getHeight();
+        if (bottom <= 0 || view.getPaddingBottom() == bottom) return;
+        view.setPadding(view.getPaddingLeft(), view.getPaddingTop(), view.getPaddingRight(), bottom);
     }
 
     private String getRetryText(Result result) {
@@ -516,7 +556,32 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void onRetry(View view) {
-        homeContent();
+        // 断网启动时配置压根没拉下来，站源列表是空的。这时候只重查内容，
+        // 拿空站源再问一遍照样是"数据源没有返回内容"——用户只能杀后台重进，
+        // 因为唯有重进才会重新加载配置。所以这里先把配置补回来。
+        if (VodConfig.get().getSites().isEmpty()) reloadConfig();
+        else homeContent();
+    }
+
+    /** 等价于重启 App 那一下：重新拉点播和直播配置，成功后再查内容。 */
+    private void reloadConfig() {
+        showProgress();
+        mBinding.retryLayout.setVisibility(View.GONE);
+        LiveConfig.get().init().load();
+        VodConfig.get().init().load(new Callback() {
+            @Override
+            public void success() {
+                RefreshEvent.config();
+                RefreshEvent.video();
+                homeContent();
+            }
+
+            @Override
+            public void error(String msg) {
+                hideProgress();
+                checkRetry();
+            }
+        });
     }
 
     private void onFilter(View view) {
@@ -873,6 +938,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     private void showProgress() {
         mBinding.retryLayout.setVisibility(View.GONE);
+        applyCenterInset();
         mBinding.progress.getRoot().setVisibility(View.VISIBLE);
     }
 

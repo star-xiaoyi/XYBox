@@ -8,12 +8,14 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.ConnectionPool;
 import okhttp3.Headers;
 import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
 
@@ -29,14 +31,26 @@ final class Http {
     /**
      * 下载专用的 client：并发拉分片时连接池要够大，否则每个分片都要重新握手，
      * 光 TLS 往返就把速度吃掉了。沿用 App 的 DoH / 代理设置。
+     * <p>
+     * 显式退回 HTTP/1.1 不是保守，而是这里必须这么做：源站普遍上了 h2，
+     * 而 h2 会把所有并发请求复用到同一条 TCP 连接上——开 8 个线程实际只有一根管子，
+     * 加线程只是把它切成更多流，带宽一点没多，每个流的首字节等待反而被拖长。
+     * 下载要的恰恰是多条真实连接各占一份带宽。
+     * <p>
+     * 实测同一个源：握手那几秒 8 条独立连接并存时跑到 4.8M/s，
+     * 一旦 ALPN 谈出 h2 合并成单连接就掉到 1.5M/s，而且那条一断 8 个分片一起阵亡。
      */
     static OkHttpClient client() {
         if (client != null) return client;
         synchronized (Http.class) {
-            if (client == null) client = OkHttp.client(TimeUnit.SECONDS.toMillis(30)).newBuilder()
-                    .connectionPool(new ConnectionPool(64, 5, TimeUnit.MINUTES))
-                    .retryOnConnectionFailure(true)
-                    .build();
+            if (client == null) {
+                OkHttpClient.Builder builder = OkHttp.client(TimeUnit.SECONDS.toMillis(30)).newBuilder()
+                        .connectionPool(new ConnectionPool(64, 5, TimeUnit.MINUTES))
+                        .protocols(Collections.singletonList(Protocol.HTTP_1_1))
+                        .retryOnConnectionFailure(true);
+                if (DownloadLog.ENABLED) builder.eventListenerFactory(DownloadLog.Probe.FACTORY);
+                client = builder.build();
+            }
         }
         return client;
     }
@@ -163,15 +177,18 @@ final class Http {
         }
     }
 
-    private static final int MAX_RETRY = 3;
+    private static final int MAX_RETRY = 5;
     private static final int MAX_RETRY_THROTTLED = 6;
 
     /**
      * 这次失败后该睡多久，返回负数表示别再试了。
      * <p>
      * 并发调高以后 429/403 会变成常态，那不是"源挂了"而是"你太快了"，
-     * 判整集失败太粗暴——多给几次机会并指数退避，等源站放行；
-     * 普通错误还是重试三次就够，再多只是拖时间。
+     * 判整集失败太粗暴——多给几次机会并指数退避，等源站放行。
+     * <p>
+     * 普通错误也不能只给三次：连接数越多，撞上 connection abort 这类瞬断的概率越高
+     * （实测 8 条连接 6 次、16 条连接 12 次，全是瞬断），而它们重试一次基本就过。
+     * 三次封顶会让一集在快下完时因为几次抖动前功尽弃。
      */
     static long backoff(IOException e, int attempt) {
         boolean throttled = e instanceof CodeException && ((CodeException) e).isThrottled();

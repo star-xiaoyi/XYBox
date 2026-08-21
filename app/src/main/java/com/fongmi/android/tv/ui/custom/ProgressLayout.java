@@ -1,11 +1,13 @@
 package com.fongmi.android.tv.ui.custom;
 
 import android.content.Context;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 
 import com.fongmi.android.tv.databinding.ViewEmptyBinding;
 import com.fongmi.android.tv.databinding.ViewProgressBinding;
@@ -48,8 +50,8 @@ public class ProgressLayout extends RelativeLayout {
     }
 
     private void initView() {
-        // 使用新的Lottie动画空状态布局
-        mEmptyView = LayoutInflater.from(getContext()).inflate(com.fongmi.android.tv.R.layout.view_empty_lottie, null);
+        // 首页分类拉不到内容属于报错，用纯文字；摇箱子动画只留给收藏和历史记录那种"还没存东西"
+        mEmptyView = LayoutInflater.from(getContext()).inflate(com.fongmi.android.tv.R.layout.view_empty_text, null);
         mEmptyView.setTag(TAG_PROGRESS);
         mEmptyView.setVisibility(GONE);
         mProgressView = ViewProgressBinding.inflate(LayoutInflater.from(getContext())).getRoot();
@@ -59,6 +61,38 @@ public class ProgressLayout extends RelativeLayout {
         params.addRule(CENTER_IN_PARENT);
         addView(mProgressView, params);
         addView(mEmptyView, params);
+    }
+
+    /**
+     * 把居中的转圈和空态提示往上抬 inset/2，落回可视区中央。
+     * <p>
+     * 这个布局挂在 ViewPager 里，而内容区用的是 appbar 滚动行为：顶栏能整块滚走，
+     * 于是内容区拿到的是整屏高度再往下偏移一个顶栏，底边其实垂到了屏幕外。
+     * 直接 CENTER_IN_PARENT 居中的是那个垂出去的框，看起来就偏低——而且顶栏一变高
+     * （分类行加载出来那下）圈还会当场往下跳一截。
+     * <p>
+     * padding 加在这两个视图自己身上而不是根布局上：根布局上的 padding 会连内容列表一起缩，
+     * 把最后一行挤出可视区。撑高视图自己的外框，居中时内容就正好抬起 inset/2。
+     */
+    public void setBottomInset(int inset) {
+        if (inset < 0 || mProgressView.getPaddingBottom() == inset) return;
+        mProgressView.setPadding(0, 0, 0, inset);
+        mEmptyView.setPadding(mEmptyView.getPaddingLeft(), 0, mEmptyView.getPaddingRight(), inset);
+    }
+
+    /**
+     * 设置空态的文案和重试动作。拉不到内容多半是断网或源挂了，
+     * 只丢一句"空谷待音"用户没法自救，得说清原因并给一个能点的按钮。
+     *
+     * @param retry 传 null 表示这次不是错误（比如真的没有数据），不显示按钮
+     */
+    public void setEmpty(CharSequence text, OnClickListener retry) {
+        TextView view = mEmptyView.findViewById(com.fongmi.android.tv.R.id.text);
+        if (view != null && !TextUtils.isEmpty(text)) view.setText(text);
+        View button = mEmptyView.findViewById(com.fongmi.android.tv.R.id.retry);
+        if (button == null) return;
+        button.setVisibility(retry == null ? GONE : VISIBLE);
+        button.setOnClickListener(retry);
     }
 
     @Override
