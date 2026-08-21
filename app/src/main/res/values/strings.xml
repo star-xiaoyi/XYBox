@@ -13,6 +13,7 @@
     <string name="download_title">Caching</string>
     <string name="download_pending">Preparing…</string>
     <string name="download_queued"><xliff:g name="count">%s</xliff:g> queued</string>
+    <string name="download_running_title">Caching <xliff:g name="count">%s</xliff:g> episodes</string>
 
     <!-- Live -->
     <string name="live_pass">Pass</string>

@@ -31,6 +31,13 @@
     <string name="download_tasks">缓存任务</string>
     <string name="download_empty">还没有缓存内容</string>
     <string name="download_task_empty">没有进行中的缓存任务</string>
+    <string name="download_setting">缓存速度</string>
+    <string name="download_concurrent_task">同时下载</string>
+    <string name="download_concurrent_task_value"><xliff:g name="count" example="3">%d</xliff:g> 集</string>
+    <string name="download_concurrent_task_hint">同时下的越多，带宽分得越散，单集反而更慢。</string>
+    <string name="download_connection">单集连接数</string>
+    <string name="download_connection_value"><xliff:g name="count" example="8">%d</xliff:g> 条</string>
+    <string name="download_connection_hint">连接越多越快，但部分源站会限速甚至拒绝。对已经在下的集不生效，之后开始的集才按新值。</string>
     <string name="download_count">已缓存 <xliff:g name="count">%s</xliff:g> 集</string>
     <string name="download_running_count">缓存中 <xliff:g name="count">%s</xliff:g> 集</string>
     <string name="download_state_pending">排队中</string>

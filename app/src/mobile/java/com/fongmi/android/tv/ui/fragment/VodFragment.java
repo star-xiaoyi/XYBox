@@ -947,6 +947,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
             case EMPTY:
                 hideProgress();
                 checkEmptySource(); // 添加检查是否显示空源提示
+                checkRetry(); // 配置加载失败时给出原因和重试，不然页面是一片空白
                 break;
             case PROGRESS:
                 showProgress();
