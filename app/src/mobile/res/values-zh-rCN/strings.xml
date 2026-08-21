@@ -14,6 +14,36 @@
     <!-- Vod -->
     <string name="vod_home">推荐</string>
 
+    <!-- Retry -->
+    <string name="retry">重试</string>
+    <string name="error_network">当前网络不可用，请检查网络后重试</string>
+    <string name="error_source">数据源没有返回内容，可能是该源已失效</string>
+
+    <!-- Download -->
+    <string name="app_download">离线缓存</string>
+    <string name="download_entry">缓存</string>
+    <string name="download_entry_progress">缓存中 <xliff:g name="percent">%s</xliff:g>%%</string>
+    <string name="download_select">选集缓存</string>
+    <string name="download_select_all">全选</string>
+    <string name="download_start">缓存选中（<xliff:g name="count">%s</xliff:g>）</string>
+    <string name="download_added">已加入缓存队列 <xliff:g name="count">%s</xliff:g> 集</string>
+    <string name="download_none">请先勾选要缓存的剧集</string>
+    <string name="download_tasks">缓存任务</string>
+    <string name="download_empty">还没有缓存内容</string>
+    <string name="download_task_empty">没有进行中的缓存任务</string>
+    <string name="download_count">已缓存 <xliff:g name="count">%s</xliff:g> 集</string>
+    <string name="download_running_count">缓存中 <xliff:g name="count">%s</xliff:g> 集</string>
+    <string name="download_state_pending">排队中</string>
+    <string name="download_state_running">缓存中</string>
+    <string name="download_state_paused">已暂停</string>
+    <string name="download_state_error">缓存失败</string>
+    <string name="download_state_done">已缓存</string>
+    <string name="download_seg"><xliff:g name="done">%1$s</xliff:g>/<xliff:g name="total">%2$s</xliff:g> 片</string>
+    <string name="download_missing">缓存文件已丢失，请重新缓存</string>
+    <string name="dialog_delete_download">缓存内容将会全部删除。</string>
+    <string name="dialog_delete_download_task">未完成的缓存任务将会全部删除。</string>
+    <string name="dialog_delete_download_item">删除《<xliff:g name="name">%s</xliff:g>》的缓存？</string>
+
     <!-- Detail -->
     <string name="detail_flag">播放线路</string>
     <string name="detail_more">更多</string>

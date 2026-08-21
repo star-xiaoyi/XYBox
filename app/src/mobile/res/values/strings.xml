@@ -14,19 +14,40 @@
     <!-- Vod -->
     <string name="vod_home">Home</string>
 
+    <!-- Retry -->
+    <string name="retry">Retry</string>
+    <string name="error_network">No network connection, please check and retry</string>
+    <string name="error_source">The source returned nothing, it may be down</string>
+
     <!-- Download -->
-    <string name="detail_download_list">Download List</string>
+    <string name="app_download">Offline</string>
+    <string name="download_entry">Cache</string>
+    <string name="download_entry_progress">Caching <xliff:g name="percent">%s</xliff:g>%%</string>
+    <string name="download_select">Select episodes</string>
+    <string name="download_select_all">Select all</string>
+    <string name="download_start">Cache selected (<xliff:g name="count">%s</xliff:g>)</string>
+    <string name="download_added">Added <xliff:g name="count">%s</xliff:g> to the queue</string>
+    <string name="download_none">Pick at least one episode</string>
+    <string name="download_tasks">Caching</string>
+    <string name="download_empty">Nothing cached yet</string>
+    <string name="download_task_empty">No cache tasks</string>
+    <string name="download_count">Cached <xliff:g name="count">%s</xliff:g></string>
+    <string name="download_running_count">Caching <xliff:g name="count">%s</xliff:g></string>
+    <string name="download_state_pending">Queued</string>
+    <string name="download_state_running">Caching</string>
+    <string name="download_state_paused">Paused</string>
+    <string name="download_state_error">Failed</string>
+    <string name="download_state_done">Cached</string>
+    <string name="download_seg"><xliff:g name="done">%1$s</xliff:g>/<xliff:g name="total">%2$s</xliff:g> segments</string>
+    <string name="download_missing">Cached file is gone, please cache again</string>
+    <string name="dialog_delete_download">All cached content will be removed.</string>
+    <string name="dialog_delete_download_task">All unfinished cache tasks will be removed.</string>
+    <string name="dialog_delete_download_item">Delete the cache of <xliff:g name="name">%s</xliff:g>?</string>
 
     <!-- Detail -->
     <string name="detail_flag">Source</string>
     <string name="detail_more">More</string>
     <string name="detail_episode">Episodes</string>
-    <string name="download">Download</string>
-    <string name="download_empty">No downloads yet</string>
-    <string name="download_completed">Completed</string>
-    <string name="download_failed">Failed</string>
-    <string name="downloading">Downloading...</string>
-    <string name="dialog_delete_download">All download records will be removed.</string>
     <string name="detail_quality">Quality</string>
     <string name="detail_content">Summary</string>
     <string name="detail_search">Searching <xliff:g name="name">%s</xliff:g></string>

@@ -1,38 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical">
+
+    <!-- 顶部小横条：提示这张卡片可以下拉关闭，和详情页保持一致 -->
+    <View
+        android:layout_width="36dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="14dp"
+        android:background="@drawable/shape_detail_handle" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
-        android:layout_marginTop="16dp"
         android:layout_marginEnd="16dp"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <TextView
-            android:id="@+id/episode"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="left"
-            android:text="选择下载集数"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="16sp" />
+            android:text="@string/download_select"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/download_list"
-            android:layout_width="0dp"
+            android:id="@+id/taskList"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="right"
-            android:text="@string/detail_download_list"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="16sp"
-            app:drawableEndCompat="@drawable/ic_download_more" />
+            android:layout_marginEnd="16dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:drawablePadding="3dp"
+            android:gravity="center_vertical"
+            android:padding="4dp"
+            android:text="@string/download_tasks"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            app:drawableEndCompat="@drawable/ic_detail_chevron"
+            app:drawableTint="@color/text_secondary" />
+
+        <TextView
+            android:id="@+id/selectAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="4dp"
+            android:text="@string/download_select_all"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
 
     </LinearLayout>
 
@@ -42,17 +64,41 @@
         android:layout_height="32dp"
         android:layout_marginTop="8dp"
         android:background="@color/transparent"
+        android:visibility="gone"
         app:tabIndicatorAnimationMode="elastic"
-        app:tabIndicatorColor="?attr/colorControlActivated"
+        app:tabIndicatorColor="@color/text_primary"
         app:tabIndicatorFullWidth="false"
         app:tabIndicatorHeight="2dp"
         app:tabMode="scrollable"
-        app:tabSelectedTextColor="?attr/colorControlActivated"
-        app:tabTextColor="@color/grey_500" />
+        app:tabRippleColor="@android:color/transparent"
+        app:tabSelectedTextColor="@color/text_primary"
+        app:tabTextColor="@color/text_secondary"
+        tools:visibility="visible" />
 
-    <androidx.viewpager2.widget.ViewPager2
-        android:id="@+id/pager"
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
+        android:layout_height="wrap_content"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:overScrollMode="never"
+        android:padding="10dp"
+        tools:listitem="@layout/adapter_download_episode" />
+
+    <TextView
+        android:id="@+id/confirm"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/shape_primary_button"
+        android:gravity="center"
+        android:paddingTop="13dp"
+        android:paddingBottom="13dp"
+        android:textColor="?attr/colorOnPrimary"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        tools:text="缓存选中（3）" />
 
 </LinearLayout>

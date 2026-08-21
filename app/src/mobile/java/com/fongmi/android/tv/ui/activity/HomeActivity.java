@@ -29,6 +29,7 @@ import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.ActivityHomeBinding;
 import com.fongmi.android.tv.db.AppDatabase;
+import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.event.ServerEvent;
 import com.fongmi.android.tv.event.StateEvent;
@@ -88,6 +89,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         setNavigation();
         mBinding.navigation.setSelectedItemId(currentPosition == 1 ? R.id.setting : R.id.vod);
         setSettingsChrome(currentPosition == 1);
+        // 上次没跑完的离线缓存在这里续上，放到界面可见之后再拉前台服务，避免后台启动被系统拒绝
+        App.execute(() -> DownloadManager.get().restore());
     }
 
     /**

@@ -139,14 +139,62 @@
                         android:paddingEnd="16dp"
                         android:paddingBottom="8dp">
 
-                        <TextView
-                            android:layout_width="0dp"
+                        <!-- 观看记录 / 离线缓存 同级页签，选中的那个下面有一条主题色短横线 -->
+                        <LinearLayout
+                            android:id="@+id/tab_history"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/home_history"
-                            android:textColor="@color/text_primary"
-                            android:textSize="16sp"
-                            android:textStyle="bold" />
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tab_history_text"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/home_history"
+                                android:textColor="@color/text_primary"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <View
+                                android:id="@+id/tab_history_line"
+                                android:layout_width="24dp"
+                                android:layout_height="3dp"
+                                android:layout_marginTop="4dp"
+                                android:background="@drawable/shape_tab_indicator" />
+
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/tab_download"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="20dp"
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tab_download_text"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/app_download"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="16sp" />
+
+                            <View
+                                android:id="@+id/tab_download_line"
+                                android:layout_width="24dp"
+                                android:layout_height="3dp"
+                                android:layout_marginTop="4dp"
+                                android:background="@drawable/shape_tab_indicator"
+                                android:visibility="invisible" />
+
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="0dp"
+                            android:layout_weight="1" />
 
                         <LinearLayout
                             android:id="@+id/history_more"
@@ -207,71 +255,110 @@
 
             </com.google.android.material.appbar.AppBarLayout>
 
-            <com.fongmi.android.tv.ui.custom.CustomViewPager
-                android:id="@+id/pager"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                app:layout_behavior="@string/appbar_scrolling_view_behavior" />
-
+            <!-- 内容区整体挂在顶栏之下：列表、搜索结果、空态提示都在这一层里居中，
+                 提示才不会被顶栏和观看记录挤出可视区域 -->
             <FrameLayout
-                android:id="@+id/search_content"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="@color/screen_background"
-                android:visibility="gone"
-                app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+                app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+                <com.fongmi.android.tv.ui.custom.CustomViewPager
+                    android:id="@+id/pager"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <FrameLayout
+                    android:id="@+id/search_content"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@color/screen_background"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/empty_source_hint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="16dp"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <com.airbnb.lottie.LottieAnimationView
+                        android:id="@+id/lottieAnimation"
+                        android:layout_width="180dp"
+                        android:layout_height="180dp"
+                        app:lottie_fileName="lottie_empty_1.json"
+                        app:lottie_loop="true"
+                        app:lottie_autoPlay="true" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:text="@string/source_hint"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/add_source_btn"
+                        android:layout_width="200dp"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="16dp"
+                        android:backgroundTint="?attr/colorPrimary"
+                        android:text="@string/add_source"
+                        android:textColor="@color/black"
+                        android:textSize="16sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/retryLayout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="32dp"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <TextView
+                        android:id="@+id/retryText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp"
+                        tools:text="当前网络不可用，请检查网络后重试" />
+
+                    <TextView
+                        android:id="@+id/retry"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="18dp"
+                        android:background="@drawable/shape_primary_button"
+                        android:paddingStart="32dp"
+                        android:paddingTop="10dp"
+                        android:paddingEnd="32dp"
+                        android:paddingBottom="10dp"
+                        android:text="@string/retry"
+                        android:textColor="?attr/colorOnPrimary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+            </FrameLayout>
 
         </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
     </com.fongmi.android.tv.ui.custom.CustomSwipeRefreshLayout>
 
-    <!-- 新增空源提示文本 -->
-    <LinearLayout
-        android:id="@+id/empty_source_hint"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:visibility="gone"
-        tools:visibility="visible">
 
-        <com.airbnb.lottie.LottieAnimationView
-            android:id="@+id/lottieAnimation"
-            android:layout_width="180dp"
-            android:layout_height="180dp"
-            app:lottie_fileName="lottie_empty_1.json"
-            app:lottie_loop="true"
-            app:lottie_autoPlay="true" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:text="@string/source_hint"
-            android:textColor="@color/text_primary"
-            android:textSize="14sp" />
 
-        <Button
-            android:id="@+id/add_source_btn"
-            android:layout_width="200dp"
-            android:layout_height="48dp"
-            android:layout_marginTop="16dp"
-            android:backgroundTint="?attr/colorPrimary"
-            android:text="@string/add_source"
-            android:textColor="@color/black"
-            android:textSize="16sp" />
-    </LinearLayout>
-
-    <ImageView
-        android:id="@+id/retry"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
-        android:layout_gravity="center"
-        android:background="@drawable/shape_action_background"
-        android:src="@drawable/ic_action_retry"
-        android:visibility="gone" />
 
     <include
         android:id="@+id/progress"

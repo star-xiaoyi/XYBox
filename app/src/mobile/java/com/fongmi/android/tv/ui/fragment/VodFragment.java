@@ -34,6 +34,7 @@ import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Config;
+import com.fongmi.android.tv.bean.Download;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Hot;
 import com.fongmi.android.tv.bean.Result;
@@ -50,10 +51,13 @@ import com.fongmi.android.tv.impl.FilterCallback;
 import com.fongmi.android.tv.impl.SiteCallback;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
+import com.fongmi.android.tv.ui.activity.DownloadActivity;
+import com.fongmi.android.tv.ui.activity.DownloadTaskActivity;
 import com.fongmi.android.tv.ui.activity.HistoryActivity;
 import com.fongmi.android.tv.ui.activity.KeepActivity;
 import com.fongmi.android.tv.ui.activity.VideoActivity;
 import com.airbnb.lottie.LottieAnimationView;
+import com.fongmi.android.tv.ui.adapter.DownloadCardAdapter;
 import com.fongmi.android.tv.ui.adapter.HistoryCardAdapter;
 import com.fongmi.android.tv.ui.adapter.SearchSuggestionAdapter;
 import com.fongmi.android.tv.ui.adapter.TypeAdapter;
@@ -95,6 +99,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private SiteViewModel mViewModel;
     private TypeAdapter mAdapter;
     private HistoryCardAdapter mHistoryAdapter;
+    private DownloadCardAdapter mDownloadAdapter;
+    private boolean mDownloadTab;
     private SearchSuggestionAdapter mSuggestionAdapter;
     private Runnable mRunnable;
     private Runnable mSuggestRunnable;
@@ -204,8 +210,10 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.filter.setOnClickListener(this::onFilter);
         mBinding.search.setOnClickListener(this::onSearchAction);
         mBinding.searchBack.setOnClickListener(this::onSearchBack);
-        mBinding.history.setOnClickListener(this::onHistory);
+        mBinding.history.setOnClickListener(view -> HistoryActivity.start(getActivity()));
         mBinding.historyMore.setOnClickListener(this::onHistory);
+        mBinding.tabHistory.setOnClickListener(view -> setTab(false));
+        mBinding.tabDownload.setOnClickListener(view -> setTab(true));
         mBinding.swipeLayout.setOnRefreshListener(this::onPullRefresh);
         mBinding.appBar.addOnOffsetChangedListener((appBarLayout, verticalOffset) -> mAppBarOffset = verticalOffset);
         mBinding.swipeLayout.setOnChildScrollUpCallback((parent, child) -> {
@@ -278,60 +286,40 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.pager.getAdapter().notifyDataSetChanged();
         setFabVisible(0);
         hideProgress();
-        checkRetry();
+        checkRetry(result);
         checkEmptySource(); // 添加检查是否显示空源提示
         setRefreshing(false);
     }
 
-    // 修改checkEmptySource方法，增强鲁棒性
+    /**
+     * 空源提示只在「用户压根没配过源」时出现。
+     * 配过源但站点没加载出来（断网、源挂了）是另一回事，那种要给错误原因和重试，
+     * 否则断个网就提示"还没有添加视频源"，会误导用户去重配。
+     */
     private void checkEmptySource() {
-        // 检查是否有基础配置文件，添加空值检查
-        boolean hasBaseConfig = false;
+        boolean isEmpty = !hasConfig();
+        if (mBinding.emptySourceHint == null) return;
+        mBinding.emptySourceHint.setVisibility(isEmpty ? View.VISIBLE : View.GONE);
+        if (!isEmpty) return;
+        mBinding.retryLayout.setVisibility(View.GONE);
+        mBinding.emptySourceHint.setOnClickListener(this::onAddSource);
+        if (mBinding.addSourceBtn != null) mBinding.addSourceBtn.setOnClickListener(this::onAddSource);
+        hideFabButtons();
+        try {
+            LottieAnimationView lottieView = mBinding.emptySourceHint.findViewById(R.id.lottieAnimation);
+            if (lottieView != null) lottieView.playAnimation();
+        } catch (Exception e) {
+            // 忽略错误
+        }
+    }
+
+    /** 是否存在保存过的配置地址。 */
+    private boolean hasConfig() {
         try {
             Config config = VodConfig.get().getConfig();
-            hasBaseConfig = config != null && 
-                           config.getUrl() != null && 
-                           !config.getUrl().isEmpty();
+            return config != null && config.getUrl() != null && !config.getUrl().isEmpty();
         } catch (Exception e) {
-            hasBaseConfig = false;
-        }
-        
-        // 检查是否有有效的站点配置
-        boolean hasValidSites = false;
-        boolean hasValidHome = false;
-        try {
-            hasValidSites = VodConfig.get().getSites().size() > 0;
-            Site site = getSite();
-            hasValidHome = site != null && site.getKey() != null && !site.getKey().isEmpty();
-        } catch (Exception e) {
-            hasValidSites = false;
-            hasValidHome = false;
-        }
-        
-        // 只有在完全没有配置文件或配置文件无效时才显示空源提示
-        boolean isEmpty = !hasBaseConfig || (!hasValidSites || !hasValidHome);
-        
-        if (mBinding.emptySourceHint != null) {
-            mBinding.emptySourceHint.setVisibility(isEmpty ? View.VISIBLE : View.GONE);
-            if (isEmpty) {
-                // 设置整个布局的点击事件
-                mBinding.emptySourceHint.setOnClickListener(this::onAddSource);
-                // 设置按钮的点击事件
-                if (mBinding.addSourceBtn != null) {
-                    mBinding.addSourceBtn.setOnClickListener(this::onAddSource);
-                }
-                // 空源状态下隐藏所有悬浮按钮
-                hideFabButtons();
-                // 启动Lottie动画
-                try {
-                    LottieAnimationView lottieView = mBinding.emptySourceHint.findViewById(R.id.lottieAnimation);
-                    if (lottieView != null) {
-                        lottieView.playAnimation();
-                    }
-                } catch (Exception e) {
-                    // 忽略错误
-                }
-            }
+            return false;
         }
     }
     
@@ -426,31 +414,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void setFabVisible(int position) {
-        // 检查是否为空源状态 - 使用与checkEmptySource相同的逻辑，添加空值检查
-        boolean hasBaseConfig = false;
-        boolean hasValidSites = false;
-        boolean hasValidHome = false;
-        
-        try {
-            Config config = VodConfig.get().getConfig();
-            hasBaseConfig = config != null && 
-                           config.getUrl() != null && 
-                           !config.getUrl().isEmpty();
-            
-            hasValidSites = VodConfig.get().getSites().size() > 0;
-            
-            Site site = getSite();
-            hasValidHome = site != null && site.getKey() != null && !site.getKey().isEmpty();
-        } catch (Exception e) {
-            hasBaseConfig = false;
-            hasValidSites = false;
-            hasValidHome = false;
-        }
-        
-        boolean isEmpty = !hasBaseConfig || (!hasValidSites || !hasValidHome);
-
-        if (isEmpty) {
-            // 空源状态下隐藏所有悬浮按钮
+        // 没有内容可展示时（没配源、或源没加载出来）不出悬浮按钮
+        if (!hasConfig() || mAdapter.getItemCount() == 0) {
             hideFabButtons();
         } else {
             mFabEnabled = true;
@@ -468,7 +433,29 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void checkRetry() {
-        mBinding.retry.setVisibility(mAdapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
+        checkRetry(null);
+    }
+
+    /**
+     * 首页拉不到内容时不能只丢一个刷新图标，得说清楚是断网还是源挂了。
+     * 完全没配过源的情况归空源提示管，这里不掺和。
+     */
+    private void checkRetry(Result result) {
+        boolean show = mAdapter.getItemCount() == 0 && hasConfig();
+        mBinding.retryLayout.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) return;
+        mBinding.retryText.setText(getRetryText(result));
+    }
+
+    private String getRetryText(Result result) {
+        if (result != null && result.hasMsg() && !TextUtils.isEmpty(result.getMsg())) return result.getMsg();
+        return getString(isNetworkAvailable() ? R.string.error_source : R.string.error_network);
+    }
+
+    private boolean isNetworkAvailable() {
+        android.net.ConnectivityManager manager = (android.net.ConnectivityManager) App.get().getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+        android.net.NetworkInfo info = manager == null ? null : manager.getActiveNetworkInfo();
+        return info != null && info.isConnected();
     }
 
     private void onTop(View view) {
@@ -608,7 +595,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.pager.setVisibility(View.GONE);
         mBinding.searchContent.setVisibility(View.VISIBLE);
         mBinding.emptySourceHint.setVisibility(View.GONE);
-        mBinding.retry.setVisibility(View.GONE);
+        mBinding.retryLayout.setVisibility(View.GONE);
         mBinding.progress.getRoot().setVisibility(View.GONE);
         mBinding.swipeLayout.setEnabled(false);
         setBottomNavigationVisible(false);
@@ -753,7 +740,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void onHistory(View view) {
-        HistoryActivity.start(getActivity());
+        if (mDownloadTab) DownloadActivity.start(getActivity());
+        else HistoryActivity.start(getActivity());
     }
 
     private void onPullRefresh() {
@@ -786,15 +774,42 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private void setupHistoryRecycler() {
         mBinding.historyRecycler.setLayoutManager(
             new androidx.recyclerview.widget.LinearLayoutManager(
-                getContext(), 
-                androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL, 
+                getContext(),
+                androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL,
                 false
             )
         );
         mHistoryAdapter = new HistoryCardAdapter(item -> {
             VideoActivity.start(getActivity(), item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
         });
+        mDownloadAdapter = new DownloadCardAdapter(item -> {
+            // 只有还在下载、一集都没缓存好的，点进去也没得播，直接送去下载列表看进度
+            if (item.getPlayable().isEmpty()) DownloadTaskActivity.start(getActivity());
+            else VideoActivity.download(getActivity(), item);
+        });
         mBinding.historyRecycler.setAdapter(mHistoryAdapter);
+        setTab(false);
+    }
+
+    /**
+     * 观看记录 / 离线缓存 二选一。文字固定跟随前景色（浅色黑、深色白），不跟主题色走，
+     * 未选中的压低透明度、不加粗。取色必须用 Activity 上下文，
+     * ResUtil 走的是 Application 资源，拿不到夜间模式会返回浅色值。
+     */
+    private void setTab(boolean download) {
+        if (mBinding == null) return;
+        mDownloadTab = download;
+        int color = androidx.core.content.ContextCompat.getColor(mBinding.getRoot().getContext(), R.color.text_primary);
+        mBinding.tabHistoryText.setTextColor(color);
+        mBinding.tabDownloadText.setTextColor(color);
+        mBinding.tabHistoryText.setAlpha(download ? 0.4f : 1f);
+        mBinding.tabDownloadText.setAlpha(download ? 1f : 0.4f);
+        mBinding.tabHistoryText.setTypeface(null, download ? android.graphics.Typeface.NORMAL : android.graphics.Typeface.BOLD);
+        mBinding.tabDownloadText.setTypeface(null, download ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        mBinding.tabHistoryLine.setVisibility(download ? View.INVISIBLE : View.VISIBLE);
+        mBinding.tabDownloadLine.setVisibility(download ? View.VISIBLE : View.INVISIBLE);
+        mBinding.historyRecycler.setAdapter(download ? mDownloadAdapter : mHistoryAdapter);
+        loadHistory();
     }
 
     private void loadHistory() {
@@ -810,24 +825,32 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
             updateRefreshIndicatorOffset();
             return;
         }
-        
+        mBinding.historySection.setVisibility(View.VISIBLE);
+        if (mDownloadTab) loadDownload();
+        else loadWatchHistory();
+        updateRefreshIndicatorOffset();
+    }
+
+    private void loadDownload() {
+        List<Download.Group> groups = Download.group(Download.getAll());
+        mBinding.historyRecycler.setVisibility(groups.isEmpty() ? View.GONE : View.VISIBLE);
+        mDownloadAdapter.setItems(groups);
+    }
+
+    private void loadWatchHistory() {
         List<History> histories = History.get();
         boolean hasHistory = histories != null && !histories.isEmpty();
-        mBinding.historySection.setVisibility(View.VISIBLE);
         mBinding.historyRecycler.setVisibility(hasHistory ? View.VISIBLE : View.GONE);
         boolean firstItemChanged = mHistoryAdapter.setItems(histories);
-        if (hasHistory) {
-            if (firstItemChanged) {
-                mBinding.historyRecycler.stopScroll();
-                androidx.recyclerview.widget.RecyclerView.LayoutManager manager = mBinding.historyRecycler.getLayoutManager();
-                if (manager instanceof androidx.recyclerview.widget.LinearLayoutManager) {
-                    ((androidx.recyclerview.widget.LinearLayoutManager) manager).scrollToPositionWithOffset(0, 0);
-                } else {
-                    mBinding.historyRecycler.scrollToPosition(0);
-                }
+        if (hasHistory && firstItemChanged) {
+            mBinding.historyRecycler.stopScroll();
+            androidx.recyclerview.widget.RecyclerView.LayoutManager manager = mBinding.historyRecycler.getLayoutManager();
+            if (manager instanceof androidx.recyclerview.widget.LinearLayoutManager) {
+                ((androidx.recyclerview.widget.LinearLayoutManager) manager).scrollToPositionWithOffset(0, 0);
+            } else {
+                mBinding.historyRecycler.scrollToPosition(0);
             }
         }
-        updateRefreshIndicatorOffset();
     }
 
     private void updateRefreshIndicatorOffset() {
@@ -849,7 +872,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void showProgress() {
-        mBinding.retry.setVisibility(View.GONE);
+        mBinding.retryLayout.setVisibility(View.GONE);
         mBinding.progress.getRoot().setVisibility(View.VISIBLE);
     }
 
@@ -911,6 +934,9 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
                 break;
             case HISTORY:
                 loadHistory();
+                break;
+            case DOWNLOAD:
+                if (mDownloadTab) loadHistory();
                 break;
         }
     }

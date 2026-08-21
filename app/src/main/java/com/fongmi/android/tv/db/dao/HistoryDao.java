@@ -28,8 +28,11 @@ public abstract class HistoryDao extends BaseDao<History> {
     @Query("DELETE FROM History WHERE cid = :cid AND `key` = :key")
     public abstract void delete(int cid, String key);
 
-    @Query("DELETE FROM History WHERE `key` = :key")
-    public abstract void deleteByKey(String key);
+    @Query("DELETE FROM History WHERE `key` = :key")    public abstract void deleteByKey(String key);
+
+    /** 清掉早期离线播放留下的伪站源记录，它们会把同名的在线记录挤掉。 */
+    @Query("DELETE FROM History WHERE `key` LIKE 'download_agent@@@%'")
+    public abstract void deleteOffline();
 
     @Query("DELETE FROM History WHERE cid = :cid")
     public abstract void delete(int cid);

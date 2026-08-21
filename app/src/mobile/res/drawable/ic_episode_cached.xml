@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 剧集胶囊上的「已缓存」小角标，着色跟随胶囊文字，选中/未选中都看得见 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="13dp"
+    android:height="13dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M17,9h-3V4h-4v5H7l5,5 5,-5zM6,18v2h12v-2H6z" />
+</vector>

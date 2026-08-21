@@ -11,12 +11,14 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
+import com.fongmi.android.tv.bean.Download;
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Url;
 import com.fongmi.android.tv.bean.Vod;
+import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.exception.ExtractException;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -31,6 +33,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,6 +45,9 @@ import okhttp3.Call;
 import okhttp3.Response;
 
 public class SiteViewModel extends ViewModel {
+
+    /** 离线缓存的伪站源 key：详情页拿到它就走本地文件，不再联网。 */
+    public static final String DOWNLOAD_KEY = "download_agent";
 
     public MutableLiveData<Episode> episode;
     public MutableLiveData<Result> result;
@@ -114,7 +122,9 @@ public class SiteViewModel extends ViewModel {
     public void detailContent(String key, String id) {
         execute(result, () -> {
             Site site = VodConfig.get().getSite(key);
-            if (site.getType() == 3) {
+            if (DOWNLOAD_KEY.equals(key)) {
+                return offlineDetail(id);
+            } else if (site.getType() == 3) {
                 Spider spider = site.recent().spider();
                 String detailContent = spider.detailContent(Arrays.asList(id));
                 SpiderDebug.log(detailContent);
@@ -147,48 +157,107 @@ public class SiteViewModel extends ViewModel {
     public void playerContent(String key, String flag, String id) {
         execute(player, () -> {
             Source.get().stop();
-            Site site = VodConfig.get().getSite(key);
-            if (site.getType() == 3) {
-                Spider spider = site.recent().spider();
-                String playerContent = spider.playerContent(flag, id, VodConfig.get().getFlags());
-                SpiderDebug.log(playerContent);
-                Result result = Result.fromJson(playerContent);
-                if (result.getFlag().isEmpty()) result.setFlag(flag);
-                result.setUrl(Source.get().fetch(result));
-                result.setHeader(site.getHeader());
-                result.setKey(key);
-                return result;
-            } else if (site.getType() == 4) {
-                ArrayMap<String, String> params = new ArrayMap<>();
-                params.put("play", id);
-                params.put("flag", flag);
-                String playerContent = call(site, params);
-                SpiderDebug.log(playerContent);
-                Result result = Result.fromJson(playerContent);
-                if (result.getFlag().isEmpty()) result.setFlag(flag);
-                result.setUrl(Source.get().fetch(result));
-                result.setHeader(site.getHeader());
-                return result;
-            } else if (site.isEmpty() && "push_agent".equals(key)) {
-                Result result = new Result();
-                result.setParse(0);
-                result.setFlag(flag);
-                result.setUrl(Url.create().add(id));
-                result.setUrl(Source.get().fetch(result));
-                return result;
-            } else {
-                Url url = Url.create().add(id);
-                Result result = new Result();
-                result.setUrl(url);
-                result.setFlag(flag);
-                result.setHeader(site.getHeader());
-                result.setPlayUrl(site.getPlayUrl());
-                result.setParse(Sniffer.isVideoFormat(url.v()) && result.getPlayUrl().isEmpty() ? 0 : 1);
-                result.setUrl(Source.get().fetch(result));
-                SpiderDebug.log(result.toString());
-                return result;
-            }
+            return getPlayer(key, flag, id);
         });
+    }
+
+    /**
+     * 阻塞式取播放地址。播放走 {@link #playerContent}，离线缓存的地址解析直接复用这里，
+     * 两边共用同一套站源逻辑，避免下载和播放拿到的地址不一致。
+     */
+    public static Result getPlayer(String key, String flag, String id) throws Exception {
+        Site site = VodConfig.get().getSite(key);
+        // 本地缓存文件不能丢给爬虫去解析，认出 file:// 就直接当播放地址用
+        if (DOWNLOAD_KEY.equals(key) || (id != null && id.startsWith("file://"))) {
+            Result result = new Result();
+            result.setParse(0);
+            result.setFlag(flag);
+            result.setUrl(Url.create().add(id));
+            return result;
+        } else if (site.getType() == 3) {
+            Spider spider = site.recent().spider();
+            String playerContent = spider.playerContent(flag, id, VodConfig.get().getFlags());
+            SpiderDebug.log(playerContent);
+            Result result = Result.fromJson(playerContent);
+            if (result.getFlag().isEmpty()) result.setFlag(flag);
+            result.setUrl(Source.get().fetch(result));
+            result.setHeader(site.getHeader());
+            result.setKey(key);
+            return result;
+        } else if (site.getType() == 4) {
+            ArrayMap<String, String> params = new ArrayMap<>();
+            params.put("play", id);
+            params.put("flag", flag);
+            String playerContent = call(site, params);
+            SpiderDebug.log(playerContent);
+            Result result = Result.fromJson(playerContent);
+            if (result.getFlag().isEmpty()) result.setFlag(flag);
+            result.setUrl(Source.get().fetch(result));
+            result.setHeader(site.getHeader());
+            result.setKey(key);
+            return result;
+        } else if (site.isEmpty() && "push_agent".equals(key)) {
+            Result result = new Result();
+            result.setParse(0);
+            result.setFlag(flag);
+            result.setUrl(Url.create().add(id));
+            result.setUrl(Source.get().fetch(result));
+            return result;
+        } else {
+            Url url = Url.create().add(id);
+            Result result = new Result();
+            result.setUrl(url);
+            result.setFlag(flag);
+            result.setHeader(site.getHeader());
+            result.setPlayUrl(site.getPlayUrl());
+            result.setParse(Sniffer.isVideoFormat(url.v()) && result.getPlayUrl().isEmpty() ? 0 : 1);
+            result.setUrl(Source.get().fetch(result));
+            result.setKey(key);
+            SpiderDebug.log(result.toString());
+            return result;
+        }
+    }
+
+    private static Result offlineDetail(String groupKey) {
+        return offlineResult(groupKey);
+    }
+
+    /**
+     * 把这部剧已缓存好的集拼成一条播放源，供详情页当作一条普通线路挂上去。
+     * 不分线路——用户可能这个源下几集、那个源下几集，对他来说就是一部剧一个集列表，
+     * 同一集在多个源都缓存过时只留一份。
+     */
+    public static Result offlineResult(String groupKey) {
+        List<Download> playable = new ArrayList<>();
+        List<String> keys = new ArrayList<>();
+        for (Download item : Download.getByGroup(groupKey)) {
+            if (!item.isPlayable()) continue;
+            String key = Download.episodeKey(item.getEpisodeName());
+            if (keys.contains(key)) continue;
+            keys.add(key);
+            playable.add(item);
+        }
+        if (playable.isEmpty()) return Result.empty();
+        StringBuilder urls = new StringBuilder();
+        for (Download item : playable) {
+            if (urls.length() > 0) urls.append("#");
+            urls.append(item.getEpisodeName()).append("$").append("file://").append(item.getLocalPath());
+        }
+        Download head = playable.get(0);
+        Flag flag = Flag.create(ResUtil.getString(R.string.download_flag));
+        flag.createEpisode(urls.toString());
+        List<Flag> flags = new ArrayList<>();
+        flags.add(flag);
+        Vod vod = new Vod();
+        vod.setVodId(groupKey);
+        vod.setVodName(head.getVodName());
+        vod.setVodPic(head.getVodPic());
+        vod.setVodContent(head.getVodContent());
+        vod.setVodYear(head.getVodYear());
+        vod.setVodArea(head.getVodArea());
+        vod.setTypeName(head.getVodType());
+        vod.setVodFlags(flags);
+        return Result.vod(vod);
     }
 
     public void action(String key, String action) {
@@ -238,7 +307,7 @@ public class SiteViewModel extends ViewModel {
         });
     }
 
-    private String call(Site site, ArrayMap<String, String> params) throws IOException {
+    private static String call(Site site, ArrayMap<String, String> params) throws IOException {
         if (!site.getExt().isEmpty()) params.put("extend", site.getExt());
         Call get = OkHttp.newCall(site.getApi(), site.getHeaders(), params);
         Call post = OkHttp.newCall(site.getApi(), site.getHeaders(), OkHttp.toBody(params));

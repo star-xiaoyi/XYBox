@@ -7,6 +7,13 @@
     <!-- Vod -->
     <string name="vod_last">Last seen <xliff:g name="name">%s</xliff:g></string>
 
+    <!-- Download -->
+    <string name="download_flag">Offline</string>
+    <string name="download_channel">Offline cache</string>
+    <string name="download_title">Caching</string>
+    <string name="download_pending">Preparing…</string>
+    <string name="download_queued"><xliff:g name="count">%s</xliff:g> queued</string>
+
     <!-- Live -->
     <string name="live_pass">Pass</string>
     <string name="live_refresh">Refresh</string>

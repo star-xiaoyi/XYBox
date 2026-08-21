@@ -44,6 +44,12 @@ public class FlagAdapter extends RecyclerView.Adapter<FlagAdapter.ViewHolder> {
         return mItems.get(position);
     }
 
+    /** 按线路名找一条线路，找不到返回 null。 */
+    public Flag find(String flag) {
+        for (Flag item : mItems) if (item.getFlag().equals(flag)) return item;
+        return null;
+    }
+
     public Flag getActivated() {
         return mItems.get(getPosition());
     }

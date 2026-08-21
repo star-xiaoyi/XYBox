@@ -17,6 +17,15 @@ public interface DownloadDao {
     @Query("SELECT * FROM Download ORDER BY createTime DESC")
     List<Download> getAll();
 
+    @Query("SELECT * FROM Download WHERE status != 2 ORDER BY createTime ASC")
+    List<Download> getActive();
+
+    @Query("SELECT * FROM Download WHERE vodKey = :vodKey ORDER BY createTime ASC")
+    List<Download> getByVod(String vodKey);
+
+    @Query("SELECT * FROM Download WHERE vodName = :vodName ORDER BY createTime ASC")
+    List<Download> getByName(String vodName);
+
     @Query("SELECT * FROM Download WHERE id = :id")
     Download find(String id);
 
@@ -33,10 +42,7 @@ public interface DownloadDao {
     void clear();
 
     default void insertOrUpdate(Download item) {
-        if (find(item.getId()) != null) {
-            update(item);
-        } else {
-            insert(item);
-        }
+        if (find(item.getId()) != null) update(item);
+        else insert(item);
     }
 }
