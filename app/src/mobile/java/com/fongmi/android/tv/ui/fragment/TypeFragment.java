@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.ui.fragment;
 
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
 
@@ -14,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.Product;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Page;
 import com.fongmi.android.tv.bean.Result;
@@ -23,6 +25,7 @@ import com.fongmi.android.tv.bean.Value;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.FragmentTypeBinding;
 import com.fongmi.android.tv.model.SiteViewModel;
+import com.fongmi.android.tv.utils.Util;
 import com.fongmi.android.tv.ui.activity.CollectActivity;
 import com.fongmi.android.tv.ui.activity.VideoActivity;
 import com.fongmi.android.tv.ui.adapter.VodAdapter;
@@ -106,6 +109,9 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
         mExtends = getExtend();
         setRecyclerView();
         setViewModel();
+        // 顶栏是异步长高的（观看记录、分类行陆续加载出来），转圈以它为基准居中，
+        // 高度一变就得重算，否则正转着的圈会当众跳一下
+        mBinding.getRoot().addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> syncInset());
     }
 
     @Override
@@ -126,8 +132,28 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
 
     @Override
     protected void initData() {
+        syncInset();
         mBinding.progressLayout.showProgress();
         getVideo();
+    }
+
+    /**
+     * 告诉转圈和空态该往上抬多少。顶栏高度会变（分类行加载出来时就长高了一截），
+     * 所以每次要显示前都同步一下，否则圈会当场往下跳。
+     */
+    private void syncInset() {
+        VodFragment parent = getParent();
+        if (parent != null) mBinding.progressLayout.setBottomInset(parent.getAppBarHeight());
+    }
+
+    /**
+     * 拉不到内容时说清原因并给重试按钮。断网和源挂了是两回事，
+     * 一律显示"空谷待音"等于什么都没说，用户只能干瞪眼。
+     */
+    private void setEmpty(Result result) {
+        String msg = result != null && result.hasMsg() && !TextUtils.isEmpty(result.getMsg()) ? result.getMsg()
+                : getString(Util.isNetworkAvailable() ? R.string.error_source : R.string.error_network);
+        mBinding.progressLayout.setEmpty(msg, v -> getVideo());
     }
 
     private void setRecyclerView() {
@@ -158,7 +184,10 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
 
     private void getVideo(String typeId, String page) {
         if ("1".equals(page)) mAdapter.clear();
-        if ("1".equals(page) && !getParent().isRefreshing()) mBinding.progressLayout.showProgress();
+        if ("1".equals(page) && !getParent().isRefreshing()) {
+            syncInset();
+            mBinding.progressLayout.showProgress();
+        }
         if (isHome() && "1".equals(page)) setAdapter(getParent().getResult());
         else mViewModel.categoryContent(getKey(), typeId, page, true, mExtends);
     }
@@ -166,6 +195,8 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     private void setAdapter(Result result) {
         boolean first = mScroller.first();
         int size = result.getList().size();
+        syncInset();
+        if (first && size == 0) setEmpty(result);
         mBinding.progressLayout.showContent(first, size);
         getParent().setRefreshing(false);
         if (size > 0) addVideo(result);

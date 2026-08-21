@@ -182,7 +182,7 @@ public class DownloadManager {
      * 总量压在预算内既保住了单集速度，也不至于被当成刷流量。
      */
     private int threads() {
-        return Math.max(2, Math.min(Setting.getDownloadThread(), Setting.DOWNLOAD_BUDGET / Math.max(1, running.size())));
+        return Math.max(1, Math.min(Setting.getDownloadThread(), Setting.DOWNLOAD_BUDGET / Math.max(1, running.size())));
     }
 
     private void notifyChanged(boolean force) {
@@ -323,13 +323,17 @@ public class DownloadManager {
         }
 
         private void download() throws Exception {
+            long began = System.currentTimeMillis();
             Resolver.Address address = Resolver.resolve(item);
+            DownloadLog.d("任务 %s 解析用时=%dms 在跑=%d", item.getEpisodeName(), System.currentTimeMillis() - began, running.size());
             if (isCancelled()) throw new Http.CancelException();
             File dir = item.dir();
             File output;
             long duration;
             int threads = threads();
             boolean hls = address.isHls() || Http.isPlaylist(address.getUrl(), address.getHeaders());
+            DownloadLog.d("任务 %s 类型=%s 线程=%d 设置(集=%d,连接=%d)", item.getEpisodeName(), hls ? "HLS" : "直链",
+                    threads, Setting.getDownloadTask(), Setting.getDownloadThread());
             if (hls) {
                 HlsFetcher fetcher = new HlsFetcher(address.getHeaders(), dir, threads, this);
                 output = fetcher.download(address.getUrl());

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+    纯文字空态 + 重试按钮。摇箱子那个动画只留给「我的收藏」和「历史记录」——
+    那里是"你还没存东西"，配张插画合适；这里是拉不到内容的报错，
+    180dp 的动画会把下面的内容整个挡住，而且报错必须能重试，光看动画用户没法自救。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:paddingStart="32dp"
+    android:paddingEnd="32dp">
+
+    <TextView
+        android:id="@+id/text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="@string/error_empty"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/retry"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:background="@drawable/shape_primary_button"
+        android:paddingStart="32dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="32dp"
+        android:paddingBottom="10dp"
+        android:text="@string/retry"
+        android:textColor="?attr/colorOnPrimary"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+</LinearLayout>

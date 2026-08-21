@@ -51,6 +51,9 @@ public class FileFetcher {
 
     private final AtomicLong doneBytes = new AtomicLong();
     private final AtomicLong window = new AtomicLong();
+    private final java.util.concurrent.atomic.AtomicInteger inflight = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger retries = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger throttled = new java.util.concurrent.atomic.AtomicInteger();
     /** 抢活和读写分段表共用一把锁，只有一把就不用操心加锁顺序。 */
     private final ReentrantLock chunkLock = new ReentrantLock();
     /** 报进度用 tryLock：抢不到就跳过这次，绝不让下载线程互相等。 */
@@ -79,8 +82,14 @@ public class FileFetcher {
         long[] probe = probe(url);
         total = probe[0];
         boolean split = probe[1] == 1 && total >= MIN_SPLIT && threads > 1;
+        DownloadLog.d("file 开工 大小=%s 支持Range=%b 模式=%s 线程=%d 标识=%s",
+                DownloadLog.size(total), probe[1] == 1, split ? "分段" : "单连接", threads, validator);
+        long began = System.currentTimeMillis();
         if (split) parallel(url, target);
         else single(url, target);
+        DownloadLog.d("file 收工 用时=%dms 均速=%s 分段=%d 重试=%d 限流=%d",
+                System.currentTimeMillis() - began, DownloadLog.rate(doneBytes.get(), System.currentTimeMillis() - began),
+                chunks.size(), retries.get(), throttled.get());
         if (!target.exists() || target.length() == 0) throw new Exception("下载结果为空文件");
         progress.onProgress(100, target.length(), target.length(), 0, 0, 0);
         return target;
@@ -239,15 +248,19 @@ public class FileFetcher {
             } catch (IOException e) {
                 last = e;
                 Logger.e(TAG, e);
+                retries.incrementAndGet();
+                if (e instanceof Http.CodeException && ((Http.CodeException) e).isThrottled()) throttled.incrementAndGet();
             }
             // 这轮真下到了东西就把退避次数清零：一段几百 MB，中途撞上一次网络抖动很正常，
             // 按累计次数封顶会让整集在最后关头前功尽弃
             if (chunk.done > before) {
+                DownloadLog.d("file 分段中断但有进展 %d..%d 已下=%s 重试重新计数", chunk.start, chunk.end, DownloadLog.size(chunk.done));
                 attempt = 0;
                 Http.sleep(500);
                 continue;
             }
             long wait = Http.backoff(last, attempt++);
+            DownloadLog.d("file 分段失败 %d..%d 第%d次 退避=%dms 原因=%s", chunk.start, chunk.end, attempt, wait, last);
             if (wait < 0) break;
             Http.sleep(wait);
         }
@@ -262,6 +275,7 @@ public class FileFetcher {
         // 每条连接都各自解析域名、各自跟跳转，可能落到不同后端。If-Range 让服务端在
         // 文件对不上时退回 200，而我们只认 206，就不会把两份不同的片源拼成一个文件
         if (!TextUtils.isEmpty(validator)) builder.header("If-Range", validator);
+        inflight.incrementAndGet();
         try (Response response = Http.client().newCall(builder.build()).execute()) {
             if (response.code() != 206) throw new Http.CodeException(response.code());
             // 服务端不支持 If-Range 时再用总长度兜一道：长度都不一样肯定不是同一份
@@ -285,6 +299,8 @@ public class FileFetcher {
                     if (chunk.isDone()) break;
                 }
             }
+        } finally {
+            inflight.decrementAndGet();
         }
     }
 
@@ -449,6 +465,9 @@ public class FileFetcher {
             if (elapsed >= 1000) {
                 speed = window.getAndSet(0) * 1000 / elapsed;
                 windowStart = now;
+                DownloadLog.d("file 秒报 已下=%s/%s 分段=%d 在飞=%d/%d 速度=%s 重试=%d 限流=%d",
+                        DownloadLog.size(doneBytes.get()), DownloadLog.size(total), chunks.size(),
+                        inflight.get(), threads, DownloadLog.size(speed) + "/s", retries.get(), throttled.get());
             }
             long done = doneBytes.get();
             int percent = total > 0 ? (int) Math.min(99, done * 100 / total) : 0;

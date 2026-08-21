@@ -63,18 +63,9 @@
                     android:id="@+id/vod"
                     style="@style/SettingsRow">
 
-                    <ImageView
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:background="@drawable/shape_settings_icon"
-                        android:padding="8dp"
-                        android:src="@drawable/ic_nav_vod"
-                        android:tint="?attr/colorPrimary" />
-
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="12dp"
                         android:layout_marginEnd="8dp"
                         android:layout_weight="1"
                         android:orientation="vertical">
@@ -134,18 +125,9 @@
                         android:id="@+id/live"
                         style="@style/SettingsRow">
 
-                        <ImageView
-                            android:layout_width="36dp"
-                            android:layout_height="36dp"
-                            android:background="@drawable/shape_settings_icon"
-                            android:padding="8dp"
-                            android:src="@drawable/ic_nav_live"
-                            android:tint="?attr/colorPrimary" />
-
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="12dp"
                             android:layout_marginEnd="8dp"
                             android:layout_weight="1"
                             android:orientation="vertical">

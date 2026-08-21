@@ -69,7 +69,7 @@ public class SiteViewModel extends ViewModel {
     }
 
     public void homeContent() {
-        execute(result, () -> {
+        execute(result, "首页", () -> {
             Site site = VodConfig.get().getHome();
             if (site.getType() == 3) {
                 Spider spider = site.recent().spider();
@@ -98,7 +98,7 @@ public class SiteViewModel extends ViewModel {
     }
 
     public void categoryContent(String key, String tid, String page, boolean filter, HashMap<String, String> extend) {
-        execute(result, () -> {
+        execute(result, "分类", () -> {
             Site site = VodConfig.get().getSite(key);
             if (site.getType() == 3) {
                 Spider spider = site.recent().spider();
@@ -120,7 +120,7 @@ public class SiteViewModel extends ViewModel {
     }
 
     public void detailContent(String key, String id) {
-        execute(result, () -> {
+        execute(result, "详情", () -> {
             Site site = VodConfig.get().getSite(key);
             if (DOWNLOAD_KEY.equals(key)) {
                 return offlineDetail(id);
@@ -155,7 +155,7 @@ public class SiteViewModel extends ViewModel {
     }
 
     public void playerContent(String key, String flag, String id) {
-        execute(player, () -> {
+        execute(player, "播放地址", () -> {
             Source.get().stop();
             return getPlayer(key, flag, id);
         });
@@ -261,7 +261,7 @@ public class SiteViewModel extends ViewModel {
     }
 
     public void action(String key, String action) {
-        execute(this.action, () -> {
+        execute(this.action, "动作", () -> {
             Site site = VodConfig.get().getSite(key);
             if (site.getType() == 3) return Result.fromJson(site.recent().spider().action(action));
             if (site.getType() == 4) return Result.fromJson(OkHttp.string(action));
@@ -287,7 +287,7 @@ public class SiteViewModel extends ViewModel {
     }
 
     public void searchContent(Site site, String keyword, String page) {
-        execute(result, () -> {
+        execute(result, "搜索", () -> {
             if (site.getType() == 3) {
                 String searchContent = site.spider().searchContent(Trans.t2s(keyword), false, page);
                 SpiderDebug.log(site.getName() + "," + searchContent);
@@ -338,7 +338,7 @@ public class SiteViewModel extends ViewModel {
         this.search.postValue(result);
     }
 
-    private void execute(MutableLiveData<Result> result, Callable<Result> callable) {
+    private void execute(MutableLiveData<Result> result, String tag, Callable<Result> callable) {
         if (executor != null) executor.shutdownNow();
         executor = Executors.newFixedThreadPool(2);
         executor.execute(() -> {

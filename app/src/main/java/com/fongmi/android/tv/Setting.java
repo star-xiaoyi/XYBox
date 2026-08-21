@@ -18,13 +18,13 @@ public class Setting {
     public static final int ACCENT_GREEN = 2;
     public static final int ACCENT_PURPLE = 3;
     public static final int DOWNLOAD_TASK_MAX = 5;
-    public static final int DOWNLOAD_THREAD_MIN = 2;
-    public static final int DOWNLOAD_THREAD_MAX = 16;
+    public static final int DOWNLOAD_THREAD_MIN = 1;
+    public static final int DOWNLOAD_THREAD_MAX = 32;
     /**
-     * 全局连接预算。5 集各开 16 条就是 80 个并发请求，手机扛得住但源站不一定，
+     * 全局连接预算。5 集各开 32 条就是 160 个并发请求，手机扛得住但源站不一定，
      * 单集的连接数会按当前在跑的集数摊到这个预算里。
      */
-    public static final int DOWNLOAD_BUDGET = 32;
+    public static final int DOWNLOAD_BUDGET = 48;
 
     public static int getThemeMode() {
         int mode = Prefers.getInt("theme_mode", THEME_DARK);
@@ -179,7 +179,7 @@ public class Setting {
      * 但源站限流大多按连接数算，开太多会挨 403/429，所以封顶 16。
      */
     public static int getDownloadThread() {
-        return Math.min(Math.max(Prefers.getInt("download_thread", 8), DOWNLOAD_THREAD_MIN), DOWNLOAD_THREAD_MAX);
+        return Math.min(Math.max(Prefers.getInt("download_thread", 16), DOWNLOAD_THREAD_MIN), DOWNLOAD_THREAD_MAX);
     }
 
     public static void putDownloadThread(int thread) {

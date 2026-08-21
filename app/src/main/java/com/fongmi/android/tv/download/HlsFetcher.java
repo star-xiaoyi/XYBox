@@ -34,6 +34,12 @@ public class HlsFetcher {
     private static final String TAG = "HlsFetcher";
     private static final Pattern ATTR = Pattern.compile("([A-Z0-9-]+)=(\"[^\"]*\"|[^,]*)");
     private static final int MAX_REDIRECT = 3;
+    /** 收尾阶段慢到这个地板以下就换连接。健康连接随便都有几百 K，压到这条线只可能是卡住了。 */
+    private static final long STALL_FLOOR = 48 * 1024;
+    /** 观察这么久才下判断，避免刚建连还没起速就被误杀。 */
+    private static final long STALL_AFTER = 4000;
+    /** 同一分片最多掐几次，掐够了就认命让它慢慢下完。 */
+    private static final int MAX_STALL_ABORT = 3;
     public static final String INDEX = "index.m3u8";
 
     private final Map<String, String> headers;
@@ -45,6 +51,9 @@ public class HlsFetcher {
     private final List<String> lines = new ArrayList<>();
     private final Map<String, Long> cursor = new HashMap<>();
     private final AtomicInteger doneCount = new AtomicInteger();
+    private final AtomicInteger inflight = new AtomicInteger();
+    private final AtomicInteger retries = new AtomicInteger();
+    private final AtomicInteger throttled = new AtomicInteger();
     private final AtomicLong doneBytes = new AtomicLong();
     private final AtomicLong window = new AtomicLong();
     /** 报进度用 tryLock 而不是 synchronized：抢不到就跳过这次，绝不让下载线程互相等。 */
@@ -198,12 +207,18 @@ public class HlsFetcher {
         }
         report(true);
         if (todo.isEmpty()) return;
-        ExecutorService pool = Executors.newFixedThreadPool(Math.min(threads, todo.size()));
+        int workers = Math.min(threads, todo.size());
+        DownloadLog.d("hls 开工 分片=%d 待下=%d 线程=%d", items.size(), todo.size(), workers);
+        long began = System.currentTimeMillis();
+        ExecutorService pool = Executors.newFixedThreadPool(workers);
         CountDownLatch latch = new CountDownLatch(todo.size());
         AtomicReference<Exception> error = new AtomicReference<>();
         for (Item item : todo) pool.execute(() -> fetchItem(item, error, latch));
         latch.await();
         pool.shutdownNow();
+        DownloadLog.d("hls 收工 用时=%dms 下载=%s 均速=%s 重试=%d 限流=%d",
+                System.currentTimeMillis() - began, DownloadLog.size(doneBytes.get()),
+                DownloadLog.rate(doneBytes.get(), System.currentTimeMillis() - began), retries.get(), throttled.get());
         if (progress.isCancelled()) throw new Http.CancelException();
         if (error.get() != null) throw error.get();
         // 逐个对账。只看"有没有人报错"是不够的：线程可能因为取消标记中途翻回来、
@@ -220,27 +235,52 @@ public class HlsFetcher {
             if (progress.isCancelled() || error.get() != null) return;
             File target = new File(dir, item.name);
             IOException last = null;
+            // 掐掉龟速连接的次数。掐够了就认命让它慢慢下完——
+            // 真遇到源站给这一片就是这么慢的情况，反复重连只会更糟
+            int aborts = 0;
             for (int attempt = 0; ; attempt++) {
                 if (progress.isCancelled() || error.get() != null) return;
+                boolean[] stalled = {false};
+                long[] mark = {System.currentTimeMillis(), 0};
+                boolean watch = aborts < MAX_STALL_ABORT;
                 try {
+                    inflight.incrementAndGet();
                     Http.download(item.url, headers, target, item.range, bytes -> {
                         if (progress.isCancelled() || error.get() != null) return false;
                         doneBytes.addAndGet(bytes);
                         window.addAndGet(bytes);
+                        mark[1] += bytes;
+                        if (watch && stalling(mark)) {
+                            stalled[0] = true;
+                            return false;
+                        }
                         report(false);
                         return true;
                     });
                     last = null;
                     break;
                 } catch (Http.CancelException e) {
-                    return;
+                    if (!stalled[0]) return;
+                    // 主动掐的，不是用户取消：换条连接重来，.part 会接着续，已下的字节不浪费
+                    aborts++;
+                    last = new IOException("连接龟速已重连");
+                    retries.incrementAndGet();
+                    DownloadLog.d("hls 龟速掐断 %s 已下=%s 第%d次", item.name, DownloadLog.size(mark[1]), aborts);
+                    Http.sleep(200);
                 } catch (IOException e) {
                     last = e;
                     Logger.e(TAG, e);
+                    retries.incrementAndGet();
+                    if (e instanceof Http.CodeException && ((Http.CodeException) e).isThrottled()) throttled.incrementAndGet();
                     long wait = Http.backoff(e, attempt);
+                    DownloadLog.d("hls 分片失败 %s 第%d次 退避=%dms 原因=%s", item.name, attempt + 1, wait, e);
                     if (wait < 0) break;
                     Http.sleep(wait);
+                } finally {
+                    inflight.decrementAndGet();
                 }
+                // 掐断重连不该算进失败预算，否则尾巴上卡两下就把整集判死
+                if (stalled[0]) attempt--;
             }
             // 分片失败必须让整个任务失败，不能吞掉——否则会拼出一个缺片的残缺视频还报成功
             if (last != null) error.compareAndSet(null, new Exception("分片下载失败：" + last.getMessage()));
@@ -259,6 +299,22 @@ public class HlsFetcher {
     }
 
     /**
+     * 这条连接是不是在龟速滴水。
+     * <p>
+     * 只在收尾阶段管：剩的分片比线程还少时，队列已经空了，每个掉队的分片都直接顶在总耗时上，
+     * 而且此时带宽是富余的，掐掉重连的代价很小。下载途中不管——那会儿每条连接分到的带宽本来就少，
+     * 拿绝对速度去判会误伤一大片，反而把好好的连接掐得到处重连。
+     * <p>
+     * OkHttp 的读超时只在"完全没数据"时触发，几 KB/s 的滴水永远不超时，所以必须自己盯。
+     */
+    private boolean stalling(long[] mark) {
+        if (items.size() - doneCount.get() > threads) return false;
+        long span = System.currentTimeMillis() - mark[0];
+        if (span < STALL_AFTER) return false;
+        return mark[1] * 1000 / span < STALL_FLOOR;
+    }
+
+    /**
      * 多个线程都会往这里报数：每 400ms 出一次进度，每秒结算一次速度。
      * 抢不到锁说明已经有线程在报了，直接放弃这一次——报进度要给下载让路，
      * 用 synchronized 会让所有下载线程排队等写库，速度直接掉一截。
@@ -273,6 +329,9 @@ public class HlsFetcher {
             if (elapsed >= 1000) {
                 speed = window.getAndSet(0) * 1000 / elapsed;
                 windowStart = now;
+                DownloadLog.d("hls 秒报 已下=%d/%d 在飞=%d/%d 速度=%s 重试=%d 限流=%d",
+                        doneCount.get(), items.size(), inflight.get(), threads,
+                        DownloadLog.size(speed) + "/s", retries.get(), throttled.get());
             }
             int done = doneCount.get();
             int percent = items.isEmpty() ? 0 : (int) (done * 100L / items.size());
