@@ -35,12 +35,9 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     private boolean changeTime;
     private boolean changeEpisode;
     private boolean animating;
-    private boolean center;
     private boolean touch;
     private boolean lock;
     private float bright;
-    private int lastVolume;
-    private float lastBright;
     private float volume;
     private float scale;
     private long time;
@@ -100,10 +97,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         changeSpeed = false;
         changeTime = false;
         changeEpisode = false;
-        center = false;
         touch = true;
-        lastVolume = (int) volume;
-        lastBright = bright;
         return true;
     }
 
@@ -116,21 +110,12 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
 
     @Override
     public boolean onScroll(MotionEvent e1, @NonNull MotionEvent e2, float distanceX, float distanceY) {
-        if (isEdge(e1) || changeScale || lock || e1.getPointerCount() > 1) return true;
+        if (isEdge(e1) || changeScale || lock || changeSpeed || e1.getPointerCount() > 1) return true;
         float deltaX = e2.getX() - e1.getX();
         float deltaY = e1.getY() - e2.getY();
-        
-        // 在横屏模式下，调整触摸事件的处理逻辑
-        if (activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            // 横屏模式下，增加对水平滑动的敏感度
-            if (Math.abs(deltaX) > Math.abs(deltaY) * 0.5f) {
-                if (touch) checkFunc(distanceX, distanceY, e2);
-                if (changeTime) listener.onSeek(time = (long) (deltaX * 50));
-                return true;
-            }
-        }
-        
-        if (touch) checkFunc(distanceX, distanceY, e2);
+        // 用累计位移判定方向，不能用 onScroll 传进来的每帧增量：
+        // 慢速滑动时增量只有零点几像素，方向判定几乎是随机的。
+        if (touch) checkFunc(Math.abs(deltaX), Math.abs(deltaY), e2);
         if (changeTime) listener.onSeek(time = (long) (deltaX * 50));
         if (changeBright) setBright(deltaY);
         if (changeVolume) setVolume(deltaY);
@@ -149,7 +134,9 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
 
     private void onEpisodeEnd() {
         float offset = videoView.getTranslationY();
-        float threshold = Math.max(ResUtil.dp2px(64), videoView.getHeight() * 0.12f);
+        // 拖动上限是 height/3，阈值取 0.25 倍高度（上限的 75%），
+        // 既要求明显的大幅拖动，又保证任何尺寸下都够得到。
+        float threshold = videoView.getHeight() * 0.25f;
         if (Math.abs(offset) < threshold) {
             videoView.animate().translationY(0).setDuration(150).withEndAction(() -> changeEpisode = false).start();
             return;
@@ -186,9 +173,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
 
     @Override
     public boolean onFling(MotionEvent e1, @NonNull MotionEvent e2, float velocityX, float velocityY) {
-        if (changeEpisode) return true;
-        if (isEdge(e1) || changeScale || !center || animating || e1.getPointerCount() > 1) return true;
-        checkFunc(e1, e2, velocityY);
+        // 切集已经改成跟手拖动（dragEpisode / onEpisodeEnd），这里不再做甩动判定
         return true;
     }
 
@@ -198,47 +183,27 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         time = 0;
     }
 
+    /**
+     * 决定这一轮手势干什么。distanceX / distanceY 传的是从按下点算起的累计位移绝对值。
+     *
+     * 关键是先用 20dp 的门槛把方向判稳：位移太小就直接返回、保持 touch 为 true，
+     * 下一帧再判。原来在第一帧就用每帧增量定死，慢速滑动时增量只有零点几像素，
+     * 结果方向基本靠运气，表现就是"慢慢滑没反应"。
+     */
     private void checkFunc(float distanceX, float distanceY, MotionEvent e2) {
-        // 竖屏同样把中间收到 1/4
+        if (Math.hypot(distanceX, distanceY) < ResUtil.dp2px(20)) return;
+        // 中间只留 1/4，左右各让出 3/8 给亮度和音量
         int narrow = (int) (videoWidth() * 0.375f);
-        
-        // 在横屏模式下，调整中心区域的判断
-        if (activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            // 横屏模式下，扩大中心区域，更容易触发进度条调整
-            // 中间只留 1/4，左右各让出 3/8 给亮度和音量
-            int centerStart = (int) (videoWidth() * 0.375f);
-            int centerEnd = (int) (videoWidth() * 0.625f);
-            if (e2.getX() > centerStart && e2.getX() < centerEnd) {
-                center = true;
-            } else if (Math.abs(distanceX) < Math.abs(distanceY)) {
-                checkSide(e2);
-            }
-            // 横屏模式下，降低触发进度条调整的阈值
-            if (Setting.isGestureProgress() && Math.abs(distanceX) >= Math.abs(distanceY) * 0.7f) {
-                changeTime = true;
-            }
-            if (center && !changeTime && Setting.isGestureEpisodeLand()) changeEpisode = true;
+        boolean center = e2.getX() > narrow && e2.getX() < videoWidth() - narrow;
+        boolean episode = ResUtil.isLand(activity) ? Setting.isGestureEpisodeLand() : Setting.isGestureEpisodePort();
+        if (distanceX >= distanceY) {
+            if (Setting.isGestureProgress()) changeTime = true;
+        } else if (center) {
+            if (episode) changeEpisode = true;
         } else {
-            // 竖屏模式保持原有逻辑
-            if (e2.getX() > narrow && e2.getX() < videoWidth() - narrow) {
-                center = true;
-            } else if (Math.abs(distanceX) < Math.abs(distanceY)) {
-                checkSide(e2);
-            }
-            if (Setting.isGestureProgress() && Math.abs(distanceX) >= Math.abs(distanceY)) {
-                changeTime = true;
-            }
-            if (center && !changeTime && Setting.isGestureEpisodePort()) changeEpisode = true;
+            checkSide(e2);
         }
         touch = false;
-    }
-
-    private void checkFunc(MotionEvent e1, MotionEvent e2, float velocityY) {
-        if (e1.getY() - e2.getY() > DISTANCE && Math.abs(velocityY) > VELOCITY) {
-            videoView.animate().translationYBy(-ResUtil.dp2px(24)).setDuration(150).withStartAction(() -> animating = true).withEndAction(() -> videoView.animate().translationY(0).setDuration(100).withStartAction(listener::onFlingUp).withEndAction(() -> animating = false).start()).start();
-        } else if (e2.getY() - e1.getY() > DISTANCE && Math.abs(velocityY) > VELOCITY) {
-            videoView.animate().translationYBy(ResUtil.dp2px(24)).setDuration(150).withStartAction(() -> animating = true).withEndAction(() -> videoView.animate().translationY(0).setDuration(100).withStartAction(listener::onFlingDown).withEndAction(() -> animating = false).start()).start();
-        }
     }
 
     /**
@@ -257,14 +222,18 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         else changeBright = Setting.isGestureBrightness();
     }
 
+    /**
+     * 亮度和音量每一帧都直接写下去，不做任何节流。
+     * 之前加过"值没跨过阈值就 return"的节流，结果把 UI 更新也一起挡了，
+     * 表现就是慢慢滑没反馈、攒够了突然跳一格。
+     */
     private void setBright(float deltaY) {
         if (bright == -1.0f) bright = 0.5f;
         int height = videoView.getMeasuredHeight();
-        float brightness = deltaY * 2 / height + bright;
+        if (height <= 0) return;
+        float brightness = deltaY * 2.0f / height + bright;
         if (brightness < 0) brightness = 0f;
         if (brightness > 1.0f) brightness = 1.0f;
-        if (Math.abs(brightness - lastBright) < 0.005f) return;
-        lastBright = brightness;
         WindowManager.LayoutParams attributes = activity.getWindow().getAttributes();
         attributes.screenBrightness = brightness;
         activity.getWindow().setAttributes(attributes);
@@ -273,15 +242,15 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
 
     private void setVolume(float deltaY) {
         int height = videoView.getMeasuredHeight();
+        if (height <= 0) return;
         int maxVolume = manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        float deltaV = deltaY * 2 / height * maxVolume;
-        float index = volume + deltaV;
+        float index = volume + deltaY * 2.0f / height * maxVolume;
         if (index > maxVolume) index = maxVolume;
         if (index < 0) index = 0;
-        if ((int) index == lastVolume) return;
-        lastVolume = (int) index;
         manager.setStreamVolume(AudioManager.STREAM_MUSIC, (int) index, 0);
-        listener.onVolume((int) (index / maxVolume * 100));
+        // 进度条用连续值算百分比，不要拿取整后的档位算：
+        // 有的机型系统音量只有 15 档，按档位算出来的进度条是一格一格跳的。
+        listener.onVolume((int) (index / maxVolume * 100.0f));
     }
 
     @Override

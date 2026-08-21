@@ -1220,7 +1220,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onRotate() {
-        mPortraitLock = false;
+        // 用户手动选过方向，之后就一直算数，不要再按片源比例自动转回去。
+        // 原来这里清成 false，导致用旋转按钮切到竖屏全屏后，
+        // 下一集的 SIZE 事件一到 checkOrientation 就把屏幕转回横屏。
+        mPortraitLock = true;
         setR1Callback();
         setRotate(!isRotate());
         setRequestedOrientation(ResUtil.isLand(this) ? ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
@@ -1492,15 +1495,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.action.danmaku.setVisibility(View.GONE);
         mBinding.control.action.decode.setVisibility(land ? View.VISIBLE : View.GONE);
         mBinding.control.action.exit.setVisibility(land && isFullscreen() ? View.VISIBLE : View.GONE);
+        // 选集横竖屏都保留，只要不止一集
+        mBinding.control.action.episodes.setVisibility(mEpisodeAdapter.getItemCount() < 2 ? View.GONE : View.VISIBLE);
         // 两个分支都要显式赋值：只写隐藏那一半的话，竖屏收起来的按钮转到横屏就再也回不来
         if (land) {
-            mBinding.control.action.episodes.setVisibility(mEpisodeAdapter.getItemCount() < 2 ? View.GONE : View.VISIBLE);
             setTrackVisible();
         } else {
             mBinding.control.action.text.setVisibility(View.GONE);
             mBinding.control.action.audio.setVisibility(View.GONE);
             mBinding.control.action.video.setVisibility(View.GONE);
-            mBinding.control.action.episodes.setVisibility(View.GONE);
         }
     }
 
