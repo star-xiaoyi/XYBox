@@ -59,7 +59,9 @@ public class Notify {
     }
 
     public static void show(String text) {
-        get().makeText(text);
+        // 统一走系统默认样式：原来的自绘 Toast 是黑底黄字，全屏切集、换线路时
+        // 弹出来跟应用整体（以及同步那类提示）是两套观感。
+        tip(text);
     }
 
     /** 系统默认样式的轻量提示，跟随日夜主题，用于用户主动触发的操作结果。 */
@@ -93,24 +95,6 @@ public class Notify {
         mDialog = new MaterialAlertDialogBuilder(context).setView(binding.getRoot()).create();
         mDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         mDialog.show();
-    }
-
-    private void makeText(String message) {
-        if (mToast != null) mToast.cancel();
-        if (mHandler == null) mHandler = new Handler(Looper.getMainLooper());
-        if (TextUtils.isEmpty(message)) return;
-        mToast = new Toast(App.get());
-        TextView view = (TextView) LayoutInflater.from(App.get()).inflate(R.layout.view_toast, null);
-        view.setText(message);
-        mToast.setView(view);
-        mToast.setDuration(Toast.LENGTH_SHORT);
-        mToast.show();
-        
-        // 1秒后取消Toast
-        mHandler.removeCallbacksAndMessages(null);
-        mHandler.postDelayed(() -> {
-            if (mToast != null) mToast.cancel();
-        }, 1000); // 1000毫秒 = 1秒
     }
 
     private void makeTextCenter(String message) {
