@@ -220,6 +220,11 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         getWindow().getDecorView().setSystemUiVisibility(flags);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        // 同 BaseActivity：透明系统栏会招来系统自动垫的对比度 scrim，这里一并关掉
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setNavigationBarContrastEnforced(false);
+            getWindow().setStatusBarContrastEnforced(false);
+        }
         mBinding.getRoot().setBackgroundColor(getColor(R.color.screen_background));
     }
 

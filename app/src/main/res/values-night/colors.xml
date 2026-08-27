@@ -1,7 +1,8 @@
 <resources>
-    
-    <!-- Launcher icon background (Dark mode) -->
-    <color name="launcher_background">#222222</color>
+
+    <!--
+      launcher_background 已统一到 values/colors.xml，深浅色同一个黑底。
+      这里刻意不再覆盖：Launcher 会缓存图标，深浅两套值只会让桌面和通知栏对不上。
+    -->
 
 </resources>
-

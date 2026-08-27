@@ -1610,6 +1610,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void showControl() {
         if (mPiP.isInMode(this)) return;
+        // 竖屏全屏顶栏只留：返回、时间、电量、投屏、设置
+        boolean portraitFull = isFullscreen() && !isLand();
         mBinding.control.danmaku.setVisibility(isLock() || !mPlayers.haveDanmaku() ? View.GONE : View.VISIBLE);
         mBinding.control.setting.setVisibility(!isFullscreen() || mPlayers.isEmpty() ? View.GONE : View.VISIBLE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
@@ -1619,9 +1621,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.parse.setVisibility(isFullscreen() && isUseParse() ? View.VISIBLE : View.GONE);
         mBinding.control.action.getRoot().setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
         mBinding.control.right.lock.setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
-        mBinding.control.info.setVisibility(mPlayers.isEmpty() || !isFullscreen() ? View.GONE : View.VISIBLE);
+        mBinding.control.info.setVisibility(mPlayers.isEmpty() || !isFullscreen() || portraitFull ? View.GONE : View.VISIBLE);
         mBinding.control.cast.setVisibility(mPlayers.isEmpty() ? View.GONE : View.VISIBLE);
-        mBinding.control.pip.setVisibility(mPlayers.isEmpty() || PiP.noPiP() || !isFullscreen() ? View.GONE : View.VISIBLE);
+        mBinding.control.pip.setVisibility(mPlayers.isEmpty() || PiP.noPiP() || !isFullscreen() || portraitFull ? View.GONE : View.VISIBLE);
+        // 片名和分辨率只在竖屏全屏收起。title 仍持有文本，InfoDialog、投屏选择还要读它
+        mBinding.control.title.setVisibility(portraitFull ? View.GONE : View.VISIBLE);
+        mBinding.control.size.setVisibility(portraitFull ? View.GONE : View.VISIBLE);
         setActionVisible();
         mBinding.control.center.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.bottom.setVisibility(isLock() ? View.GONE : View.VISIBLE);

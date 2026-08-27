@@ -110,6 +110,12 @@ public abstract class BaseActivity extends AppCompatActivity {
         activity.getWindow().getDecorView().setSystemUiVisibility(flags);
         activity.getWindow().setStatusBarColor(Color.TRANSPARENT);
         activity.getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        // 透明系统栏会触发系统自动垫的对比度 scrim（小白条下的长方形），API 29 起可以关掉。
+        // 主题里也配了同样两项，这里再补一次是因为部分页面走的是运行时设色，不吃主题那份。
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            activity.getWindow().setNavigationBarContrastEnforced(false);
+            activity.getWindow().setStatusBarContrastEnforced(false);
+        }
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
