@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  通知栏用的图标。刻意不复用 @mipmap/ic_launcher：
+  那个名字下有两份资源，mipmap-anydpi-v26 的自适应图标走 launcher_background（黑底），
+  而 mipmap-<density>/ic_launcher.webp 是传统栅格图、白底是烤进图片里的。
+  取到哪一份由系统的资源匹配决定，通知栏就是这么拿到白底的。
+  这里按自适应图标同样的构成自己画一遍：同色背景 + 同样 20% 内缩的前景，保证两处永远一致。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launcher_background" />
+    <!--
+      前景内缩 20%，与 mipmap-anydpi-v26/ic_launcher.xml 的 inset 一致。
+      这里写死 dp 而非 "20%"：layer-list 的 item 边距只接受 dimension，
+      而 inset drawable 的分数写法在 API 26 以下不可靠（本项目 minSdk 24）。
+      通知图标按 64dp 见方绘制，12.8dp 即 20%。
+    -->
+    <item
+        android:drawable="@mipmap/ic_launcher_foreground"
+        android:bottom="12.8dp"
+        android:left="12.8dp"
+        android:right="12.8dp"
+        android:top="12.8dp" />
+</layer-list>

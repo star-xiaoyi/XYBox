@@ -138,7 +138,7 @@ public class PlaybackService extends Service {
 
     private Bitmap getDefaultArt() {
         if (defaultArt != null && !defaultArt.isRecycled()) return defaultArt;
-        Drawable drawable = ContextCompat.getDrawable(this, R.mipmap.ic_launcher);
+        Drawable drawable = ContextCompat.getDrawable(this, R.drawable.ic_notify_art);
         if (drawable == null) return null;
         int size = Math.round(64 * getResources().getDisplayMetrics().density);
         defaultArt = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
