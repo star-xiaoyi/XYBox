@@ -150,21 +150,55 @@ public class Updater implements Download.Callback {
     }
 
     /**
-     * 逐段比较版本号。段内只取数字部分，"0.2.0-beta" 里的 "0-beta" 按 0 处理，
-     * 避免解析异常时被当成「已是最新」而永远更新不了。
+     * 远端是否比本地新。
+     *
+     * 版本号形如 0.3.4 或 0.3.4-beta2：先逐段比较主体数字，主体相同时按预发布规则收尾——
+     * 正式版永远高于同主体的任何 beta（所以 0.3.4-beta2 能升到 0.3.4），
+     * 两个 beta 之间比后缀里的序号（beta1 < beta2）。
+     * 这样 beta→beta、beta→正式、正式→正式三条路都成立，且不会把用户往回降。
      */
     private boolean needUpdate(String remoteVersion) {
         if (TextUtils.isEmpty(remoteVersion)) return false;
-        String[] remote = remoteVersion.split("\\.");
-        String[] local = BuildConfig.VERSION_NAME.split("\\.");
-        int length = Math.max(remote.length, local.length);
+        return compare(remoteVersion, BuildConfig.VERSION_NAME) > 0;
+    }
+
+    private int compare(String a, String b) {
+        String[] baseA = base(a).split("\\.");
+        String[] baseB = base(b).split("\\.");
+        int length = Math.max(baseA.length, baseB.length);
         for (int i = 0; i < length; i++) {
-            int r = segment(remote, i);
-            int l = segment(local, i);
-            if (r != l) return r > l;
+            int diff = segment(baseA, i) - segment(baseB, i);
+            if (diff != 0) return diff;
         }
-        // 版本号相同时，dev 通道允许按 versionCode 重装同名的预发布包
-        return dev && !remoteVersion.equals(BuildConfig.VERSION_NAME);
+        // 主体相同：正式版（无后缀）视为最高
+        boolean preA = isPre(a);
+        boolean preB = isPre(b);
+        if (preA != preB) return preA ? -1 : 1;
+        if (!preA) return 0;
+        return preIndex(a) - preIndex(b);
+    }
+
+    /** 取 '-' 之前的主体，"0.3.4-beta2" → "0.3.4"。 */
+    private String base(String version) {
+        int dash = version.indexOf('-');
+        return dash < 0 ? version : version.substring(0, dash);
+    }
+
+    private boolean isPre(String version) {
+        return version.indexOf('-') >= 0;
+    }
+
+    /** 后缀里的序号，"-beta2" → 2；"-beta" 这种不带序号的按 0 处理。 */
+    private int preIndex(String version) {
+        StringBuilder digits = new StringBuilder();
+        for (char c : version.substring(version.indexOf('-') + 1).toCharArray()) {
+            if (c >= '0' && c <= '9') digits.append(c);
+        }
+        try {
+            return digits.length() == 0 ? 0 : Integer.parseInt(digits.toString());
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private int segment(String[] parts, int index) {
