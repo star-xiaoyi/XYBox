@@ -28,6 +28,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     private final Listener listener;
     private final Activity activity;
     private final View videoView;
+    private View touchView;
     private boolean changeBright;
     private boolean changeVolume;
     private boolean changeSpeed;
@@ -56,7 +57,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         this.scale = 1.0f;
     }
 
-    public boolean onTouchEvent(MotionEvent e) {
+    public boolean onTouchEvent(View v, MotionEvent e) {
+        touchView = v;
         int action = e.getActionMasked();
         if (changeEpisode && (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)) onEpisodeEnd();
         if (changeTime && e.getAction() == MotionEvent.ACTION_UP) onSeekEnd();
@@ -83,8 +85,12 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         return scale;
     }
 
+    /**
+     * 边缘判定必须用真正接收触摸的那个 View（video 容器），不能用 videoView（exo）：
+     * exo 会被捏合缩放和拖动切集改 scale/translation，拿它算窗口内坐标会跟着漂。
+     */
     private boolean isEdge(MotionEvent e) {
-        return ResUtil.isEdge(activity, e, ResUtil.dp2px(24));
+        return touchView != null && ResUtil.isEdge(touchView, e, ResUtil.dp2px(24));
     }
 
     @Override
