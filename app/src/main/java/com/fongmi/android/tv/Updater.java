@@ -34,6 +34,12 @@ import java.util.Locale;
 public class Updater implements Download.Callback {
 
     private static final String RELEASE_API = "https://api.github.com/repos/star-xiaoyi/XYBox/releases/latest";
+    /**
+     * dev 通道要能看到 beta。GitHub 的 /releases/latest 按设计会跳过所有 prerelease，
+     * 所以预发布包在那个接口上完全不可见（本项目实际踩过：v0.3.2-beta 发出来手机检查不到更新）。
+     * 列表接口按创建时间倒序返回，含 prerelease，取第一条即最新发布。
+     */
+    private static final String DEV_API = "https://api.github.com/repos/star-xiaoyi/XYBox/releases?per_page=10";
 
     private DialogUpdateBinding binding;
     private Download download;
@@ -80,13 +86,17 @@ public class Updater implements Download.Callback {
 
     private void checkUpdate(Activity activity) {
         try {
-            String response = OkHttp.string(RELEASE_API);
+            String response = OkHttp.string(dev ? DEV_API : RELEASE_API);
             if (TextUtils.isEmpty(response)) {
                 tipError("检查更新失败：网络连接异常");
                 return;
             }
 
-            JSONObject release = new JSONObject(response);
+            JSONObject release = parseRelease(response);
+            if (release == null) {
+                tipError("检查更新失败：未找到发布版本");
+                return;
+            }
             // GitHub 的错误响应（404、限流）带 message 字段而非 release 数据。
             // 不能用 response.contains("404") 判断：APK 体积等数字里也可能出现 404。
             if (release.has("message")) {
@@ -117,6 +127,21 @@ public class Updater implements Download.Callback {
             Logger.e("Updater: " + e.getMessage());
             tipError("检查更新失败：" + e.getMessage());
         }
+    }
+
+    /**
+     * release 通道拿到的是单个对象，dev 通道拿到的是数组。
+     * 数组里跳过草稿（draft 的资产还没公开，下不下来），保留 prerelease。
+     */
+    private JSONObject parseRelease(String response) throws Exception {
+        String trimmed = response.trim();
+        if (!trimmed.startsWith("[")) return new JSONObject(trimmed);
+        JSONArray releases = new JSONArray(trimmed);
+        for (int i = 0; i < releases.length(); i++) {
+            JSONObject release = releases.optJSONObject(i);
+            if (release != null && !release.optBoolean("draft")) return release;
+        }
+        return null;
     }
 
     private void tipError(String message) {
