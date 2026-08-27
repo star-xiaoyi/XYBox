@@ -54,7 +54,6 @@ app/src/leanback/ → 电视端（当前不构建）
 | `app/src/mobile/res/values/styles.xml` | 主题与 SettingsCard/SettingsRow 等设置页样式 |
 | `app/src/mobile/res/values/colors.xml` + `values-night/colors.xml` | iOS 风格语义色板（深浅两套） |
 | `app/proguard-rules.pro` | R8 混淆规则（Gson 相关 keep 规则见下） |
-||
 
 
 ## 经验
@@ -70,5 +69,6 @@ app/src/leanback/ → 电视端（当前不构建）
 ## 用户偏好
 
 - 项目数据必须真实，不允许编造。
-- 改完通常要求：编译 release → 发布云端beta版本，用户下载下来进行测试。
+- 改完通常要求：编译 release → 发布云端 beta 版本，用户下载下来进行测试。
+- 发布流程：升 `app/build.gradle` 的 versionName/versionCode → 编译 release → git 提交推送 → `gh release create vX.Y.Z-beta <apk路径> --prerelease`。上传的资产名必须同时含 `mobile` 和 `arm64-v8a`（见经验 5），否则应用内更新匹配不到。
 
