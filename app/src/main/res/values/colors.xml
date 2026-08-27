@@ -31,6 +31,13 @@
     <color name="sync_button_bg">#334CAF50</color>
     
     <!-- Launcher icon background (Light mode) -->
-    <color name="launcher_background">#FFFFFF</color>
+    <!--
+      桌面图标背景，深浅色统一用黑底，不再拆 values-night。
+      原因：桌面图标由 Launcher 进程加载并缓存，缓存在安装/更新那一刻按当时配置生成，
+      系统切换深浅色后绝大多数 Launcher 不会重新生成，结果就是"深色模式装的永远黑底"。
+      而通知栏走 PlaybackService 在本进程解析同一份资源，两边各自取值就对不上。
+      固定一个色值是唯一能让桌面、通知栏、快捷方式始终一致的做法。
+    -->
+    <color name="launcher_background">#222222</color>
 
 </resources>

@@ -1,0 +1,18 @@
+<resources>
+
+    <!--
+      API 29 起，只要导航栏/状态栏是透明或半透明，系统就会自动垫一层对比度保护 scrim
+      （小白条底下那条长方形）。本项目 BaseActivity 和 BaseTheme 都把这两栏设成了透明，
+      正好命中该条件。这两个开关关掉后由我们自己保证内容与小白条的对比度。
+
+      注意：这里必须把 values-v27/AppTheme 的两项一并重写。资源限定符是整个 style 覆盖，
+      不是逐条合并，漏写就等于在 API 29+ 上把刘海屏和状态栏配置丢了。
+    -->
+    <style name="AppTheme" parent="BaseTheme">
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+    </style>
+
+</resources>
