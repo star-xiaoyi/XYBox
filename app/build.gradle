@@ -25,8 +25,12 @@ android {
         minSdk 24
         //noinspection ExpiredTargetSdkVersion
         targetSdk 28
-        versionCode 334
-        versionName "0.3.4"
+        // versionName 带 -betaN 后缀时即为测试版，设置页会原样显示，用户一眼能看出装的是不是测试包。
+        // versionCode 规则：(major*1000 + minor*100 + patch) * 10 + (beta 用序号 N，正式用 9)
+        // 例：0.3.2-beta1=3021，0.3.2-beta2=3022，0.3.2 正式=3029，下一个 0.3.3-beta1=3031。
+        // 正式版的尾数 9 保证它高于同版本的所有 beta，用户才能从 beta 直接覆盖安装到正式版。
+        versionCode 3021
+        versionName "0.3.2-beta1"
         ndk { abiFilters "arm64-v8a" }
         // GitHub Token (可选，用于提高API请求限制)
         def githubToken = project.findProperty("GITHUB_TOKEN") ?: ""
