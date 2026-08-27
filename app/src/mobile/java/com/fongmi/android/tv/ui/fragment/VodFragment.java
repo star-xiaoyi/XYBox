@@ -310,7 +310,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.retryLayout.setVisibility(View.GONE);
         mBinding.emptySourceHint.setOnClickListener(this::onAddSource);
         if (mBinding.addSourceBtn != null) mBinding.addSourceBtn.setOnClickListener(this::onAddSource);
-        hideFabButtons();
+        showLinkOnly();
     }
 
     /** 是否存在保存过的配置地址。 */
@@ -414,14 +414,26 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void setFabVisible(int position) {
-        // 没有内容可展示时（没配源、或源没加载出来）不出悬浮按钮
-        if (!hasConfig() || mAdapter.getItemCount() == 0) {
+        if (!hasConfig()) {
+            // 一个源都没配过时反而最需要「导入链接」——用户正靠它去添加源，
+            // 这时候把按钮一起收掉，页面上就只剩一句提示，没有出口
+            showLinkOnly();
+        } else if (mAdapter.getItemCount() == 0) {
+            // 配了源但内容没加载出来（断网、源挂了）：那会儿点筛选点链接都没意义，全收起来
             hideFabButtons();
         } else {
             mFabEnabled = true;
             mBinding.top.setVisibility(View.GONE);
             showActionFab(position);
         }
+    }
+
+    /** 没配过源时只留「导入链接」。不打开 mFabEnabled——没有内容可滚，也就不参与滚动切换。 */
+    private void showLinkOnly() {
+        mFabEnabled = false;
+        mBinding.top.setVisibility(View.GONE);
+        mBinding.filter.setVisibility(View.GONE);
+        mBinding.link.setVisibility(View.VISIBLE);
     }
 
     // 隐藏所有悬浮按钮的方法

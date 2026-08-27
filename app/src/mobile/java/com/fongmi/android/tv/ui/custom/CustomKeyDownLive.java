@@ -26,6 +26,7 @@ public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener i
     private final Listener listener;
     private final Activity activity;
     private final View videoView;
+    private View touchView;
     private boolean changeBright;
     private boolean changeVolume;
     private boolean changeSpeed;
@@ -54,7 +55,8 @@ public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener i
         this.scale = 1.0f;
     }
 
-    public boolean onTouchEvent(MotionEvent e) {
+    public boolean onTouchEvent(View v, MotionEvent e) {
+        touchView = v;
         if (changeTime && e.getAction() == MotionEvent.ACTION_UP) onSeekEnd();
         if (changeSpeed && e.getAction() == MotionEvent.ACTION_UP) listener.onSpeedEnd();
         if (changeBright && e.getAction() == MotionEvent.ACTION_UP) listener.onBrightEnd();
@@ -79,8 +81,12 @@ public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener i
         return scale;
     }
 
+    /**
+     * 边缘判定必须用真正接收触摸的那个 View（video 容器），不能用 videoView（exo）：
+     * exo 会被捏合缩放和拖动切集改 scale/translation，拿它算窗口内坐标会跟着漂。
+     */
     private boolean isEdge(MotionEvent e) {
-        return ResUtil.isEdge(activity, e, ResUtil.dp2px(24));
+        return touchView != null && ResUtil.isEdge(touchView, e, ResUtil.dp2px(24));
     }
 
     @Override
@@ -126,7 +132,7 @@ public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener i
     @Override
     public boolean onSingleTapConfirmed(@NonNull MotionEvent e) {
         if (isEdge(e) || changeScale || e.getPointerCount() > 1) return true;
-        int half = ResUtil.getScreenWidth(activity) / 2;
+        int half = videoWidth() / 2;
         if (e.getX() > half || lock) listener.onDoubleTap();
         else listener.onSingleTap();
         return true;
@@ -146,7 +152,7 @@ public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener i
     }
 
     private void checkFunc(float distanceX, float distanceY, MotionEvent e2) {
-        int four = ResUtil.getScreenWidth(activity) / 4;
+        int four = videoWidth() / 4;
         if (e2.getX() > four && e2.getX() < four * 3) center = true;
         else if (Math.abs(distanceX) < Math.abs(distanceY)) checkSide(e2);
         if (Math.abs(distanceX) >= Math.abs(distanceY)) changeTime = true;
@@ -165,8 +171,16 @@ public class CustomKeyDownLive extends GestureDetector.SimpleOnGestureListener i
         }
     }
 
+    /**
+     * 分区按视频宽度算，不能按屏幕/窗口宽度：分屏、小窗、横屏分栏时两者不是一回事。
+     */
+    private int videoWidth() {
+        int width = videoView.getWidth();
+        return width > 0 ? width : ResUtil.getScreenWidth(activity);
+    }
+
     private void checkSide(MotionEvent e2) {
-        int half = ResUtil.getScreenWidth(activity) / 2;
+        int half = videoWidth() / 2;
         if (e2.getX() > half) changeVolume = true;
         else changeBright = true;
     }

@@ -54,7 +54,7 @@ app/src/leanback/ → 电视端（当前不构建）
 | `app/src/mobile/res/values/styles.xml` | 主题与 SettingsCard/SettingsRow 等设置页样式 |
 | `app/src/mobile/res/values/colors.xml` + `values-night/colors.xml` | iOS 风格语义色板（深浅两套） |
 | `app/proguard-rules.pro` | R8 混淆规则（Gson 相关 keep 规则见下） |
-| `XYBox修改计划书.md` | 开发规范与阶段计划 |
+||
 
 
 ## 经验
@@ -67,8 +67,8 @@ app/src/leanback/ → 电视端（当前不构建）
 6. **删除资源限定符变体后必须 clean 重建**：删掉 `layout-sw600dp/xxx.xml` 这类变体文件后，Gradle 的资源增量合并**不会**把它从 `app/build/intermediates/merged-not-compiled-resources/` 里清掉，陈旧副本会继续被打进 APK。表现极具迷惑性：源码只剩一份布局，手机怎么测都正常，但平板（sw>=600dp）运行时仍命中幽灵变体，`ViewBinding.inflate` 报 `Missing required view with ID: xxx`。本项目实际踩过——v0.2.2 删了源文件却没 clean，v0.2.3 仍在崩，直到 v0.2.4 执行 `gradlew clean` 才真正生效。验证方法：`find app/build -name "<布局名>*.xml"`，确认没有多余限定符目录。
 7. **提交规范**： conventional commits 中文描述；PowerShell 不支持 heredoc，多段提交信息用多个 `-m` 参数。
 
-## 用户偏好（务必遵守）
+## 用户偏好
 
 - 项目数据必须真实，不允许编造。
-- 改完通常要求：编译 release → adb 安装到手机（设备已连接时）→ 用户真机验收。
-- 发布流程：升 `app/build.gradle` 的 versionName/versionCode → 编译 → git 提交推送 → `gh release create vX.Y.Z <apk路径>` 发布。
+- 改完通常要求：编译 release → 发布云端beta版本，用户下载下来进行测试。
+

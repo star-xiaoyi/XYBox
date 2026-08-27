@@ -11,6 +11,7 @@ import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Display;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.WindowManager;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
@@ -22,6 +23,9 @@ import androidx.annotation.ColorRes;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.StringRes;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.fongmi.android.tv.App;
 
@@ -65,8 +69,38 @@ public class ResUtil {
         }
     }
 
-    public static boolean isEdge(Context context, MotionEvent e, int edge) {
-        return e.getRawX() < edge || e.getRawX() > getScreenWidth(context) - edge || e.getRawY() < edge || e.getRawY() > getScreenHeight(context) - edge;
+    /**
+     * 触摸点是否落在系统手势区（返回手势、底部小白条那一圈），落在里面就不抢这次触摸。
+     *
+     * 两个量必须在同一个坐标系里比。原来是 e.getRawX()/getRawY() 比 getScreenWidth()/
+     * getScreenHeight()：前者带着窗口在屏幕上的偏移，后者只是窗口自身尺寸（不含偏移）。
+     * 全屏时偏移为 0，两者恰好重合，所以一直没暴露；分屏/小窗时窗口被挪到屏幕中下部，
+     * 窗口里任意一点的 raw 坐标都大于窗口尺寸，整个播放区都被判成"边缘"，
+     * 于是每个手势回调第一行就 return，视频区触摸全灭（详情区是普通可点 View，不走这条路，所以还能点）。
+     *
+     * 现在把事件坐标换算成窗口内坐标，跟窗口自身尺寸比，全程不碰 raw 坐标。
+     */
+    public static boolean isEdge(View view, MotionEvent e, int edge) {
+        View root = view.getRootView();
+        int width = root.getWidth();
+        int height = root.getHeight();
+        if (width <= 0 || height <= 0) return false;
+        int[] location = new int[2];
+        view.getLocationInWindow(location);
+        float x = e.getX() + location[0];
+        float y = e.getY() + location[1];
+        int left = edge, top = edge, right = edge, bottom = edge;
+        WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(root);
+        if (insets != null) {
+            // 分屏/小窗时窗口的内侧边不归系统手势管，insets 报 0，这几条边整条让给播放器。
+            // 上限仍取 edge，保证任何情况下都不会比全屏时让得更多。
+            Insets gesture = insets.getInsets(WindowInsetsCompat.Type.systemGestures());
+            left = Math.min(edge, gesture.left);
+            top = Math.min(edge, gesture.top);
+            right = Math.min(edge, gesture.right);
+            bottom = Math.min(edge, gesture.bottom);
+        }
+        return x < left || x > width - right || y < top || y > height - bottom;
     }
 
     public static boolean isLand(Context context) {
