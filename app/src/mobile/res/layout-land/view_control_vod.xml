@@ -54,9 +54,20 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/topRight"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:orientation="horizontal">
+
+            <!-- id 必须和 layout/ 那份保持一致，ViewBinding 对两份变体是同一个类 -->
+            <LinearLayout
+                android:id="@+id/timeGroup"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:orientation="horizontal">
+
 
             <TextView
                 android:id="@+id/time_battery"
@@ -91,6 +102,8 @@
                 android:visibility="gone"
                 tools:text="85%"
                 tools:visibility="visible" />
+
+            </LinearLayout>
 
             <ImageView
                 android:id="@+id/cast"
