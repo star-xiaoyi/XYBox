@@ -25,40 +25,53 @@
             tools:visibility="visible" />
 
         <!--
-          时间和电量紧跟返回键左对齐。只在全屏显示（updateTimeBattery 控制），
-          所以详情页的小播放器不受影响。横屏走 layout-land/ 那份，仍在右侧。
+          时间/充电/电量。位置由 VideoActivity.setTimeSlot 在运行时决定：
+          竖屏全屏搬到这里（返回键右边、左对齐），其余情况搬回 topRight。
+          不能靠 layout / layout-land 两份资源区分——VideoActivity 声明了
+          configChanges="orientation|screenSize"，旋转不重建、布局不重新 inflate，
+          横屏全屏用的仍是进入详情页时（竖屏）inflate 的这一份。
         -->
-        <TextView
-            android:id="@+id/time_battery"
+        <LinearLayout
+            android:id="@+id/timeGroup"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            tools:text="21:30" />
+            android:orientation="horizontal">
 
-        <ImageView
-            android:id="@+id/charging_indicator"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:layout_gravity="center_vertical"
-            android:layout_marginEnd="2dp"
-            android:src="@drawable/ic_charging_bolt"
-            android:visibility="gone"
-            tools:visibility="visible" />
+            <TextView
+                android:id="@+id/time_battery"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                tools:text="21:30" />
 
-        <TextView
-            android:id="@+id/battery_icon"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            android:visibility="gone"
-            tools:text="85%"
-            tools:visibility="visible" />
+            <ImageView
+                android:id="@+id/charging_indicator"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginEnd="2dp"
+                android:src="@drawable/ic_charging_bolt"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <TextView
+                android:id="@+id/battery_icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:paddingEnd="8dp"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:visibility="gone"
+                tools:text="85%"
+                tools:visibility="visible" />
+
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="0dp"
@@ -90,8 +103,10 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/topRight"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:orientation="horizontal">
 
             <ImageView

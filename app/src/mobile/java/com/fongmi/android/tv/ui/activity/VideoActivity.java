@@ -35,6 +35,7 @@ import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.Gravity;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.media.AudioManager;
@@ -1627,6 +1628,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         // 片名和分辨率只在竖屏全屏收起。title 仍持有文本，InfoDialog、投屏选择还要读它
         mBinding.control.title.setVisibility(portraitFull ? View.GONE : View.VISIBLE);
         mBinding.control.size.setVisibility(portraitFull ? View.GONE : View.VISIBLE);
+        setTimeSlot(portraitFull);
         setActionVisible();
         mBinding.control.center.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.bottom.setVisibility(isLock() ? View.GONE : View.VISIBLE);
@@ -1637,6 +1639,26 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         updateTimeBattery();
         setR1Callback();
         checkPlayImg();
+    }
+
+    /**
+     * 时间电量的位置：竖屏全屏挪到返回键右边（顶栏只剩它和右侧两个按钮，靠左才不空一大块），
+     * 其余情况回到 topRight 里投屏按钮的左边。
+     *
+     * 只能运行时搬，不能靠 layout / layout-land 两份资源：本页声明了
+     * configChanges="orientation|screenSize"，旋转不重建、布局不会重新 inflate，
+     * 横屏用的仍是进详情页时（竖屏）inflate 的那一份。
+     */
+    private void setTimeSlot(boolean portraitFull) {
+        ViewGroup group = mBinding.control.timeGroup;
+        ViewGroup want = portraitFull ? mBinding.control.top : mBinding.control.topRight;
+        if (group.getParent() == want) return;
+        ((ViewGroup) group.getParent()).removeView(group);
+        // 竖屏全屏插在返回键之后，否则插在 topRight 最前（投屏按钮左边）
+        want.addView(group, portraitFull ? 1 : 0);
+        LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) group.getLayoutParams();
+        params.gravity = Gravity.CENTER_VERTICAL;
+        group.setLayoutParams(params);
     }
 
     /**
