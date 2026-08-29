@@ -19,6 +19,10 @@ $env:JAVA_HOME='D:\dev\runtimes\jdk-17'; $env:GRADLE_USER_HOME='D:\dev\gradle-ca
 
 产物 `app/build/outputs/apk/release/XYBox-release.apk`（约 36MB，release 开启 minify + shrinkResources）。gradle 命令可能被沙箱拦截（无法写 `D:\dev\gradle-cache\daemon` 日志），遇到 `TRAE Sandbox Error` 用需要用户授权的方式重跑。
 
+只有 `release` 一个 buildType（`debug` 是 Gradle 隐式提供的），**没有 productFlavors**——上游 XMBOX 的 `assembleMobileArm64_v8aRelease` 那套 flavor 任务在本项目里早已不存在，见到引用它们的脚本或文档一律视为过时。
+
+改版本号 + 编译 + 发布可以一条命令走完（Git Bash）：`./build.sh 0.3.2-beta4 --publish`。脚本会按规则自动算 versionCode，并挡掉版本号倒退、工作区脏、上传中断留下空 Draft 这几类问题。
+
 **完整的编译发布步骤见 [docs/操作手册.md](docs/操作手册.md)。**
 
 ## 源码结构（最容易踩的坑）
