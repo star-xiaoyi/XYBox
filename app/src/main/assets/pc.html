@@ -24,6 +24,14 @@
   #tip { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%);
          background: #000c; padding: 8px 16px; border-radius: 6px; display: none; }
   #err { color: #ff8080; }
+  #picker { position: fixed; inset: 0; background: #000000e0; padding: 56px 24px 24px;
+            overflow-y: auto; display: none; }
+  #picker.show { display: block; }
+  #list { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  #list button { padding: 10px 8px; overflow: hidden; text-overflow: ellipsis;
+                 white-space: nowrap; text-align: center; }
+  #list button.on { background: #4a9eff; color: #fff; }
+  #picker h2 { font-size: 15px; font-weight: 600; margin: 0 0 14px; color: #bbb; }
 </style>
 </head>
 <body>
@@ -39,7 +47,13 @@
 
 <div id="bar">
   <span id="title"></span>
+  <button id="pick" style="display:none">选集</button>
   <button id="copy">复制播放地址</button>
+</div>
+
+<div id="picker">
+  <h2>选集（点击切换，电视/手机会一起跟着换）</h2>
+  <div id="list"></div>
 </div>
 
 <div id="tip"></div>
@@ -54,8 +68,37 @@ var bar = document.getElementById('bar');
 var title = document.getElementById('title');
 var tip = document.getElementById('tip');
 var err = document.getElementById('err');
+var picker = document.getElementById('picker');
+var list = document.getElementById('list');
+var pick = document.getElementById('pick');
 
-var videoSeq = -1, seekSeq = -1, playSeq = -1, speedSeq = -1, current = '', hls = null, ended = false;
+var videoSeq = -1, seekSeq = -1, playSeq = -1, speedSeq = -1, episodeSeq = -1;
+var current = '', hls = null, ended = false;
+
+pick.onclick = function () { picker.classList.toggle('show'); };
+picker.onclick = function (e) { if (e.target === picker) picker.classList.remove('show'); };
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') picker.classList.remove('show');
+});
+
+// 剧集列表整份重画，只在 episodeSeq 变化时做——每秒重建几十个按钮没必要，
+// 还会把用户正在滚动的位置顶掉。
+function drawEpisodes(names, index) {
+  list.innerHTML = '';
+  pick.style.display = names.length > 1 ? '' : 'none';
+  names.forEach(function (name, i) {
+    var b = document.createElement('button');
+    b.textContent = name;
+    b.title = name;
+    if (i === index) b.className = 'on';
+    b.onclick = function () {
+      picker.classList.remove('show');
+      toast('正在切到 ' + name);
+      fetch('/pc/select?index=' + i, { cache: 'no-store' }).catch(function () {});
+    };
+    list.appendChild(b);
+  });
+}
 
 function toast(text) {
   tip.textContent = text;
@@ -76,7 +119,10 @@ document.getElementById('copy').onclick = function () {
 document.addEventListener('mousemove', function () {
   bar.classList.add('show');
   clearTimeout(bar._t);
-  bar._t = setTimeout(function () { bar.classList.remove('show'); }, 2500);
+  bar._t = setTimeout(function () {
+    // 选集面板开着的时候别把顶栏藏了，那个「选集」按钮还要用来关它
+    if (!picker.classList.contains('show')) bar.classList.remove('show');
+  }, 2500);
 });
 
 function load(url, name, position) {
@@ -123,6 +169,10 @@ v.addEventListener('error', function () {
 v.addEventListener('ended', function () { ended = true; });
 
 function apply(s) {
+  if (episodeSeq !== s.episodeSeq) {
+    episodeSeq = s.episodeSeq;
+    drawEpisodes(s.episodes || [], s.episodeIndex);
+  }
   if (!s.casting) {
     if (videoSeq !== s.videoSeq) {
       videoSeq = s.videoSeq;
