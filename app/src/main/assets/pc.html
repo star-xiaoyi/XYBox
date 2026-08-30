@@ -32,6 +32,8 @@
                  white-space: nowrap; text-align: center; }
   #list button.on { background: #4a9eff; color: #fff; }
   #picker h2 { font-size: 15px; font-weight: 600; margin: 0 0 14px; color: #bbb; }
+  #ver { position: fixed; right: 8px; bottom: 6px; font-size: 11px; color: #666;
+         pointer-events: none; user-select: none; }
 </style>
 </head>
 <body>
@@ -57,6 +59,7 @@
 </div>
 
 <div id="tip"></div>
+<div id="ver">XYBox {{version}}</div>
 
 <script src="/js/hls.min.js"></script>
 <script>
@@ -108,6 +111,8 @@ function log() {
   var a = ['[XYBox]'].concat([].slice.call(arguments));
   console.log.apply(console, a);
 }
+
+log('页面已加载，版本 {{version}}。看不到这一行就说明浏览器用的是缓存里的旧页面。');
 
 function toast(text) {
   tip.textContent = text;
@@ -231,6 +236,7 @@ function apply(s) {
     return;
   }
   if (videoSeq !== s.videoSeq) {
+    log('SEQ videoSeq 变了 -> ' + s.videoSeq + '，手机推来了新的一集');
     videoSeq = s.videoSeq;
     seekSeq = s.seekSeq;
     playSeq = s.playSeq;
