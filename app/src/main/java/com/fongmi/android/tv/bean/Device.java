@@ -70,12 +70,17 @@ public class Device {
         return device;
     }
 
-    /** 电脑浏览器充当渲染器。没有设备发现的概念，弹窗里固定摆一条。 */
-    public static Device browser(String name) {
+    /**
+     * 电脑浏览器充当渲染器。没有设备发现的概念，弹窗里固定摆一条。
+     *
+     * @param lan 当前是否在局域网里。不在的话给出的地址电脑根本连不到，
+     *            所以 ip 留空，由界面换成一句"请先连 WiFi"的说明。
+     */
+    public static Device browser(String name, boolean lan) {
         Device device = new Device();
         device.setUuid("browser");
         device.setName(name);
-        device.setIp(Server.get().getAddress() + "/pc");
+        device.setIp(lan ? Server.get().getAddress() + "/pc" : "");
         device.setType(3);
         return device;
     }

@@ -27,16 +27,11 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <include
-            android:id="@+id/widget"
-            layout="@layout/view_widget_vod"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
         <!--
             投屏占位层：投屏中本地播放器是停着的（不然手机和电视会同时拉一份流），
-            画面区换成这块提示，下方的控制条改去操控电视。放在 control 之前，
-            控制层弹出来时仍然盖在它上面。
+            画面区换成这块提示，下方的控制条改去操控电视。它必须排在 widget 之前——
+            投屏时同样能滑动调进度、双击快进，那些提示要盖在这层上面才看得见；
+            也排在 control 之前，控制层弹出来时仍然盖在它上面。
         -->
         <LinearLayout
             android:id="@+id/castOverlay"
@@ -96,6 +91,12 @@
                 android:textSize="13sp" />
 
         </LinearLayout>
+
+        <include
+            android:id="@+id/widget"
+            layout="@layout/view_widget_vod"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
 
         <include
             android:id="@+id/control"

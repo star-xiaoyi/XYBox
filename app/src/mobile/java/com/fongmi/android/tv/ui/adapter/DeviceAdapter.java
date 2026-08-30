@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Device;
 import com.fongmi.android.tv.databinding.AdapterDeviceBinding;
+import com.fongmi.android.tv.utils.ResUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -71,11 +72,16 @@ public class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.ViewHolder
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Device item = mItems.get(position);
         holder.binding.name.setText(item.getName());
-        // 浏览器那条要把带路径的完整地址露出来，用户得照着在电脑上输
-        holder.binding.host.setText(item.isBrowser() ? item.getIp() : item.getHost());
+        // 浏览器那条要把带路径的完整地址露出来，用户得照着在电脑上输；
+        // 没连 WiFi 时地址是空的，换成一句说明
+        holder.binding.host.setText(item.isBrowser() ? browserHost(item) : item.getHost());
         holder.binding.type.setImageResource(getIcon(item));
         holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(item));
         holder.binding.getRoot().setOnLongClickListener(v -> mListener.onLongClick(item));
+    }
+
+    private String browserHost(Device item) {
+        return item.getIp().isEmpty() ? ResUtil.getString(R.string.device_browser_nolan) : item.getIp();
     }
 
     private int getIcon(Device item) {

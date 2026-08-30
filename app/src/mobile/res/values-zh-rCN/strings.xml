@@ -65,6 +65,8 @@
     <string name="device_scan">请扫描影视 QRCode 进行绑定</string>
     <string name="device_browser">电脑 / 浏览器</string>
     <string name="device_browser_host">在电脑浏览器里打开</string>
+    <string name="device_browser_nolan">需要先连 WiFi</string>
+    <string name="device_browser_nolan_tip">投屏要求手机和电脑在同一个局域网里。现在手机走的是移动数据，电脑连不到手机。连上 WiFi 再试。</string>
 
     <!-- Cast -->
     <string name="cast_channel">投屏</string>

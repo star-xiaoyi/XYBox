@@ -1180,6 +1180,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.castOverlay.setVisibility(View.GONE);
         mBinding.control.seek.setSource(null);
         castSwitching = false;
+        // 投屏这段时间里本地播放器一直停在开投那一刻，进度是在对端走的。
+        // 不把它补回来，退出后会从开投的位置重播一遍。
+        long position = CastManager.get().getLastPosition();
+        if (position > 0) {
+            if (mHistory != null) mHistory.setPosition(position);
+            if (!mPlayers.isEmpty()) mPlayers.seekTo(position);
+        }
         checkPlayImg();
     }
 
@@ -1951,6 +1958,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onTimeChanged() {
+        // 投屏时进度在对端，本地播放器停在开投那一刻。这里每秒都写一次记录，
+        // 不挡住的话它会跟 onCastChanged 抢着写，换集起播位置和退出后的续播全被它带偏。
+        if (isCasting()) return;
         long position, duration;
         mHistory.setPosition(position = mPlayers.getPosition());
         mHistory.setDuration(duration = mPlayers.getDuration());
@@ -2686,6 +2696,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (mHistory == null || mHistory.getCreateTime() <= 0 || Setting.isIncognito()) return;
         if (isCasting()) {
             // 投屏时进度在电视那边，本地播放器是停着的，读它只会把记录写回 0
+            // 换集在途时对端报的还是上一集的进度，这时候一个字都不能写
+            if (castSwitching) return;
             long position = CastManager.get().getPosition();
             long duration = CastManager.get().getDuration();
             if (position > 0) mHistory.setPosition(position);
