@@ -63,17 +63,23 @@
     <string name="device_select">Cast to device</string>
     <string name="device_offline">Device is offline</string>
     <string name="device_scan">Please scan QR Code to bind</string>
+    <string name="device_browser">Computer / Browser</string>
+    <string name="device_browser_host">Open in your computer\'s browser</string>
 
     <!-- Cast -->
     <string name="cast_channel">Casting</string>
     <string name="cast_notify_title">Casting to <xliff:g name="name">%s</xliff:g></string>
     <string name="cast_overlay_title">Casting to <xliff:g name="name">%s</xliff:g></string>
-    <string name="cast_overlay_tip">Keep this app running, the TV is streaming from your phone</string>
+    <string name="cast_overlay_tip">Keep this app running, the receiver is streaming from your phone</string>
     <string name="cast_play">Play</string>
     <string name="cast_pause">Pause</string>
     <string name="cast_exit">Stop casting</string>
     <string name="cast_exited">Casting stopped</string>
-    <string name="cast_switching">Sending <xliff:g name="name">%s</xliff:g> to TV</string>
+    <string name="cast_switching">Switching to <xliff:g name="name">%s</xliff:g></string>
+    <string name="cast_browser_title">Open this address on your computer</string>
+    <string name="cast_browser_tip">Make sure your computer is on the same Wi-Fi. If the video will not play, use the "Copy stream URL" button on that page and open it in PotPlayer.</string>
+    <string name="cast_browser_copy">Copy address</string>
+    <string name="cast_browser_copied">Address copied</string>
 
     <!-- Control -->
     <string name="control_speed">Speed</string>

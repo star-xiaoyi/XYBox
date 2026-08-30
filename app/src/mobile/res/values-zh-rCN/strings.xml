@@ -63,17 +63,23 @@
     <string name="device_select">投屏到设备</string>
     <string name="device_offline">装置已离线</string>
     <string name="device_scan">请扫描影视 QRCode 进行绑定</string>
+    <string name="device_browser">电脑 / 浏览器</string>
+    <string name="device_browser_host">在电脑浏览器里打开</string>
 
     <!-- Cast -->
     <string name="cast_channel">投屏</string>
     <string name="cast_notify_title">正在投屏到 <xliff:g name="name">%s</xliff:g></string>
     <string name="cast_overlay_title">正在投屏到 <xliff:g name="name">%s</xliff:g></string>
-    <string name="cast_overlay_tip">请保持应用在后台运行，电视正在从手机取流</string>
+    <string name="cast_overlay_tip">请保持应用在后台运行，接收端正在从手机取流</string>
     <string name="cast_play">播放</string>
     <string name="cast_pause">暂停</string>
     <string name="cast_exit">退出投屏</string>
     <string name="cast_exited">已退出投屏</string>
-    <string name="cast_switching">正在把「<xliff:g name="name">%s</xliff:g>」推给电视</string>
+    <string name="cast_switching">正在切换到「<xliff:g name="name">%s</xliff:g>」</string>
+    <string name="cast_browser_title">在电脑上打开这个地址</string>
+    <string name="cast_browser_tip">电脑要和手机连同一个 WiFi。如果画面放不出来，点页面上的「复制播放地址」，粘到 PotPlayer 里播。</string>
+    <string name="cast_browser_copy">复制地址</string>
+    <string name="cast_browser_copied">地址已复制</string>
 
     <!-- Control -->
     <string name="control_speed">倍速</string>

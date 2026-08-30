@@ -10,6 +10,8 @@ import com.android.cast.dlna.dmc.control.ServiceActionCallback;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.bean.CastVideo;
 import com.fongmi.android.tv.server.Server;
+import com.fongmi.android.tv.server.process.Pc;
+import com.fongmi.android.tv.server.process.Relay;
 import com.fongmi.android.tv.service.CastService;
 
 import org.fourthline.cling.support.lastchange.EventedValue;
@@ -27,16 +29,18 @@ import kotlin.Unit;
  * 播放状态，换集只能重新走一遍设备发现。这里把连接从弹窗里抽出来变成全局单例，投屏期间一直活着，
  * 手机端才有可能当遥控器用。
  * <p>
- * bindCastService 的绑定计数放在这里统一管：设备发现（弹窗）和投屏会话都要用同一个 UPnP 服务，
- * 谁都不能擅自 unbind——弹窗关闭时若正在投屏，服务必须留着。
+ * 会话状态（是否投屏中、进度、播放态）和常驻通知都留在这一层，具体怎么把指令送出去由
+ * {@link Transport} 决定：电视走 DLNA，电脑走浏览器。上层的遥控界面只认这个类，换传输不用改。
+ * <p>
+ * bindCastService 的绑定计数放在这里统一管：设备发现（弹窗）和 DLNA 投屏会话都要用同一个 UPnP
+ * 服务，谁都不能擅自 unbind——弹窗关闭时若正在投屏，服务必须留着。浏览器投屏不碰 UPnP。
  */
-public class CastManager {
+public class CastManager implements Pc.Listener {
 
     /** 电视端进度轮询间隔。DLNA 每次 GetPositionInfo 都是一次网络往返，1s 已经够跟手了。 */
     private static final long POLL_INTERVAL = 1000;
 
-    private DeviceControl control;
-    private org.fourthline.cling.model.meta.Device<?, ?, ?> device;
+    private Transport transport;
     private CastVideo video;
     private String deviceName;
     private Listener listener;
@@ -47,12 +51,10 @@ public class CastManager {
     private boolean notified;
     private long position;
     private long duration;
-    /** 本地刚下过指令、电视还没跟上的这段时间里，不让轮询结果把 UI 拽回旧值。 */
+    /** 本地刚下过指令、对端还没跟上的这段时间里，不让回报把 UI 拽回旧值。 */
     private long ignorePollUntil;
 
     private int bindCount;
-
-    private final Runnable mPoll = this::poll;
 
     private static class Loader {
         static volatile CastManager INSTANCE = new CastManager();
@@ -62,7 +64,11 @@ public class CastManager {
         return Loader.INSTANCE;
     }
 
-    /** 需要 UPnP 服务的地方（设备发现、投屏会话）都走这对方法，别直接 bind/unbind。 */
+    private CastManager() {
+        Pc.setListener(this);
+    }
+
+    /** 需要 UPnP 服务的地方（设备发现、DLNA 投屏会话）都走这对方法，别直接 bind/unbind。 */
     public void bind() {
         if (bindCount++ == 0) DLNACastManager.INSTANCE.bindCastService(App.get());
     }
@@ -104,97 +110,67 @@ public class CastManager {
     }
 
     /**
-     * 连上设备并投第一集。连接成功前不算投屏中，失败时把状态清干净，避免 UI 卡在假的投屏态。
+     * 连上 DLNA 设备并投第一集。连接成功前不算投屏中，失败时把状态清干净，避免 UI 卡在假的投屏态。
      */
     public void connect(org.fourthline.cling.model.meta.Device<?, ?, ?> device, String name, CastVideo video, Callback callback) {
-        this.device = device;
-        this.video = video;
         this.deviceName = name;
-        bind();
-        control = DLNACastManager.INSTANCE.connectDevice(device, new OnDeviceControlListener() {
-            @Override
-            public void onConnected(@NonNull org.fourthline.cling.model.meta.Device<?, ?, ?> d) {
-                push(video, callback);
-            }
-
-            @Override
-            public void onDisconnected(@NonNull org.fourthline.cling.model.meta.Device<?, ?, ?> d) {
-                App.post(() -> {
-                    if (casting) stop();
-                });
-            }
-
-            @Override
-            public void onAvTransportStateChanged(@NonNull TransportState state) {
-                applyState(state);
-            }
-
-            @Override
-            public void onEventChanged(@NonNull EventedValue<?> event) {
-            }
-
-            @Override
-            public void onRendererVolumeChanged(int volume) {
-            }
-
-            @Override
-            public void onRendererVolumeMuteChanged(boolean mute) {
-            }
-        });
+        DlnaTransport t = new DlnaTransport(device);
+        this.transport = t;
+        t.connect(video, callback);
     }
 
-    /** 换集：已经连着的设备直接换 URI，不用再走发现流程。 */
+    /** 投到 PC 浏览器：没有连接过程，写完状态等浏览器自己来取。 */
+    public void connectBrowser(String name, CastVideo video, Callback callback) {
+        this.deviceName = name;
+        this.transport = new BrowserTransport();
+        push(video, callback);
+    }
+
+    /** 换集：已经连着的设备直接换片，不用再走发现流程。 */
     public void cast(CastVideo video, Callback callback) {
-        if (control == null) return;
-        this.video = video;
+        if (transport == null) return;
         push(video, callback);
     }
 
     private void push(CastVideo video, Callback callback) {
-        control.setAVTransportURI(video.getUrl(), video.getName(), new ServiceActionCallback<Unit>() {
-            @Override
-            public void onSuccess(Unit unit) {
-                App.post(() -> {
-                    if (video.getPosition() > 0) control.seek(video.getPosition(), null);
-                    control.play("1", null);
-                    position = Math.max(video.getPosition(), 0);
-                    duration = 0;
-                    playing = true;
-                    onStarted();
-                    if (callback != null) callback.onCastSuccess();
-                });
-            }
+        this.video = video;
+        transport.push(relay(video), video, callback);
+    }
 
-            @Override
-            public void onFailure(@NonNull String msg) {
-                App.post(() -> {
-                    if (!casting) reset();
-                    if (callback != null) callback.onCastFailure(msg);
-                });
-            }
-        });
+    /**
+     * 决定这次要不要让流从手机转一道。
+     * <p>
+     * 浏览器必须转：拉外站的流会被跨域拦下。电视只在源带 Referer/UA 时才转——现在能正常投的
+     * 片源保持直连，既不平白增加手机的流量和发热，也不会因为中转有 bug 把好功能改坏。
+     * 地址本来就指向手机自己的服务（本地文件）时不用转。
+     */
+    private String relay(CastVideo video) {
+        String url = video.getUrl();
+        if (url.startsWith(Server.get().getAddress())) return url;
+        if (!transport.needRelay() && !video.needRelay()) return url;
+        return Relay.register(url, video.getHeaders());
     }
 
     private void onStarted() {
         casting = true;
-        // 电视多半是回头向手机的 NanoHTTPD 拉流，投屏期间这个服务必须活着
+        // 对端多半是回头向手机的 NanoHTTPD 拉流，投屏期间这个服务必须活着
         Server.get().start();
         CastService.start();
-        startPoll();
+        transport.startPoll();
         notifyChanged();
     }
 
     public void play() {
-        if (control == null) return;
-        control.play("1", null);
+        if (transport == null) return;
+        transport.play();
         playing = true;
         hold();
         notifyChanged();
     }
 
     public void pause() {
-        if (control == null) return;
-        control.pause(null);
+        if (transport == null) return;
+        transport.pause();
         playing = false;
         hold();
         notifyChanged();
@@ -206,33 +182,36 @@ public class CastManager {
     }
 
     public void seekTo(long ms) {
-        if (control == null) return;
-        control.seek(Math.max(ms, 0), null);
+        if (transport == null) return;
+        transport.seek(Math.max(ms, 0));
         position = Math.max(ms, 0);
         hold();
         notifyChanged();
     }
 
     public void setVolume(int volume) {
-        if (control != null) control.setVolume(volume, null);
+        if (transport != null) transport.setVolume(volume);
     }
 
-    /** 结束投屏：停掉电视播放、断连、收掉常驻通知。 */
+    /** 结束投屏：停掉对端播放、断连、收掉常驻通知。 */
     public void stop() {
-        if (control != null) control.stop(null);
+        if (transport != null) transport.stop();
         disconnect();
     }
 
-    /** 只断连接不发 stop，用于电视端已经自己断了的情况。 */
+    /** 只断连接不发 stop，用于对端已经自己断了的情况。 */
     public void disconnect() {
-        stopPoll();
         boolean wasCasting = casting;
-        if (device != null) DLNACastManager.INSTANCE.disconnectDevice(device);
+        Transport t = transport;
+        if (t != null) {
+            t.stopPoll();
+            t.release();
+        }
         reset();
+        Relay.clear();
         CastService.stop();
         if (wasCasting) {
-            // 投屏期间那次 bind 由这里释放：走 unbind() 让计数正常回落
-            unbind();
+            if (t != null && t.needBind()) unbind();
             notifyChanged();
         }
     }
@@ -242,73 +221,39 @@ public class CastManager {
         playing = false;
         position = 0;
         duration = 0;
-        control = null;
-        device = null;
+        transport = null;
         video = null;
-    }
-
-    /**
-     * 电视的状态变化事件（订阅推送）。这类事件比轮询快，但不是所有设备都发，所以两条路都留着。
-     */
-    private void applyState(TransportState state) {
-        App.post(() -> {
-            if (!casting) return;
-            if (state == TransportState.PLAYING) playing = true;
-            else if (state == TransportState.PAUSED_PLAYBACK) playing = false;
-            else if (state == TransportState.STOPPED) playing = false;
-            notifyChanged();
-        });
     }
 
     private void hold() {
         ignorePollUntil = System.currentTimeMillis() + 1500;
     }
 
-    private void startPoll() {
-        App.removeCallbacks(mPoll);
-        App.post(mPoll, POLL_INTERVAL);
+    private boolean settled() {
+        return System.currentTimeMillis() > ignorePollUntil;
     }
 
-    private void stopPoll() {
-        App.removeCallbacks(mPoll);
-    }
-
-    private void poll() {
-        if (!casting || control == null) return;
-        control.getPositionInfo(new ServiceActionCallback<PositionInfo>() {
-            @Override
-            public void onSuccess(PositionInfo info) {
-                App.post(() -> {
-                    if (!casting) return;
-                    long dur = info.getTrackDurationSeconds() * 1000;
-                    long pos = info.getTrackElapsedSeconds() * 1000;
-                    if (dur > 0) duration = dur;
-                    if (System.currentTimeMillis() > ignorePollUntil) position = pos;
-                    notifyChanged();
-                });
+    /** 浏览器每秒上报一次它的实际播放情况。 */
+    @Override
+    public void onPcReport(long position, long duration, boolean playing, boolean ended) {
+        App.post(() -> {
+            if (!casting || !(transport instanceof BrowserTransport)) return;
+            if (duration > 0) this.duration = duration;
+            if (settled()) {
+                this.position = position;
+                this.playing = playing;
+                // 用户直接在浏览器上点了播放/暂停，得把期望值一起改过来，
+                // 否则下一秒页面拉到旧的期望值又把自己扳回去，两边来回打架
+                Pc.setPlaying(playing);
             }
-
-            @Override
-            public void onFailure(@NonNull String msg) {
+            if (ended && this.duration > 0) {
+                // 浏览器有真的 ended 事件，不像 DLNA 要靠猜。把状态摆成"停在末尾"，
+                // VideoActivity 那套自动切集的判定就能直接复用。
+                this.position = this.duration;
+                this.playing = false;
             }
+            notifyChanged();
         });
-        control.getTransportInfo(new ServiceActionCallback<TransportInfo>() {
-            @Override
-            public void onSuccess(TransportInfo info) {
-                App.post(() -> {
-                    if (!casting) return;
-                    TransportState state = info.getCurrentTransportState();
-                    if (System.currentTimeMillis() > ignorePollUntil) playing = state == TransportState.PLAYING;
-                    notifyChanged();
-                });
-            }
-
-            @Override
-            public void onFailure(@NonNull String msg) {
-            }
-        });
-        App.removeCallbacks(mPoll);
-        App.post(mPoll, POLL_INTERVAL);
     }
 
     private void notifyChanged() {
@@ -317,6 +262,282 @@ public class CastManager {
         notified = playing;
         Listener l = listener;
         if (l != null) l.onCastChanged();
+    }
+
+    // ==================== 传输层 ====================
+
+    private interface Transport {
+
+        /** @param url 实际交给对端的地址（可能已经过中转），{@code video} 只用于取名字和起播位置 */
+        void push(String url, CastVideo video, Callback callback);
+
+        void play();
+
+        void pause();
+
+        void seek(long ms);
+
+        void setVolume(int volume);
+
+        void stop();
+
+        void release();
+
+        /** 只有拉模式（DLNA）需要轮询，浏览器是自己报上来的。 */
+        void startPoll();
+
+        void stopPoll();
+
+        /** 是否必须走中转（浏览器因跨域必须走）。 */
+        boolean needRelay();
+
+        /** 是否占用了 UPnP 服务的绑定计数。 */
+        boolean needBind();
+    }
+
+    private class DlnaTransport implements Transport {
+
+        private final org.fourthline.cling.model.meta.Device<?, ?, ?> device;
+        private DeviceControl control;
+
+        private final Runnable mPoll = this::poll;
+
+        DlnaTransport(org.fourthline.cling.model.meta.Device<?, ?, ?> device) {
+            this.device = device;
+        }
+
+        void connect(CastVideo video, Callback callback) {
+            bind();
+            control = DLNACastManager.INSTANCE.connectDevice(device, new OnDeviceControlListener() {
+                @Override
+                public void onConnected(@NonNull org.fourthline.cling.model.meta.Device<?, ?, ?> d) {
+                    CastManager.this.push(video, callback);
+                }
+
+                @Override
+                public void onDisconnected(@NonNull org.fourthline.cling.model.meta.Device<?, ?, ?> d) {
+                    App.post(() -> {
+                        if (casting) stop();
+                    });
+                }
+
+                @Override
+                public void onAvTransportStateChanged(@NonNull TransportState state) {
+                    applyState(state);
+                }
+
+                @Override
+                public void onEventChanged(@NonNull EventedValue<?> event) {
+                }
+
+                @Override
+                public void onRendererVolumeChanged(int volume) {
+                }
+
+                @Override
+                public void onRendererVolumeMuteChanged(boolean mute) {
+                }
+            });
+        }
+
+        @Override
+        public void push(String url, CastVideo video, Callback callback) {
+            if (control == null) return;
+            control.setAVTransportURI(url, video.getName(), new ServiceActionCallback<Unit>() {
+                @Override
+                public void onSuccess(Unit unit) {
+                    App.post(() -> {
+                        if (control == null) return;
+                        if (video.getPosition() > 0) control.seek(video.getPosition(), null);
+                        control.play("1", null);
+                        position = Math.max(video.getPosition(), 0);
+                        duration = 0;
+                        playing = true;
+                        onStarted();
+                        if (callback != null) callback.onCastSuccess();
+                    });
+                }
+
+                @Override
+                public void onFailure(@NonNull String msg) {
+                    App.post(() -> {
+                        if (!casting) {
+                            release();
+                            reset();
+                        }
+                        if (callback != null) callback.onCastFailure(msg);
+                    });
+                }
+            });
+        }
+
+        @Override
+        public void play() {
+            if (control != null) control.play("1", null);
+        }
+
+        @Override
+        public void pause() {
+            if (control != null) control.pause(null);
+        }
+
+        @Override
+        public void seek(long ms) {
+            if (control != null) control.seek(ms, null);
+        }
+
+        @Override
+        public void setVolume(int volume) {
+            if (control != null) control.setVolume(volume, null);
+        }
+
+        @Override
+        public void stop() {
+            if (control != null) control.stop(null);
+        }
+
+        @Override
+        public void release() {
+            control = null;
+            DLNACastManager.INSTANCE.disconnectDevice(device);
+        }
+
+        @Override
+        public boolean needRelay() {
+            return false;
+        }
+
+        @Override
+        public boolean needBind() {
+            return true;
+        }
+
+        @Override
+        public void startPoll() {
+            App.removeCallbacks(mPoll);
+            App.post(mPoll, POLL_INTERVAL);
+        }
+
+        @Override
+        public void stopPoll() {
+            App.removeCallbacks(mPoll);
+        }
+
+        /**
+         * 电视的状态变化事件（订阅推送）。这类事件比轮询快，但不是所有设备都发，所以两条路都留着。
+         */
+        private void applyState(TransportState state) {
+            App.post(() -> {
+                if (!casting) return;
+                if (state == TransportState.PLAYING) playing = true;
+                else if (state == TransportState.PAUSED_PLAYBACK) playing = false;
+                else if (state == TransportState.STOPPED) playing = false;
+                notifyChanged();
+            });
+        }
+
+        private void poll() {
+            if (!casting || control == null) return;
+            control.getPositionInfo(new ServiceActionCallback<PositionInfo>() {
+                @Override
+                public void onSuccess(PositionInfo info) {
+                    App.post(() -> {
+                        if (!casting) return;
+                        long dur = info.getTrackDurationSeconds() * 1000;
+                        long pos = info.getTrackElapsedSeconds() * 1000;
+                        if (dur > 0) duration = dur;
+                        if (settled()) position = pos;
+                        notifyChanged();
+                    });
+                }
+
+                @Override
+                public void onFailure(@NonNull String msg) {
+                }
+            });
+            control.getTransportInfo(new ServiceActionCallback<TransportInfo>() {
+                @Override
+                public void onSuccess(TransportInfo info) {
+                    App.post(() -> {
+                        if (!casting) return;
+                        TransportState state = info.getCurrentTransportState();
+                        if (settled()) playing = state == TransportState.PLAYING;
+                        notifyChanged();
+                    });
+                }
+
+                @Override
+                public void onFailure(@NonNull String msg) {
+                }
+            });
+            App.removeCallbacks(mPoll);
+            App.post(mPoll, POLL_INTERVAL);
+        }
+    }
+
+    /**
+     * 浏览器传输：手机这边只是把"该放什么"写进 {@link Pc}，浏览器每秒来取。
+     * 因此没有连接失败的概念——投屏一定"成功"，页面没打开就只是没人来取而已。
+     */
+    private class BrowserTransport implements Transport {
+
+        @Override
+        public void push(String url, CastVideo video, Callback callback) {
+            long start = Math.max(video.getPosition(), 0);
+            Pc.load(url, video.getName(), start);
+            position = start;
+            duration = 0;
+            playing = true;
+            onStarted();
+            if (callback != null) callback.onCastSuccess();
+        }
+
+        @Override
+        public void play() {
+            Pc.setPlaying(true);
+        }
+
+        @Override
+        public void pause() {
+            Pc.setPlaying(false);
+        }
+
+        @Override
+        public void seek(long ms) {
+            Pc.seek(ms);
+        }
+
+        @Override
+        public void setVolume(int volume) {
+        }
+
+        @Override
+        public void stop() {
+            Pc.stop();
+        }
+
+        @Override
+        public void release() {
+            Pc.stop();
+        }
+
+        @Override
+        public boolean needRelay() {
+            return true;
+        }
+
+        @Override
+        public boolean needBind() {
+            return false;
+        }
+
+        @Override
+        public void startPoll() {
+        }
+
+        @Override
+        public void stopPoll() {
+        }
     }
 
     public interface Listener {
