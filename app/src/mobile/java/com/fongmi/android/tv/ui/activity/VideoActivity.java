@@ -177,8 +177,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean castExpanded;
     /** 投屏中电视是否已经放到本集末尾，避免自动切下一集被轮询触发多次。 */
     private boolean castEnded;
-    /** 投屏中换集，从决定换到真正推给对端之间的这段时间。 */
-    private boolean castSwitching;
+    /**
+     * 当前推给接收端的是哪一集。
+     * <p>
+     * 换集是否在途由它和 {@link #getEpisode()} 比出来，而不是靠某个地方记得去置标记——
+     * 切集的入口有好几个（点剧集、上下集、自动下一集、电脑选集），走的还不是同一条路，
+     * 靠标记必然漏。
+     */
+    private Episode castEpisode;
     private boolean contentExpanded;
     private float mHandleDown;
     private boolean mDragging;
@@ -1138,6 +1144,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         return CastManager.get().isCasting();
     }
 
+    /**
+     * 换集在途：用户已经选了新的一集，但本地还在解析地址，还没推给接收端。
+     * 这段时间接收端报的仍是上一集的进度，一个字都不能写进观看记录。
+     */
+    private boolean isCastSwitching() {
+        return isCasting() && castEpisode != null && !castEpisode.equals(getEpisode());
+    }
+
     /** 电视端的进度/播放态代理给进度条用。 */
     private final CustomSeekView.Source mCastSource = new CustomSeekView.Source() {
         @Override
@@ -1163,7 +1177,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void enterCastMode() {
         onPaused();
-        castSwitching = false;
+        castEpisode = getEpisode();
         mBinding.castOverlay.setVisibility(View.VISIBLE);
         mBinding.castTitle.setText(getString(R.string.cast_overlay_title, CastManager.get().getDeviceName()));
         mBinding.control.seek.setSource(mCastSource);
@@ -1179,7 +1193,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void exitCastMode() {
         mBinding.castOverlay.setVisibility(View.GONE);
         mBinding.control.seek.setSource(null);
-        castSwitching = false;
+        castEpisode = null;
         // 投屏这段时间里本地播放器一直停在开投那一刻，进度是在对端走的。
         // 不把它补回来，退出后会从开投的位置重播一遍。
         long position = CastManager.get().getLastPosition();
@@ -1205,12 +1219,18 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void castCurrent() {
         String url = mPlayers.getUrl();
         if (TextUtils.isEmpty(url)) return;
-        String name = getString(R.string.detail_title, mBinding.name.getText(), getEpisode().getName());
-        CastManager.get().cast(CastVideo.get(name, url, Math.max(mHistory.getOpening(), mHistory.getPosition()), mPlayers.getHeaders()), null);
+        Episode episode = getEpisode();
+        String name = getString(R.string.detail_title, mBinding.name.getText(), episode.getName());
+        // 换了一集就从头（或跳过片头的位置）开始。观看记录在这里是不可信的：里面存的
+        // 是上一集的进度，而且投屏期间它一直被接收端的回报刷新着。只有重新推同一集
+        // （比如线路切换后重播）才该接着原来的位置。
+        boolean same = episode.equals(castEpisode);
+        long start = same ? Math.max(mHistory.getOpening(), mHistory.getPosition()) : Math.max(mHistory.getOpening(), 0);
+        castEpisode = episode;
+        CastManager.get().cast(CastVideo.get(name, url, start, mPlayers.getHeaders()), null);
         CastManager.get().setSpeed(mPlayers.getSpeed());
         syncCastEpisodes();
-        Notify.show(getString(R.string.cast_switching, getEpisode().getName()));
-        castSwitching = false;
+        Notify.show(getString(R.string.cast_switching, episode.getName()));
         castEnded = false;
         onPaused();
     }
@@ -1222,7 +1242,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             return;
         }
         // 换集在途：对端报的还是上一集的进度，写进记录会污染新一集的起播位置
-        if (castSwitching) {
+        if (isCastSwitching()) {
             checkPlayImg();
             return;
         }
@@ -1908,9 +1928,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mHistory.setVodFlag(getFlag().getFlag());
         mHistory.setCreateTime(System.currentTimeMillis());
         mHistory.setPosition(replay ? C.TIME_UNSET : mHistory.getPosition());
-        // 投屏换集时，本地要花几秒解析新地址，这期间对端还在放上一集、还在每秒回报进度。
-        // 不挡住的话那些回报会把刚重置的记录又写成上一集的进度，新的一集就从 10 分钟开播。
-        if (replay && isCasting()) castSwitching = true;
         // Persist a new title before player preparation. This gives the first cloud upload
         // enough time to finish even when the user watches briefly and removes the task.
         if (firstSave && !Setting.isIncognito()) mHistory.update();
@@ -2084,8 +2101,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void onError(ErrorEvent event) {
         mBinding.swipeLayout.setEnabled(true);
-        // 新地址解析失败就永远走不到 castCurrent，标记不清掉的话这次投屏后面都不写观看记录了
-        castSwitching = false;
         Track.delete(mPlayers.getUrl());
         showError(event.getMsg());
         mClock.setCallback(null);
@@ -2697,7 +2712,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (isCasting()) {
             // 投屏时进度在电视那边，本地播放器是停着的，读它只会把记录写回 0
             // 换集在途时对端报的还是上一集的进度，这时候一个字都不能写
-            if (castSwitching) return;
+            if (isCastSwitching()) return;
             long position = CastManager.get().getPosition();
             long duration = CastManager.get().getDuration();
             if (position > 0) mHistory.setPosition(position);
