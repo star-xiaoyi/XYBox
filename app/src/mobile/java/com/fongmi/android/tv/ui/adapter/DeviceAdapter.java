@@ -71,13 +71,15 @@ public class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.ViewHolder
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Device item = mItems.get(position);
         holder.binding.name.setText(item.getName());
-        holder.binding.host.setText(item.getHost());
+        // 浏览器那条要把带路径的完整地址露出来，用户得照着在电脑上输
+        holder.binding.host.setText(item.isBrowser() ? item.getIp() : item.getHost());
         holder.binding.type.setImageResource(getIcon(item));
         holder.binding.getRoot().setOnClickListener(v -> mListener.onItemClick(item));
         holder.binding.getRoot().setOnLongClickListener(v -> mListener.onLongClick(item));
     }
 
     private int getIcon(Device item) {
+        if (item.isBrowser()) return R.drawable.ic_cast_pc;
         return item.isMobile() ? R.drawable.ic_cast_mobile : R.drawable.ic_cast_tv;
     }
 

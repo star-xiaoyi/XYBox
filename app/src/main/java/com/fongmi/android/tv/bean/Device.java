@@ -70,6 +70,16 @@ public class Device {
         return device;
     }
 
+    /** 电脑浏览器充当渲染器。没有设备发现的概念，弹窗里固定摆一条。 */
+    public static Device browser(String name) {
+        Device device = new Device();
+        device.setUuid("browser");
+        device.setName(name);
+        device.setIp(Server.get().getAddress() + "/pc");
+        device.setType(3);
+        return device;
+    }
+
     public static Device objectFrom(String str) {
         return App.gson().fromJson(str, Device.class);
     }
@@ -142,6 +152,10 @@ public class Device {
         return getType() == 2;
     }
 
+    public boolean isBrowser() {
+        return getType() == 3;
+    }
+
     public boolean isApp() {
         return isLeanback() || isMobile();
     }
@@ -185,6 +199,8 @@ public class Device {
 
         @Override
         public int compare(Device o1, Device o2) {
+            // 浏览器是固定项不是搜出来的，摆在最前面，免得混在一堆设备里找不着
+            if (o1.isBrowser() != o2.isBrowser()) return o1.isBrowser() ? -1 : 1;
             int comp = Integer.compare(o1.getType(), o2.getType());
             return comp != 0 ? comp : o1.getName().compareTo(o2.getName());
         }

@@ -1121,7 +1121,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onCast() {
-        CastDialog.create().history(mHistory).video(CastVideo.get(mBinding.name.getText().toString(), mPlayers.getUrl(), mPlayers.getPosition())).fm(true).show(this);
+        CastDialog.create().history(mHistory).video(CastVideo.get(mBinding.name.getText().toString(), mPlayers.getUrl(), mPlayers.getPosition(), mPlayers.getHeaders())).fm(true).show(this);
     }
 
     // ==================== 投屏模式 ====================
@@ -1191,7 +1191,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         String url = mPlayers.getUrl();
         if (TextUtils.isEmpty(url)) return;
         String name = getString(R.string.detail_title, mBinding.name.getText(), getEpisode().getName());
-        CastManager.get().cast(CastVideo.get(name, url, Math.max(mHistory.getOpening(), mHistory.getPosition())), null);
+        CastManager.get().cast(CastVideo.get(name, url, Math.max(mHistory.getOpening(), mHistory.getPosition()), mPlayers.getHeaders()), null);
         Notify.show(getString(R.string.cast_switching, getEpisode().getName()));
         castEnded = false;
         onPaused();

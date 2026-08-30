@@ -150,6 +150,10 @@ public class CastDialog extends BaseCenterDialog implements DeviceAdapter.OnClic
     }
 
     private void getDevice() {
+        // 地址里的端口是服务起来才定的，没启动会拿到 -1，所以先把服务拉起来再算地址
+        Server.get().start();
+        // 浏览器不用搜，固定摆一条：用户没有电视时这是唯一能投的目标
+        adapter.addAll(java.util.Collections.singletonList(Device.browser(getString(R.string.device_browser))));
         if (fm) adapter.addAll(Device.getAll());
         adapter.addAll(DLNADevice.get().getAll());
     }
@@ -167,6 +171,7 @@ public class CastDialog extends BaseCenterDialog implements DeviceAdapter.OnClic
         if (fm) scanTask.start(adapter.getIps());
         DLNACastManager.INSTANCE.search(null);
         adapter.clear();
+        getDevice();
         startSearching();
     }
 
@@ -218,8 +223,28 @@ public class CastDialog extends BaseCenterDialog implements DeviceAdapter.OnClic
 
     @Override
     public void onItemClick(Device item) {
-        if (item.isDLNA()) CastManager.get().connect(DLNADevice.get().find(item), item.getName(), video, this);
+        if (item.isBrowser()) onBrowser(item);
+        else if (item.isDLNA()) CastManager.get().connect(DLNADevice.get().find(item), item.getName(), video, this);
         else OkHttp.newCall(client, item.getIp().concat("/action?do=cast"), body.build()).enqueue(this);
+    }
+
+    /**
+     * 投到浏览器：先把内容准备好，再告诉用户去电脑上开哪个地址。
+     * 顺序反过来的话，用户打开页面看到的会是"等待投屏"，白等一轮轮询。
+     */
+    private void onBrowser(Device item) {
+        CastManager.get().connectBrowser(item.getName(), video, null);
+        String address = Server.get().getAddress() + "/pc";
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(getActivity())
+                .setTitle(R.string.cast_browser_title)
+                .setMessage(address + "\n\n" + getString(R.string.cast_browser_tip))
+                .setNeutralButton(R.string.cast_browser_copy, (d, w) -> {
+                    com.fongmi.android.tv.utils.Util.copy(address);
+                    Notify.show(R.string.cast_browser_copied);
+                })
+                .setPositiveButton(R.string.dialog_positive, null)
+                .setOnDismissListener(d -> onCasted())
+                .show();
     }
 
     @Override
