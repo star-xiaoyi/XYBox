@@ -100,6 +100,7 @@ import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.base.ViewType;
 import com.fongmi.android.tv.ui.custom.CustomKeyDownVod;
 import com.fongmi.android.tv.ui.custom.CustomMovement;
+import com.fongmi.android.tv.ui.custom.CustomSeekView;
 import com.fongmi.android.tv.ui.custom.LinkMovement;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.ui.dialog.CastDialog;
@@ -112,6 +113,7 @@ import com.fongmi.android.tv.ui.dialog.InfoDialog;
 import com.fongmi.android.tv.ui.dialog.ReceiveDialog;
 import com.fongmi.android.tv.ui.dialog.SubtitleDialog;
 import com.fongmi.android.tv.ui.dialog.TrackDialog;
+import com.fongmi.android.tv.utils.CastManager;
 import com.fongmi.android.tv.utils.CastUtil;
 import com.fongmi.android.tv.utils.Clock;
 import com.fongmi.android.tv.utils.FileChooser;
@@ -144,7 +146,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 
-public class VideoActivity extends BaseActivity implements Clock.Callback, CustomKeyDownVod.Listener, TrackDialog.Listener, ControlDialog.Listener, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener {
+public class VideoActivity extends BaseActivity implements Clock.Callback, CustomKeyDownVod.Listener, TrackDialog.Listener, ControlDialog.Listener, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, CastManager.Listener {
 
     private ActivityVideoBinding mBinding;
     private ViewGroup.LayoutParams mFrameParams;
@@ -172,6 +174,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean redirect;
     private boolean rotate;
     private boolean castExpanded;
+    /** 投屏中电视是否已经放到本集末尾，避免自动切下一集被轮询触发多次。 */
+    private boolean castEnded;
     private boolean contentExpanded;
     private float mHandleDown;
     private boolean mDragging;
@@ -506,6 +510,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     protected void initEvent() {
         mBinding.detailBack.setOnClickListener(view -> onBackPressed());
         mBinding.castExpand.setOnClickListener(view -> onCastExpand());
+        mBinding.castExit.setOnClickListener(view -> onCastExit());
+        // 投屏占位层盖住了播放手势区，点它等同于点播放画面：呼出/收起控制条
+        mBinding.castOverlay.setOnClickListener(view -> onSingleTap());
         mBinding.contentExpand.setOnClickListener(view -> onContent());
         mBinding.handle.setOnTouchListener(this::onHandleTouch);
         mBinding.handleLand.setOnTouchListener(this::onHandleTouch);
@@ -1117,6 +1124,111 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         CastDialog.create().history(mHistory).video(CastVideo.get(mBinding.name.getText().toString(), mPlayers.getUrl(), mPlayers.getPosition())).fm(true).show(this);
     }
 
+    // ==================== 投屏模式 ====================
+    //
+    // 投屏中手机不再本地解码（否则同一条流手机和电视各拉一份，费流量还发热），画面区盖上
+    // castOverlay，下面那套控制条改去操控电视：播放/暂停、拖进度、上下集。电视的进度按秒轮询
+    // 回来，既刷新进度条也写回观看记录，所以投屏看完退出，下次进 App 能接着看。
+
+    private boolean isCasting() {
+        return CastManager.get().isCasting();
+    }
+
+    /** 电视端的进度/播放态代理给进度条用。 */
+    private final CustomSeekView.Source mCastSource = new CustomSeekView.Source() {
+        @Override
+        public long getPosition() {
+            return CastManager.get().getPosition();
+        }
+
+        @Override
+        public long getDuration() {
+            return CastManager.get().getDuration();
+        }
+
+        @Override
+        public boolean isPlaying() {
+            return CastManager.get().isPlaying();
+        }
+
+        @Override
+        public void seekTo(long position) {
+            CastManager.get().seekTo(position);
+        }
+    };
+
+    private void enterCastMode() {
+        onPaused();
+        mBinding.castOverlay.setVisibility(View.VISIBLE);
+        mBinding.castTitle.setText(getString(R.string.cast_overlay_title, CastManager.get().getDeviceName()));
+        mBinding.control.seek.setSource(mCastSource);
+        // 投屏中屏幕可以熄，供流靠前台服务的 WifiLock 撑着，不用一直亮着
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        CastManager.get().setListener(this);
+        checkPlayImg();
+        showControl();
+    }
+
+    private void exitCastMode() {
+        mBinding.castOverlay.setVisibility(View.GONE);
+        mBinding.control.seek.setSource(null);
+        checkPlayImg();
+    }
+
+    private void onCastExit() {
+        CastManager.get().stop();
+        Notify.show(R.string.cast_exited);
+    }
+
+    /**
+     * 本地播放器刚解析出真实地址，把它推给电视。
+     * <p>
+     * 之所以还要让本地播放器走一遍 prepare：换集后的真实播放地址（含解析、重定向、本地代理改写）
+     * 就是从 {@code mPlayers.getUrl()} 拿的，和最初那次投屏用的是同一条路径。拿到就立刻把本地
+     * 暂停，只付一次解析的代价。
+     */
+    private void castCurrent() {
+        String url = mPlayers.getUrl();
+        if (TextUtils.isEmpty(url)) return;
+        String name = getString(R.string.detail_title, mBinding.name.getText(), getEpisode().getName());
+        CastManager.get().cast(CastVideo.get(name, url, Math.max(mHistory.getOpening(), mHistory.getPosition())), null);
+        Notify.show(getString(R.string.cast_switching, getEpisode().getName()));
+        castEnded = false;
+        onPaused();
+    }
+
+    @Override
+    public void onCastChanged() {
+        if (!isCasting()) {
+            exitCastMode();
+            return;
+        }
+        long position = CastManager.get().getPosition();
+        long duration = CastManager.get().getDuration();
+        if (mHistory != null && position > 0) {
+            mHistory.setPosition(position);
+            if (duration > 0) mHistory.setDuration(duration);
+            if (!Setting.isIncognito()) App.execute(() -> mHistory.updateProgress());
+        }
+        checkPlayImg();
+        checkCastEnded(position, duration);
+    }
+
+    /**
+     * 电视放完一集自动切下一集。
+     * <p>
+     * DLNA 没有可靠的"播放结束"事件：刚 SetAVTransportURI 完也是 STOPPED。所以只认
+     * "有时长、已经放到接近末尾、且现在停了"这一种组合，并且靠 duration>0 排除掉刚开始那一段。
+     */
+    private void checkCastEnded(long position, long duration) {
+        if (castEnded) return;
+        if (duration <= 0 || position <= 0) return;
+        if (CastManager.get().isPlaying()) return;
+        if (position + 3000 < duration) return;
+        castEnded = true;
+        checkNext(false);
+    }
+
     private void onInfo() {
         InfoDialog.create(this).title(mBinding.control.title.getText()).headers(mPlayers.getHeaders()).url(mPlayers.getUrl()).show();
     }
@@ -1145,6 +1257,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void checkPlay() {
         setR1Callback();
+        if (isCasting()) {
+            CastManager.get().toggle();
+            return;
+        }
         if (mPlayers.isPlaying()) onPaused();
         else if (mPlayers.isEmpty()) onRefresh();
         else onPlay();
@@ -1777,7 +1893,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void checkPlayImg() {
-        mBinding.control.play.setImageResource(mPlayers.isPlaying() ? androidx.media3.ui.R.drawable.exo_icon_pause : androidx.media3.ui.R.drawable.exo_icon_play);
+        boolean playing = isCasting() ? CastManager.get().isPlaying() : mPlayers.isPlaying();
+        mBinding.control.play.setImageResource(playing ? androidx.media3.ui.R.drawable.exo_icon_pause : androidx.media3.ui.R.drawable.exo_icon_play);
         mPiP.update(this, mPlayers.isPlaying());
         ActionEvent.update();
     }
@@ -1858,7 +1975,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         switch (event.getState()) {
             case PlayerEvent.PREPARE:
                 setDecode();
-                setPosition();
+                // 投屏中：本地只负责把真实地址解析出来，解析完立刻推给电视并停掉本地解码
+                if (isCasting()) castCurrent();
+                else setPosition();
                 break;
             case Player.STATE_BUFFERING:
                 showProgress();
@@ -2206,7 +2325,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onCasted() {
-        onPaused();
+        castEnded = false;
+        // 投给另一台装了本 App 的设备（fm 通道）走的是 HTTP 接力，这边没有可控的 DLNA 会话，
+        // 维持原来的行为：本地停掉就完事
+        if (isCasting()) enterCastMode();
+        else onPaused();
     }
 
     @Override
@@ -2388,6 +2511,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         super.onUserLeaveHint();
         if (isRedirect()) return;
         if (isLock()) App.post(this::onLock, 500);
+        // 投屏中本地没有画面，进画中画只会弹一个黑框出来
+        if (isCasting()) return;
         if (mPlayers.haveTrack(C.TRACK_TYPE_VIDEO)) mPiP.enter(this, mPlayers.getVideoWidth(), mPlayers.getVideoHeight(), getScale());
     }
 
@@ -2429,14 +2554,20 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         super.onStart();
         mClock.stop().start();
         setStop(false);
-        onPlay();
+        // 投屏中本地播放器必须保持停着，不然回到前台又开始拉一份流
+        if (!isCasting()) onPlay();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         startTimeBatteryUpdates();
-        if (isRedirect()) onPlay();
+        if (isCasting()) {
+            // 从后台回来重新接上投屏会话：期间可能已经换过集或被电视停掉
+            CastManager.get().setListener(this);
+            enterCastMode();
+        }
+        if (isRedirect() && !isCasting()) onPlay();
         setRedirect(false);
     }
 
@@ -2464,6 +2595,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void savePlaybackProgress() {
         if (mHistory == null || mHistory.getCreateTime() <= 0 || Setting.isIncognito()) return;
+        if (isCasting()) {
+            // 投屏时进度在电视那边，本地播放器是停着的，读它只会把记录写回 0
+            long position = CastManager.get().getPosition();
+            long duration = CastManager.get().getDuration();
+            if (position > 0) mHistory.setPosition(position);
+            if (duration > 0) mHistory.setDuration(duration);
+            mHistory.update();
+            return;
+        }
         if (mPlayers != null && !mPlayers.isEmpty()) {
             long position = mPlayers.getPosition();
             long duration = mPlayers.getDuration();
@@ -2552,6 +2692,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     protected void onDestroy() {
         super.onDestroy();
         stopSearch();
+        // 只摘监听不断投屏：退出播放页时电视该继续放，常驻通知里还能暂停和退出投屏
+        CastManager.get().removeListener(this);
         mPlayers.release();
         mClock.release();
         Timer.get().reset();

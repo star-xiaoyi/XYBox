@@ -33,6 +33,70 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
+        <!--
+            投屏占位层：投屏中本地播放器是停着的（不然手机和电视会同时拉一份流），
+            画面区换成这块提示，下方的控制条改去操控电视。放在 control 之前，
+            控制层弹出来时仍然盖在它上面。
+        -->
+        <LinearLayout
+            android:id="@+id/castOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/black"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <ImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:contentDescription="@string/cast_exit"
+                android:src="@drawable/ic_control_cast"
+                android:tint="@color/white" />
+
+            <TextView
+                android:id="@+id/castTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                tools:text="正在投屏到 客厅电视" />
+
+            <TextView
+                android:id="@+id/castTip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:text="@string/cast_overlay_tip"
+                android:textColor="@color/white_60"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/castExit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/shape_detail_back"
+                android:paddingStart="18dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="18dp"
+                android:paddingBottom="8dp"
+                android:text="@string/cast_exit"
+                android:textColor="@color/white"
+                android:textSize="13sp" />
+
+        </LinearLayout>
+
         <include
             android:id="@+id/control"
             layout="@layout/view_control_vod"
