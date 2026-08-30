@@ -193,6 +193,11 @@ public class CastManager implements Pc.Listener {
         if (transport != null) transport.setVolume(volume);
     }
 
+    /** DLNA 没有通用的倍速控制，只有浏览器这条路支持。 */
+    public void setSpeed(float speed) {
+        if (transport != null) transport.setSpeed(speed);
+    }
+
     /** 结束投屏：停掉对端播放、断连、收掉常驻通知。 */
     public void stop() {
         if (transport != null) transport.stop();
@@ -242,9 +247,8 @@ public class CastManager implements Pc.Listener {
             if (settled()) {
                 this.position = position;
                 this.playing = playing;
-                // 用户直接在浏览器上点了播放/暂停，得把期望值一起改过来，
-                // 否则下一秒页面拉到旧的期望值又把自己扳回去，两边来回打架
-                Pc.setPlaying(playing);
+                // 只同步值，不回推指令：用户在电脑上自己点的播放/暂停，再命令它一次就打架了
+                Pc.syncPlaying(playing);
             }
             if (ended && this.duration > 0) {
                 // 浏览器有真的 ended 事件，不像 DLNA 要靠猜。把状态摆成"停在末尾"，
@@ -278,6 +282,8 @@ public class CastManager implements Pc.Listener {
         void seek(long ms);
 
         void setVolume(int volume);
+
+        void setSpeed(float speed);
 
         void stop();
 
@@ -389,6 +395,11 @@ public class CastManager implements Pc.Listener {
         @Override
         public void setVolume(int volume) {
             if (control != null) control.setVolume(volume, null);
+        }
+
+        @Override
+        public void setSpeed(float speed) {
+            // DLNA 的 TransportPlaySpeed 各家实现差异太大，多数电视直接忽略，不如不做
         }
 
         @Override
@@ -509,6 +520,11 @@ public class CastManager implements Pc.Listener {
 
         @Override
         public void setVolume(int volume) {
+        }
+
+        @Override
+        public void setSpeed(float speed) {
+            Pc.setSpeed(speed);
         }
 
         @Override
