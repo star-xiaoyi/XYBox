@@ -102,6 +102,13 @@ function drawEpisodes(names, index) {
   });
 }
 
+// 诊断日志。换集起播位置不对时，靠这些行区分是手机推过来的位置就不对，
+// 还是位置是对的、浏览器自己没归零。
+function log() {
+  var a = ['[XYBox]'].concat([].slice.call(arguments));
+  console.log.apply(console, a);
+}
+
 function toast(text) {
   tip.textContent = text;
   tip.style.display = 'block';
@@ -134,6 +141,8 @@ function load(url, name, position) {
   err.textContent = '';
   idle.style.display = 'none';
   v.style.display = 'block';
+  log('LOAD 手机推来的起播位置 startPosition=' + position + 'ms',
+      '当前 currentTime=' + v.currentTime.toFixed(1) + 's', 'url=' + url);
   if (hls) { hls.destroy(); hls = null; }
   // 换集必须显式把播放位置清掉。hls.js 走的是 MSE，销毁重建时 <video> 元素的
   // currentTime 还留着上一集的值，新的一集会直接从那儿开播。
@@ -144,6 +153,7 @@ function load(url, name, position) {
     v.load();
     v.currentTime = 0;
   } catch (e) {}
+  log('RESET 清空后 currentTime=' + v.currentTime.toFixed(1) + 's');
   var start = position > 0 ? position / 1000 : 0;
   var isHls = url.indexOf('.m3u8') >= 0 || url.indexOf('.m3u') >= 0;
   // Safari 自己认 HLS，其余浏览器交给 hls.js；非 HLS 直接给 src
@@ -153,12 +163,20 @@ function load(url, name, position) {
     hls.on(Hls.Events.ERROR, function (e, data) {
       if (data && data.fatal) fail('这个片源浏览器放不了，试试「复制播放地址」用 PotPlayer 打开');
     });
+    hls.on(Hls.Events.MANIFEST_PARSED, function () {
+      log('HLS manifest 解析完成 startPosition=' + start + 's currentTime=' + v.currentTime.toFixed(1) + 's');
+    });
     hls.loadSource(url);
     hls.attachMedia(v);
+    log('HLS 已挂载 startPosition=' + start + 's');
   } else {
     v.src = url;
+    log('直连 src，未走 hls.js');
   }
   var seekOnce = function () {
+    log('META 元数据就绪 currentTime=' + v.currentTime.toFixed(1) + 's',
+        'duration=' + (isFinite(v.duration) ? v.duration.toFixed(1) : '?') + 's',
+        '期望 start=' + start + 's');
     if (start > 0 && Math.abs(v.currentTime - start) > 1) {
       try { v.currentTime = start; } catch (e) {}
     }
@@ -188,6 +206,11 @@ v.addEventListener('error', function () {
 });
 
 v.addEventListener('ended', function () { ended = true; });
+
+// 真正开始出画面的那一刻，位置到底是多少——这是最终结论
+v.addEventListener('playing', function () {
+  log('PLAYING 实际开播位置 currentTime=' + v.currentTime.toFixed(1) + 's');
+});
 
 function apply(s) {
   if (episodeSeq !== s.episodeSeq) {
@@ -220,6 +243,7 @@ function apply(s) {
   }
   if (seekSeq !== s.seekSeq) {
     seekSeq = s.seekSeq;
+    log('SEEK 手机要求跳到 ' + (s.seekTo / 1000).toFixed(1) + 's');
     try { v.currentTime = s.seekTo / 1000; } catch (e) {}
   }
   if (speedSeq !== s.speedSeq) {
