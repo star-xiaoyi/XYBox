@@ -1205,7 +1205,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             if (mHistory != null) mHistory.setPosition(position);
             if (!mPlayers.isEmpty()) mPlayers.seekTo(position);
         }
-        checkPlayImg();
+        // 投屏结束就接着在手机上播下去，不该再让用户手动点一次。
+        // 界面不在前台时不开播，否则会在后台闷声拉流。
+        if (!isStop() && !mPlayers.isEmpty()) onPlay();
+        else checkPlayImg();
     }
 
     private void onCastExit() {
