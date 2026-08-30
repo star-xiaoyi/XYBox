@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
         --publish) PUBLISH=true; shift ;;
         --clean) CLEAN=true; shift ;;
         -m|--notes) NOTES="$2"; shift 2 ;;
-        -h|--help) sed -n '3,15p' "$0" | sed 's/^# \?//'; exit 0 ;;
+        -h|--help) sed -n '3,13p' "$0" | sed 's/^# \?//'; exit 0 ;;
         -*) echo "未知参数: $1"; exit 1 ;;
         *) VERSION="$1"; shift ;;
     esac
@@ -97,6 +97,12 @@ export GRADLE_USER_HOME="$GRADLE_CACHE_DIR"
 TASKS="assembleRelease"
 [ "$CLEAN" = true ] && TASKS="clean assembleRelease"
 
+# --no-daemon 起的是一次性进程，但 IDE 或手动跑过的 gradlew 会留下常驻守护进程，
+# 它们一直占着 app/build/ 里的输出文件，R8 写 classes.dex 时就撞上「文件被占用」
+# 而整个构建失败。先请它们退出，这一步很快，且对没开守护进程的情况无副作用。
+echo "停止残留的 Gradle 守护进程……"
+./gradlew.bat --stop >/dev/null 2>&1 || true
+
 echo "开始编译（$TASKS）……"
 ./gradlew.bat $TASKS --no-daemon
 
@@ -140,7 +146,13 @@ fi
 # 一旦中断 release 会卡在 Draft 且没有资产，用户什么也收不到。
 # 拆开以后每步都可单独重跑，最后一步才让它对用户可见。
 echo "创建 $TAG（草稿）……"
-gh release create "$TAG" --draft --title "$TAG" --notes "$NOTES"
+# 上一轮若在上传中断，tag 已经存在，create 会直接失败——那样"每步可单独重跑"就是空话。
+# 已存在就跳过，让重跑从上传接着走。
+if gh release view "$TAG" >/dev/null 2>&1; then
+    echo "$TAG 已存在，跳过创建"
+else
+    gh release create "$TAG" --draft --title "$TAG" --notes "$NOTES"
+fi
 
 echo "上传 $ASSET_NAME……"
 gh release upload "$TAG" "$OUT_DIR/$ASSET_NAME" --clobber
