@@ -105,8 +105,8 @@ function drawEpisodes(names, index) {
   });
 }
 
-// 诊断日志。换集起播位置不对时，靠这些行区分是手机推过来的位置就不对，
-// 还是位置是对的、浏览器自己没归零。
+// 出问题时的落脚点：启动打一行版本，每次换集打一行起播位置。
+// 只留这两处，别让正式版往控制台刷屏。
 function log() {
   var a = ['[XYBox]'].concat([].slice.call(arguments));
   console.log.apply(console, a);
@@ -158,7 +158,6 @@ function load(url, name, position) {
     v.load();
     v.currentTime = 0;
   } catch (e) {}
-  log('RESET 清空后 currentTime=' + v.currentTime.toFixed(1) + 's');
   var start = position > 0 ? position / 1000 : 0;
   var isHls = url.indexOf('.m3u8') >= 0 || url.indexOf('.m3u') >= 0;
   // Safari 自己认 HLS，其余浏览器交给 hls.js；非 HLS 直接给 src
@@ -168,20 +167,12 @@ function load(url, name, position) {
     hls.on(Hls.Events.ERROR, function (e, data) {
       if (data && data.fatal) fail('这个片源浏览器放不了，试试「复制播放地址」用 PotPlayer 打开');
     });
-    hls.on(Hls.Events.MANIFEST_PARSED, function () {
-      log('HLS manifest 解析完成 startPosition=' + start + 's currentTime=' + v.currentTime.toFixed(1) + 's');
-    });
     hls.loadSource(url);
     hls.attachMedia(v);
-    log('HLS 已挂载 startPosition=' + start + 's');
   } else {
     v.src = url;
-    log('直连 src，未走 hls.js');
   }
   var seekOnce = function () {
-    log('META 元数据就绪 currentTime=' + v.currentTime.toFixed(1) + 's',
-        'duration=' + (isFinite(v.duration) ? v.duration.toFixed(1) : '?') + 's',
-        '期望 start=' + start + 's');
     if (start > 0 && Math.abs(v.currentTime - start) > 1) {
       try { v.currentTime = start; } catch (e) {}
     }
@@ -212,11 +203,6 @@ v.addEventListener('error', function () {
 
 v.addEventListener('ended', function () { ended = true; });
 
-// 真正开始出画面的那一刻，位置到底是多少——这是最终结论
-v.addEventListener('playing', function () {
-  log('PLAYING 实际开播位置 currentTime=' + v.currentTime.toFixed(1) + 's');
-});
-
 function apply(s) {
   if (episodeSeq !== s.episodeSeq) {
     episodeSeq = s.episodeSeq;
@@ -236,7 +222,6 @@ function apply(s) {
     return;
   }
   if (videoSeq !== s.videoSeq) {
-    log('SEQ videoSeq 变了 -> ' + s.videoSeq + '，手机推来了新的一集');
     videoSeq = s.videoSeq;
     seekSeq = s.seekSeq;
     playSeq = s.playSeq;
