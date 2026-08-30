@@ -65,6 +65,8 @@
     <string name="device_scan">Please scan QR Code to bind</string>
     <string name="device_browser">Computer / Browser</string>
     <string name="device_browser_host">Open in your computer\'s browser</string>
+    <string name="device_browser_nolan">Wi-Fi required</string>
+    <string name="device_browser_nolan_tip">Casting needs your phone and computer on the same local network. You are on mobile data right now, so the computer cannot reach your phone. Connect to Wi-Fi and try again.</string>
 
     <!-- Cast -->
     <string name="cast_channel">Casting</string>

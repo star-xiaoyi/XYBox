@@ -74,6 +74,8 @@ var pick = document.getElementById('pick');
 
 var videoSeq = -1, seekSeq = -1, playSeq = -1, speedSeq = -1, episodeSeq = -1;
 var current = '', hls = null, ended = false;
+// 换源时先清空 <video>，个别浏览器会为此抛一次 error，别把它当成片源放不了
+var ignoreErrorUntil = 0;
 
 pick.onclick = function () { picker.classList.toggle('show'); };
 picker.onclick = function (e) { if (e.target === picker) picker.classList.remove('show'); };
@@ -133,10 +135,21 @@ function load(url, name, position) {
   idle.style.display = 'none';
   v.style.display = 'block';
   if (hls) { hls.destroy(); hls = null; }
+  // 换集必须显式把播放位置清掉。hls.js 走的是 MSE，销毁重建时 <video> 元素的
+  // currentTime 还留着上一集的值，新的一集会直接从那儿开播。
+  ignoreErrorUntil = Date.now() + 1500;
+  try {
+    v.pause();
+    v.removeAttribute('src');
+    v.load();
+    v.currentTime = 0;
+  } catch (e) {}
+  var start = position > 0 ? position / 1000 : 0;
   var isHls = url.indexOf('.m3u8') >= 0 || url.indexOf('.m3u') >= 0;
   // Safari 自己认 HLS，其余浏览器交给 hls.js；非 HLS 直接给 src
   if (isHls && window.Hls && Hls.isSupported()) {
-    hls = new Hls({ enableWorker: true });
+    // startPosition 显式给定，不能指望它从元素当前时间推断
+    hls = new Hls({ enableWorker: true, startPosition: start });
     hls.on(Hls.Events.ERROR, function (e, data) {
       if (data && data.fatal) fail('这个片源浏览器放不了，试试「复制播放地址」用 PotPlayer 打开');
     });
@@ -146,7 +159,9 @@ function load(url, name, position) {
     v.src = url;
   }
   var seekOnce = function () {
-    if (position > 0) { try { v.currentTime = position / 1000; } catch (e) {} }
+    if (start > 0 && Math.abs(v.currentTime - start) > 1) {
+      try { v.currentTime = start; } catch (e) {}
+    }
     v.removeEventListener('loadedmetadata', seekOnce);
   };
   v.addEventListener('loadedmetadata', seekOnce);
@@ -156,6 +171,11 @@ function load(url, name, position) {
   });
 }
 
+function applySpeed(speed) {
+  var rate = speed || 1;
+  try { v.defaultPlaybackRate = rate; v.playbackRate = rate; } catch (e) {}
+}
+
 function fail(text) {
   err.textContent = text;
   idle.style.display = 'block';
@@ -163,6 +183,7 @@ function fail(text) {
 }
 
 v.addEventListener('error', function () {
+  if (Date.now() < ignoreErrorUntil) return;
   fail('这个片源浏览器放不了，试试「复制播放地址」用 PotPlayer 打开');
 });
 
@@ -191,8 +212,10 @@ function apply(s) {
     seekSeq = s.seekSeq;
     playSeq = s.playSeq;
     speedSeq = s.speedSeq;
-    v.playbackRate = s.speed || 1;
     load(s.url, s.name, s.startPosition);
+    // 必须放在 load 之后：里面的 v.load() 会按规范把 playbackRate 打回
+    // defaultPlaybackRate，先设就白设了。两个都写，后面再 load 也不会丢。
+    applySpeed(s.speed);
     return;
   }
   if (seekSeq !== s.seekSeq) {
@@ -201,7 +224,7 @@ function apply(s) {
   }
   if (speedSeq !== s.speedSeq) {
     speedSeq = s.speedSeq;
-    try { v.playbackRate = s.speed || 1; } catch (e) {}
+    applySpeed(s.speed);
   }
   // 播放/暂停只在手机真的按了才动。无条件跟随会和用户在电脑上的操作打架：
   // 上报还没落地时状态里仍是旧值，页面就把自己扳回去了。

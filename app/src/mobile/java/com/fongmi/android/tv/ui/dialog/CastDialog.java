@@ -152,8 +152,10 @@ public class CastDialog extends BaseCenterDialog implements DeviceAdapter.OnClic
     private void getDevice() {
         // 地址里的端口是服务起来才定的，没启动会拿到 -1，所以先把服务拉起来再算地址
         Server.get().start();
-        // 浏览器不用搜，固定摆一条：用户没有电视时这是唯一能投的目标
-        adapter.addAll(java.util.Collections.singletonList(Device.browser(getString(R.string.device_browser))));
+        // 浏览器不用搜，固定摆一条：用户没有电视时这是唯一能投的目标。
+        // 没连 WiFi 时也照样摆出来，但换成一句说明——直接不显示的话用户只会
+        // 纳闷投屏入口哪去了，不如告诉他为什么不能用。
+        adapter.addAll(java.util.Collections.singletonList(Device.browser(getString(R.string.device_browser), CastManager.hasLan())));
         if (fm) adapter.addAll(Device.getAll());
         adapter.addAll(DLNADevice.get().getAll());
     }
@@ -233,6 +235,15 @@ public class CastDialog extends BaseCenterDialog implements DeviceAdapter.OnClic
      * 顺序反过来的话，用户打开页面看到的会是"等待投屏"，白等一轮轮询。
      */
     private void onBrowser(Device item) {
+        // 没连 WiFi 就没有能给电脑的地址，别让它进投屏态干等
+        if (item.getIp().isEmpty()) {
+            new com.google.android.material.dialog.MaterialAlertDialogBuilder(getActivity())
+                    .setTitle(R.string.device_browser_nolan)
+                    .setMessage(R.string.device_browser_nolan_tip)
+                    .setPositiveButton(R.string.dialog_positive, null)
+                    .show();
+            return;
+        }
         CastManager.get().connectBrowser(item.getName(), video, null);
         String address = Server.get().getAddress() + "/pc";
         new com.google.android.material.dialog.MaterialAlertDialogBuilder(getActivity())

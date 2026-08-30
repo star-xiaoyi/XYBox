@@ -1,5 +1,9 @@
 package com.fongmi.android.tv.utils;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -37,6 +41,24 @@ import kotlin.Unit;
  */
 public class CastManager implements Pc.Listener {
 
+    /**
+     * 投屏要求手机和接收端在同一个局域网里。只开流量时 {@code Util.getIp()} 会退到
+     * 蜂窝接口上，给出一个电脑根本连不到的运营商地址，看着像能用其实不行——所以这里
+     * 直接问系统当前网络是不是 WiFi 或以太网。
+     */
+    public static boolean hasLan() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) App.get().getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return false;
+            NetworkCapabilities caps = cm.getNetworkCapabilities(cm.getActiveNetwork());
+            if (caps == null) return false;
+            return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET);
+        } catch (Throwable e) {
+            // 拿不准就别拦着，让用户自己试
+            return true;
+        }
+    }
+
     /** 电视端进度轮询间隔。DLNA 每次 GetPositionInfo 都是一次网络往返，1s 已经够跟手了。 */
     private static final long POLL_INTERVAL = 1000;
 
@@ -51,6 +73,8 @@ public class CastManager implements Pc.Listener {
     private boolean notified;
     private long position;
     private long duration;
+    /** 断开时保留最后的进度：退出投屏后本地播放器要从这儿接着播，不然会倒回开投那一刻。 */
+    private long lastPosition;
     /** 本地刚下过指令、对端还没跟上的这段时间里，不让回报把 UI 拽回旧值。 */
     private long ignorePollUntil;
 
@@ -91,6 +115,11 @@ public class CastManager implements Pc.Listener {
 
     public long getDuration() {
         return duration;
+    }
+
+    /** 最后一次已知的对端进度，投屏结束后仍然有效。 */
+    public long getLastPosition() {
+        return lastPosition;
     }
 
     public String getDeviceName() {
@@ -151,8 +180,10 @@ public class CastManager implements Pc.Listener {
         return Relay.register(url, video.getHeaders());
     }
 
+    /** 开投时清掉上一次的残留，免得退出后拿到一个跟这次无关的进度。 */
     private void onStarted() {
         casting = true;
+        lastPosition = 0;
         // 对端多半是回头向手机的 NanoHTTPD 拉流，投屏期间这个服务必须活着
         Server.get().start();
         CastService.start();
@@ -207,6 +238,8 @@ public class CastManager implements Pc.Listener {
     /** 只断连接不发 stop，用于对端已经自己断了的情况。 */
     public void disconnect() {
         boolean wasCasting = casting;
+        // reset() 会把 position 清零，先留一份给退出后的本地续播用
+        if (wasCasting) lastPosition = position;
         Transport t = transport;
         if (t != null) {
             t.stopPoll();
