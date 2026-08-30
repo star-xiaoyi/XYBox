@@ -6,7 +6,7 @@
     android:layout_height="wrap_content"
     android:background="@drawable/shape_center_dialog"
     android:orientation="vertical"
-    android:paddingTop="20dp"
+    android:paddingTop="12dp"
     android:paddingBottom="12dp">
 
     <!-- 标题行：标题 + 扫码 + 刷新 -->

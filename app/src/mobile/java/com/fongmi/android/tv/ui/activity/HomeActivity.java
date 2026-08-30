@@ -41,6 +41,7 @@ import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.FragmentStateManager;
 import com.fongmi.android.tv.ui.fragment.SettingFragment;
 import com.fongmi.android.tv.ui.fragment.VodFragment;
+import com.fongmi.android.tv.utils.CastManager;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -316,7 +317,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         OkHttp.get().clear();
         AppDatabase.backup();
         Source.get().exit();
-        Server.get().stop();
+        // 投屏时电视还在向这个 HTTP 服务拉流，首页销毁不能把它关掉，否则电视立刻卡死
+        if (!CastManager.get().isCasting()) Server.get().stop();
         super.onDestroy();
     }
 }

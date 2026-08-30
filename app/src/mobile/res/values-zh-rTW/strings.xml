@@ -62,6 +62,17 @@
     <string name="device_offline">裝置已離線</string>
     <string name="device_scan">請掃描影視 QRCode 進行綁定</string>
 
+    <!-- Cast -->
+    <string name="cast_channel">投螢幕</string>
+    <string name="cast_notify_title">正在投螢幕到 <xliff:g name="name">%s</xliff:g></string>
+    <string name="cast_overlay_title">正在投螢幕到 <xliff:g name="name">%s</xliff:g></string>
+    <string name="cast_overlay_tip">請保持應用在背景執行，電視正在從手機取流</string>
+    <string name="cast_play">播放</string>
+    <string name="cast_pause">暫停</string>
+    <string name="cast_exit">結束投螢幕</string>
+    <string name="cast_exited">已結束投螢幕</string>
+    <string name="cast_switching">正在把「<xliff:g name="name">%s</xliff:g>」推給電視</string>
+
     <!-- Control -->
     <string name="control_speed">倍速</string>
     <string name="control_scale">縮放</string>

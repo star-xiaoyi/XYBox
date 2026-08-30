@@ -64,6 +64,17 @@
     <string name="device_offline">Device is offline</string>
     <string name="device_scan">Please scan QR Code to bind</string>
 
+    <!-- Cast -->
+    <string name="cast_channel">Casting</string>
+    <string name="cast_notify_title">Casting to <xliff:g name="name">%s</xliff:g></string>
+    <string name="cast_overlay_title">Casting to <xliff:g name="name">%s</xliff:g></string>
+    <string name="cast_overlay_tip">Keep this app running, the TV is streaming from your phone</string>
+    <string name="cast_play">Play</string>
+    <string name="cast_pause">Pause</string>
+    <string name="cast_exit">Stop casting</string>
+    <string name="cast_exited">Casting stopped</string>
+    <string name="cast_switching">Sending <xliff:g name="name">%s</xliff:g> to TV</string>
+
     <!-- Control -->
     <string name="control_speed">Speed</string>
     <string name="control_scale">Scale</string>

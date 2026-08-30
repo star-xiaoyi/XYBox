@@ -64,6 +64,17 @@
     <string name="device_offline">装置已离线</string>
     <string name="device_scan">请扫描影视 QRCode 进行绑定</string>
 
+    <!-- Cast -->
+    <string name="cast_channel">投屏</string>
+    <string name="cast_notify_title">正在投屏到 <xliff:g name="name">%s</xliff:g></string>
+    <string name="cast_overlay_title">正在投屏到 <xliff:g name="name">%s</xliff:g></string>
+    <string name="cast_overlay_tip">请保持应用在后台运行，电视正在从手机取流</string>
+    <string name="cast_play">播放</string>
+    <string name="cast_pause">暂停</string>
+    <string name="cast_exit">退出投屏</string>
+    <string name="cast_exited">已退出投屏</string>
+    <string name="cast_switching">正在把「<xliff:g name="name">%s</xliff:g>」推给电视</string>
+
     <!-- Control -->
     <string name="control_speed">倍速</string>
     <string name="control_scale">缩放</string>

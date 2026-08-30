@@ -30,6 +30,8 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
 
     private Runnable refresh;
     private Players player;
+    /** 投屏时进度来自电视而不是本地播放器，见 {@link Source}。 */
+    private Source source;
 
     private long currentDuration;
     private long currentPosition;
@@ -85,6 +87,33 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
     public void setListener(Players player) {
         this.player = player;
     }
+
+    /**
+     * 把进度来源换成外部实现（投屏时是电视）。传 null 恢复成读本地播放器。
+     * <p>
+     * 之所以做成接口而不是直接依赖投屏管理器：这个 View 在 main 源码集，投屏那套在 mobile，
+     * 反向依赖编不过。
+     */
+    public void setSource(Source source) {
+        this.source = source;
+        start();
+    }
+
+    private long sourcePosition() {
+        return source != null ? source.getPosition() : player.getPosition();
+    }
+
+    private long sourceDuration() {
+        return source != null ? source.getDuration() : player.getDuration();
+    }
+
+    private boolean sourcePlaying() {
+        return source != null ? source.isPlaying() : player.isPlaying();
+    }
+
+    private boolean sourceEmpty() {
+        return source != null ? source.getDuration() <= 0 : player.isEmpty();
+    }
     
     public void setPosition(long position) {
         timeBar.setPosition(position);
@@ -130,9 +159,9 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
     }
 
     private void refresh() {
-        long duration = player.getDuration();
-        long position = player.getPosition();
-        long buffered = player.getBuffered();
+        long duration = sourceDuration();
+        long position = sourcePosition();
+        long buffered = source != null ? position : player.getBuffered();
         boolean positionChanged = position != currentPosition;
         boolean durationChanged = duration != currentDuration;
         boolean bufferedChanged = buffered != currentBuffered;
@@ -152,13 +181,13 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
             timeBar.setBufferedPosition(buffered);
         }
         removeCallbacks(refresh);
-        if (player.isEmpty()) {
+        if (sourceEmpty()) {
             positionView.setText("00:00");
             durationView.setText("00:00");
             timeBar.setPosition(currentPosition = 0);
             timeBar.setDuration(currentDuration = 0);
             postDelayed(refresh, MIN_UPDATE_INTERVAL_MS);
-        } else if (player.isPlaying()) {
+        } else if (sourcePlaying()) {
             postDelayed(refresh, delayMs(position));
         } else {
             postDelayed(refresh, MAX_UPDATE_INTERVAL_MS);
@@ -188,7 +217,8 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
 
     private void seekToTimeBarPosition(long positionMs) {
         // 先设置播放位置
-        player.seekTo(positionMs);
+        if (source != null) source.seekTo(positionMs);
+        else player.seekTo(positionMs);
         // 延迟刷新进度条，确保播放器已经处理了跳转操作
         removeCallbacks(refresh);
         postDelayed(() -> {
@@ -196,7 +226,7 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
             if (!scrubbing) {
                 refresh();
                 // 确保进度条位置与实际播放位置一致
-                long actualPosition = player.getPosition();
+                long actualPosition = sourcePosition();
                 if (Math.abs(actualPosition - positionMs) > 100) { // 如果差异超过100ms，再次调整
                     timeBar.setPosition(actualPosition);
                     positionView.setText(player.stringToTime(actualPosition));
@@ -234,11 +264,23 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
             // 调整播放位置
             seekToTimeBarPosition(position);
             // 确保播放状态正确
-            if (!player.isPlaying()) {
+            if (source == null && !player.isPlaying()) {
                 player.play();
             }
         }
-        
+
         // 不干预DefaultTimeBar的圆球绘制，让它自己处理
+    }
+
+    /** 进度/播放态的外部来源，投屏时由 VideoActivity 接到投屏会话上。 */
+    public interface Source {
+
+        long getPosition();
+
+        long getDuration();
+
+        boolean isPlaying();
+
+        void seekTo(long position);
     }
 }
