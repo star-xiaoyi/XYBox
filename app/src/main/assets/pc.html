@@ -146,7 +146,7 @@ function load(url, name, position) {
   err.textContent = '';
   idle.style.display = 'none';
   v.style.display = 'block';
-  log('LOAD 手机推来的起播位置 startPosition=' + position + 'ms',
+  log('LOAD 手机推来的起播位置 startPosition=' + position + 'ms（' + (position / 1000).toFixed(1) + 's）',
       '当前 currentTime=' + v.currentTime.toFixed(1) + 's', 'url=' + url);
   if (hls) { hls.destroy(); hls = null; }
   // 换集必须显式把播放位置清掉。hls.js 走的是 MSE，销毁重建时 <video> 元素的

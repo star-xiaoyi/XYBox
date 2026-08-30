@@ -185,6 +185,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
      * 靠标记必然漏。
      */
     private Episode castEpisode;
+    /** 最后一次推给接收端的播放地址，配合 castEpisode 用来识别重复推送。 */
+    private String castUrl;
     private boolean contentExpanded;
     private float mHandleDown;
     private boolean mDragging;
@@ -1178,6 +1180,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void enterCastMode() {
         onPaused();
         castEpisode = getEpisode();
+        castUrl = mPlayers.getUrl();
         mBinding.castOverlay.setVisibility(View.VISIBLE);
         mBinding.castTitle.setText(getString(R.string.cast_overlay_title, CastManager.get().getDeviceName()));
         mBinding.control.seek.setSource(mCastSource);
@@ -1194,6 +1197,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.castOverlay.setVisibility(View.GONE);
         mBinding.control.seek.setSource(null);
         castEpisode = null;
+        castUrl = null;
         // 投屏这段时间里本地播放器一直停在开投那一刻，进度是在对端走的。
         // 不把它补回来，退出后会从开投的位置重播一遍。
         long position = CastManager.get().getLastPosition();
@@ -1220,13 +1224,19 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         String url = mPlayers.getUrl();
         if (TextUtils.isEmpty(url)) return;
         Episode episode = getEpisode();
+        // 换一集会收到两次 PREPARE，同一集的同一个地址被推两遍。第二遍不只让接收端
+        // 白重新缓冲一次，还会因为"这一集已经在放了"而去读观看记录里的进度——那时候
+        // 记录还冻结在切集之前，于是新的一集从上一集的时间开始。直接挡掉重复推送。
+        if (episode.equals(castEpisode) && url.equals(castUrl)) return;
         String name = getString(R.string.detail_title, mBinding.name.getText(), episode.getName());
-        // 换了一集就从头（或跳过片头的位置）开始。观看记录在这里是不可信的：里面存的
-        // 是上一集的进度，而且投屏期间它一直被接收端的回报刷新着。只有重新推同一集
-        // （比如线路切换后重播）才该接着原来的位置。
-        boolean same = episode.equals(castEpisode);
-        long start = same ? Math.max(mHistory.getOpening(), mHistory.getPosition()) : Math.max(mHistory.getOpening(), 0);
+        // 起播位置：换集从头（或跳过片头处）开始；同一集换了地址（切线路/画质）
+        // 就接着接收端此刻的位置。两种情况都不读观看记录——投屏期间它要么冻结着旧值，
+        // 要么正被接收端的回报刷新，不可信。
+        long start = episode.equals(castEpisode)
+                ? Math.max(CastManager.get().getPosition(), 0)
+                : Math.max(mHistory.getOpening(), 0);
         castEpisode = episode;
+        castUrl = url;
         CastManager.get().cast(CastVideo.get(name, url, start, mPlayers.getHeaders()), null);
         CastManager.get().setSpeed(mPlayers.getSpeed());
         syncCastEpisodes();
