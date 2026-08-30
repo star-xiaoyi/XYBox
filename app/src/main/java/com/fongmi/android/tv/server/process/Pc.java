@@ -1,11 +1,13 @@
 package com.fongmi.android.tv.server.process;
 
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.server.Nano;
 import com.fongmi.android.tv.server.impl.Process;
 import com.github.catvod.utils.Asset;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -175,12 +177,34 @@ public class Pc implements Process {
         return res;
     }
 
+    /**
+     * 返回播放页。
+     * <p>
+     * 必须禁用缓存：这个页面每次发版都可能改，而它的地址是固定的
+     * {@code http://手机IP:9978/pc}。不带缓存头的话浏览器会一直用自己存的旧副本，
+     * 表现是升级了 App 但页面行为一点没变，极难察觉。
+     * <p>
+     * 版本号顺手塞进页面，出问题时一眼能看出跑的到底是哪一版。
+     */
     private NanoHTTPD.Response page() {
         try {
-            InputStream is = Asset.open("pc.html");
-            return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "text/html", is, is.available());
+            String html = read(Asset.open("pc.html")).replace("{{version}}", BuildConfig.VERSION_NAME);
+            NanoHTTPD.Response res = NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "text/html", html);
+            res.addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+            res.addHeader("Pragma", "no-cache");
+            res.addHeader("Expires", "0");
+            return res;
         } catch (Exception e) {
             return Nano.error(NanoHTTPD.Response.Status.NOT_FOUND, "pc.html missing");
         }
+    }
+
+    private String read(InputStream is) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = is.read(buf)) > 0) out.write(buf, 0, n);
+        is.close();
+        return out.toString("UTF-8");
     }
 }
