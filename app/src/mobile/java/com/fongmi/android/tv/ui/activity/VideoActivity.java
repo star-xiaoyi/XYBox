@@ -69,6 +69,7 @@ import com.fongmi.android.tv.bean.CastVideo;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.bean.Download;
 import com.fongmi.android.tv.bean.Episode;
+import com.fongmi.android.tv.server.process.Pc;
 import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
@@ -1170,6 +1171,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         CastManager.get().setListener(this);
         syncCastSpeed();
+        syncCastEpisodes();
         checkPlayImg();
         showControl();
     }
@@ -1199,6 +1201,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         String name = getString(R.string.detail_title, mBinding.name.getText(), getEpisode().getName());
         CastManager.get().cast(CastVideo.get(name, url, Math.max(mHistory.getOpening(), mHistory.getPosition()), mPlayers.getHeaders()), null);
         CastManager.get().setSpeed(mPlayers.getSpeed());
+        syncCastEpisodes();
         Notify.show(getString(R.string.cast_switching, getEpisode().getName()));
         castSwitching = false;
         castEnded = false;
@@ -2384,6 +2387,34 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     /** 倍速改在本地播放器上，投屏时还得把同一个值推给对端。 */
     private void syncCastSpeed() {
         if (isCasting()) CastManager.get().setSpeed(mPlayers.getSpeed());
+    }
+
+    /** 把剧集列表和当前集数推给电脑页面，让它自己也能选集。 */
+    private void syncCastEpisodes() {
+        if (!isCasting()) return;
+        List<Episode> items = getFlag() == null ? new ArrayList<>() : getFlag().getEpisodes();
+        List<String> names = new ArrayList<>();
+        int index = -1;
+        Episode current = getEpisode();
+        for (int i = 0; i < items.size(); i++) {
+            names.add(items.get(i).getName());
+            if (current != null && items.get(i).equals(current)) index = i;
+        }
+        Pc.setEpisodes(names, index);
+    }
+
+    @Override
+    public void onCastSelect(int index) {
+        List<Episode> items = getFlag() == null ? null : getFlag().getEpisodes();
+        if (items == null || index < 0 || index >= items.size()) return;
+        Episode item = items.get(index);
+        if (item.equals(getEpisode())) return;
+        // 走和手机上点剧集同一条路，但不能带 shouldEnterFullscreen：
+        // 投屏时把手机切进全屏毫无意义
+        mFlagAdapter.toggle(item);
+        notifyItemChanged(mEpisodeAdapter);
+        mBinding.episode.scrollToPosition(mEpisodeAdapter.getPosition());
+        onRefresh();
     }
 
     @Override

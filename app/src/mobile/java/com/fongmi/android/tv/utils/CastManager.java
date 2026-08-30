@@ -260,6 +260,16 @@ public class CastManager implements Pc.Listener {
         });
     }
 
+    /** 用户在电脑页面上点了某一集，转给持有剧集列表的界面去切。 */
+    @Override
+    public void onPcSelect(int index) {
+        App.post(() -> {
+            if (!casting) return;
+            Listener l = listener;
+            if (l != null) l.onCastSelect(index);
+        });
+    }
+
     private void notifyChanged() {
         // 通知栏只关心播放/暂停，进度每秒都在变，不能跟着刷否则通知一直重建
         if (casting && playing != notified) CastService.update();
@@ -560,6 +570,9 @@ public class CastManager implements Pc.Listener {
 
         /** 投屏状态、进度、播放/暂停有任何变化都会回调，在主线程。 */
         void onCastChanged();
+
+        /** 接收端（目前只有浏览器）请求切到第 index 集，在主线程。 */
+        void onCastSelect(int index);
     }
 
     public interface Callback {

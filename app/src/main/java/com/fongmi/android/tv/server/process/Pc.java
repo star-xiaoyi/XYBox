@@ -3,9 +3,11 @@ package com.fongmi.android.tv.server.process;
 import com.fongmi.android.tv.server.Nano;
 import com.fongmi.android.tv.server.impl.Process;
 import com.github.catvod.utils.Asset;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 import java.io.InputStream;
+import java.util.List;
 import java.util.Map;
 
 import fi.iki.elonen.NanoHTTPD;
@@ -36,6 +38,10 @@ public class Pc implements Process {
     private static int playSeq;
     private static int speedSeq;
     private static long seekTo;
+    /** 剧集名列表，供电脑上直接选集。 */
+    private static JsonArray episodes = new JsonArray();
+    private static int episodeIndex = -1;
+    private static int episodeSeq;
 
     private static Listener listener;
 
@@ -43,10 +49,23 @@ public class Pc implements Process {
 
         /** 浏览器上报的实际播放状态，单位毫秒。ended 为真表示这一集放完了。 */
         void onPcReport(long position, long duration, boolean playing, boolean ended);
+
+        /** 用户在电脑上选了第 index 集。 */
+        void onPcSelect(int index);
     }
 
     public static void setListener(Listener l) {
         listener = l;
+    }
+
+    /** 剧集列表变了或换集了就更新一次，页面靠 episodeSeq 判断要不要重画。 */
+    public static synchronized void setEpisodes(List<String> names, int index) {
+        JsonArray array = new JsonArray();
+        for (String name : names) array.add(name);
+        boolean changed = !array.equals(episodes) || episodeIndex != index;
+        episodes = array;
+        episodeIndex = index;
+        if (changed) episodeSeq++;
     }
 
     /** 换集/开播：videoSeq 一变，浏览器就重新加载并 seek 到 startPosition。 */
@@ -91,6 +110,9 @@ public class Pc implements Process {
         playing = false;
         url = "";
         name = "";
+        episodes = new JsonArray();
+        episodeIndex = -1;
+        episodeSeq++;
         videoSeq++;
     }
 
@@ -107,6 +129,9 @@ public class Pc implements Process {
         o.addProperty("playSeq", playSeq);
         o.addProperty("speedSeq", speedSeq);
         o.addProperty("seekTo", seekTo);
+        o.add("episodes", episodes);
+        o.addProperty("episodeIndex", episodeIndex);
+        o.addProperty("episodeSeq", episodeSeq);
         return o.toString();
     }
 
@@ -119,7 +144,14 @@ public class Pc implements Process {
     public NanoHTTPD.Response doResponse(NanoHTTPD.IHTTPSession session, String url, Map<String, String> files) {
         if (url.startsWith("/pc/state")) return json(state());
         if (url.startsWith("/pc/report")) return report(session);
+        if (url.startsWith("/pc/select")) return select(session);
         return page();
+    }
+
+    private NanoHTTPD.Response select(NanoHTTPD.IHTTPSession session) {
+        Listener l = listener;
+        if (l != null) l.onPcSelect((int) parse(session.getParms().get("index")));
+        return json("{}");
     }
 
     private NanoHTTPD.Response report(NanoHTTPD.IHTTPSession session) {
