@@ -38,6 +38,24 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# ---------- 发布前的工作区检查 ----------
+# 必须在改版本号之前查。放到发布那一步再查的话，脚本会看见自己刚写进
+# app/build.gradle 的版本号，把自己判定为"有未提交的改动"而拒绝发布。
+if [ "$PUBLISH" = true ] && [ -n "$(git status --porcelain)" ]; then
+    echo "工作区还有未提交的改动，发出去的包将对不上任何一个提交："
+    git status --short
+    # 非交互环境（AI 后台跑、CI）读不到输入，直接拒绝并说清怎么办，
+    # 不要停在一个永远等不到回答的提示上。
+    if [ ! -t 0 ]; then
+        echo
+        echo "当前是非交互环境，无法确认。请先提交这些改动，或在终端里手动重跑。"
+        exit 1
+    fi
+    printf "仍要发布？(y/N) "
+    read -r reply
+    [ "$reply" = "y" ] || [ "$reply" = "Y" ] || exit 1
+fi
+
 # ---------- 版本号 ----------
 # 规则：betaN 是测试版，无后缀是正式版。
 #
@@ -116,21 +134,8 @@ echo "编译完成: $OUT_DIR/$ASSET_NAME ($SIZE)"
 [ "$PUBLISH" = false ] && { echo "如需发布，加 --publish"; exit 0; }
 
 # ---------- 发布 ----------
-if [ -n "$(git status --porcelain)" ]; then
-    echo
-    echo "工作区还有未提交的改动，发出去的包将对不上任何一个提交："
-    git status --short
-    # 非交互环境（AI 后台跑、CI）读不到输入，直接拒绝并说清怎么办，
-    # 不要停在一个永远等不到回答的提示上。
-    if [ ! -t 0 ]; then
-        echo
-        echo "当前是非交互环境，无法确认。请先提交这些改动，或在终端里手动重跑。"
-        exit 1
-    fi
-    printf "仍要发布？(y/N) "
-    read -r reply
-    [ "$reply" = "y" ] || [ "$reply" = "Y" ] || exit 1
-fi
+# 工作区检查已经在改版本号之前做过了，这里不再重复——此刻唯一的改动就是脚本
+# 自己写进 app/build.gradle 的版本号。
 
 TAG="v$VERSION"
 if echo "$VERSION" | grep -q -- '-beta'; then
@@ -165,3 +170,10 @@ gh release view "$TAG" --json isDraft,isPrerelease,assets \
 
 echo "已发布: https://github.com/$REPO/releases/tag/$TAG"
 echo "$CHANNEL"
+
+# 版本号是脚本刚写进去的，还没提交。不提醒的话仓库里会一直躺着一个改动，
+# 下次发布的前置检查又会拦在那儿。
+if [ -n "$(git status --porcelain app/build.gradle)" ]; then
+    echo
+    echo "别忘了提交版本号改动：git commit -am \"chore: 发布 $VERSION\""
+fi
