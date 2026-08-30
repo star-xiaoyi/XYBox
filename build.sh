@@ -40,27 +40,43 @@ done
 
 # ---------- 版本号 ----------
 # 规则：betaN 是测试版，无后缀是正式版。
-# versionCode = (major*1000 + minor*100 + patch) * 10 + 尾数，beta 用序号 N，正式版固定 9。
-# 尾数 9 保证正式版的 code 高于自己所有的 beta，否则从 beta 装正式版会被系统当降级拒掉。
+#
+#   versionCode = major*1000000 + minor*10000 + patch*100 + 尾数
+#   尾数：beta 用序号 N（1-98），正式版固定 99
+#
+#   0.3.3-beta1 = 30301      0.3.3-beta2 = 30302      0.3.3 = 30399
+#   0.10.0      = 100099     1.0.0       = 1000099
+#
+# 每段独占两位，major/minor/patch 各自能到 99、beta 能到 98，互不串位。
+# 尾数 99 保证正式版的 code 高于自己所有的 beta，否则从 beta 装正式版会被系统当降级拒掉。
 if [ -n "$VERSION" ]; then
-    if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-beta[1-8])?$'; then
+    if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-beta([1-9]|[1-8][0-9]|9[0-8]))?$'; then
         echo "版本号格式不对: $VERSION"
-        echo "只接受 0.3.2 或 0.3.2-beta1（beta 序号 1-8，正式版占用尾数 9）"
+        echo "只接受 0.3.2 或 0.3.2-beta1（beta 序号 1-98，正式版占用尾数 99）"
         exit 1
     fi
 
     MAJOR=$(echo "$VERSION" | cut -d. -f1)
     MINOR=$(echo "$VERSION" | cut -d. -f2)
     PATCH=$(echo "$VERSION" | cut -d. -f3 | cut -d- -f1)
+    if [ "$MINOR" -gt 99 ] || [ "$PATCH" -gt 99 ]; then
+        echo "minor 和 patch 都不能超过 99（每段只留了两位）: $VERSION"
+        exit 1
+    fi
     if echo "$VERSION" | grep -q -- '-beta'; then
         TAIL=$(echo "$VERSION" | sed 's/.*-beta//')
     else
-        TAIL=9
+        TAIL=99
     fi
-    CODE=$(( (MAJOR * 1000 + MINOR * 100 + PATCH) * 10 + TAIL ))
+    CODE=$(( MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + TAIL ))
 
     OLD_CODE=$(grep -oE '^ *versionCode [0-9]+' app/build.gradle | grep -oE '[0-9]+')
-    if [ "$CODE" -le "$OLD_CODE" ]; then
+    OLD_NAME=$(grep -oE '^ *versionName "[^"]+"' app/build.gradle | sed 's/.*"\(.*\)"/\1/')
+    # 传的版本号跟当前完全一致 = 重跑（上次发布中途失败了），放行。
+    # 只有真的往回退才拒绝——手机装不上比已装版本 code 低的包。
+    if [ "$CODE" -eq "$OLD_CODE" ] && [ "$VERSION" = "$OLD_NAME" ]; then
+        echo "版本号未变（$VERSION，versionCode $CODE），按重跑处理"
+    elif [ "$CODE" -le "$OLD_CODE" ]; then
         echo "versionCode 不能倒退: 当前 $OLD_CODE，新值 $CODE"
         echo "手机装不上比已装版本 code 低的包，请提高版本号"
         exit 1
@@ -98,6 +114,13 @@ if [ -n "$(git status --porcelain)" ]; then
     echo
     echo "工作区还有未提交的改动，发出去的包将对不上任何一个提交："
     git status --short
+    # 非交互环境（AI 后台跑、CI）读不到输入，直接拒绝并说清怎么办，
+    # 不要停在一个永远等不到回答的提示上。
+    if [ ! -t 0 ]; then
+        echo
+        echo "当前是非交互环境，无法确认。请先提交这些改动，或在终端里手动重跑。"
+        exit 1
+    fi
     printf "仍要发布？(y/N) "
     read -r reply
     [ "$reply" = "y" ] || [ "$reply" = "Y" ] || exit 1
