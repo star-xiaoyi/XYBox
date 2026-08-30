@@ -55,7 +55,7 @@ var title = document.getElementById('title');
 var tip = document.getElementById('tip');
 var err = document.getElementById('err');
 
-var videoSeq = -1, seekSeq = -1, current = '', hls = null, ended = false;
+var videoSeq = -1, seekSeq = -1, playSeq = -1, speedSeq = -1, current = '', hls = null, ended = false;
 
 function toast(text) {
   tip.textContent = text;
@@ -139,6 +139,9 @@ function apply(s) {
   if (videoSeq !== s.videoSeq) {
     videoSeq = s.videoSeq;
     seekSeq = s.seekSeq;
+    playSeq = s.playSeq;
+    speedSeq = s.speedSeq;
+    v.playbackRate = s.speed || 1;
     load(s.url, s.name, s.startPosition);
     return;
   }
@@ -146,22 +149,35 @@ function apply(s) {
     seekSeq = s.seekSeq;
     try { v.currentTime = s.seekTo / 1000; } catch (e) {}
   }
-  if (s.playing && v.paused) v.play().catch(function () {});
-  if (!s.playing && !v.paused) v.pause();
+  if (speedSeq !== s.speedSeq) {
+    speedSeq = s.speedSeq;
+    try { v.playbackRate = s.speed || 1; } catch (e) {}
+  }
+  // 播放/暂停只在手机真的按了才动。无条件跟随会和用户在电脑上的操作打架：
+  // 上报还没落地时状态里仍是旧值，页面就把自己扳回去了。
+  if (playSeq !== s.playSeq) {
+    playSeq = s.playSeq;
+    if (s.playing) v.play().catch(function () {});
+    else v.pause();
+  }
 }
 
 function tick() {
-  fetch('/pc/state', { cache: 'no-store' })
-    .then(function (r) { return r.json(); })
-    .then(apply)
-    .catch(function () {});
+  // 先报后取：本轮的实际状态先落到手机那边，紧接着拿回来的状态才是新的。
+  // 反过来的话每次都在拿上一秒的旧值判断。
+  var report = Promise.resolve();
   if (current) {
     var d = isFinite(v.duration) ? Math.round(v.duration * 1000) : 0;
     var p = Math.round(v.currentTime * 1000);
-    fetch('/pc/report?position=' + p + '&duration=' + d +
+    report = fetch('/pc/report?position=' + p + '&duration=' + d +
           '&playing=' + (v.paused ? 0 : 1) + '&ended=' + (ended ? 1 : 0),
           { cache: 'no-store' }).catch(function () {});
   }
+  report.then(function () {
+    return fetch('/pc/state', { cache: 'no-store' });
+  }).then(function (r) { return r.json(); })
+    .then(apply)
+    .catch(function () {});
 }
 
 setInterval(tick, 1000);

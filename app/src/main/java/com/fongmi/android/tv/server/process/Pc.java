@@ -30,8 +30,11 @@ public class Pc implements Process {
     private static long startPosition;
     private static boolean playing;
     private static boolean casting;
+    private static float speed = 1f;
     private static int videoSeq;
     private static int seekSeq;
+    private static int playSeq;
+    private static int speedSeq;
     private static long seekTo;
 
     private static Listener listener;
@@ -56,8 +59,26 @@ public class Pc implements Process {
         videoSeq++;
     }
 
+    /**
+     * 手机按下的播放/暂停。必须是边沿触发：如果浏览器每秒拿到 playing 就无条件照做，
+     * 用户在电脑上自己点播放时，同一轮里上报还没落地、状态里还是旧的 false，页面就会
+     * 立刻把自己按回暂停，表现就是一播一停来回抖。改成只在 playSeq 变化时才动。
+     */
     public static synchronized void setPlaying(boolean value) {
+        if (playing == value) return;
         playing = value;
+        playSeq++;
+    }
+
+    /** 浏览器自己改了播放态，只同步值不推指令，否则又会绕回去命令它一次。 */
+    public static synchronized void syncPlaying(boolean value) {
+        playing = value;
+    }
+
+    public static synchronized void setSpeed(float value) {
+        if (speed == value) return;
+        speed = value;
+        speedSeq++;
     }
 
     public static synchronized void seek(long ms) {
@@ -80,8 +101,11 @@ public class Pc implements Process {
         o.addProperty("name", name);
         o.addProperty("startPosition", startPosition);
         o.addProperty("playing", playing);
+        o.addProperty("speed", speed);
         o.addProperty("videoSeq", videoSeq);
         o.addProperty("seekSeq", seekSeq);
+        o.addProperty("playSeq", playSeq);
+        o.addProperty("speedSeq", speedSeq);
         o.addProperty("seekTo", seekTo);
         return o.toString();
     }

@@ -176,6 +176,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean castExpanded;
     /** 投屏中电视是否已经放到本集末尾，避免自动切下一集被轮询触发多次。 */
     private boolean castEnded;
+    /** 投屏中换集，从决定换到真正推给对端之间的这段时间。 */
+    private boolean castSwitching;
     private boolean contentExpanded;
     private float mHandleDown;
     private boolean mDragging;
@@ -511,8 +513,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.detailBack.setOnClickListener(view -> onBackPressed());
         mBinding.castExpand.setOnClickListener(view -> onCastExpand());
         mBinding.castExit.setOnClickListener(view -> onCastExit());
-        // 投屏占位层盖住了播放手势区，点它等同于点播放画面：呼出/收起控制条
-        mBinding.castOverlay.setOnClickListener(view -> onSingleTap());
+        // 投屏占位层盖住了播放手势区，把触摸原样转给同一套手势识别，
+        // 这样投屏时照样能滑动调进度、双击快退快进、上下拖换集
+        mBinding.castOverlay.setOnTouchListener((view, event) -> mKeyDown.onTouchEvent(view, event));
         mBinding.contentExpand.setOnClickListener(view -> onContent());
         mBinding.handle.setOnTouchListener(this::onHandleTouch);
         mBinding.handleLand.setOnTouchListener(this::onHandleTouch);
@@ -1159,12 +1162,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void enterCastMode() {
         onPaused();
+        castSwitching = false;
         mBinding.castOverlay.setVisibility(View.VISIBLE);
         mBinding.castTitle.setText(getString(R.string.cast_overlay_title, CastManager.get().getDeviceName()));
         mBinding.control.seek.setSource(mCastSource);
         // 投屏中屏幕可以熄，供流靠前台服务的 WifiLock 撑着，不用一直亮着
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         CastManager.get().setListener(this);
+        syncCastSpeed();
         checkPlayImg();
         showControl();
     }
@@ -1172,6 +1177,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void exitCastMode() {
         mBinding.castOverlay.setVisibility(View.GONE);
         mBinding.control.seek.setSource(null);
+        castSwitching = false;
         checkPlayImg();
     }
 
@@ -1192,7 +1198,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (TextUtils.isEmpty(url)) return;
         String name = getString(R.string.detail_title, mBinding.name.getText(), getEpisode().getName());
         CastManager.get().cast(CastVideo.get(name, url, Math.max(mHistory.getOpening(), mHistory.getPosition()), mPlayers.getHeaders()), null);
+        CastManager.get().setSpeed(mPlayers.getSpeed());
         Notify.show(getString(R.string.cast_switching, getEpisode().getName()));
+        castSwitching = false;
         castEnded = false;
         onPaused();
     }
@@ -1201,6 +1209,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     public void onCastChanged() {
         if (!isCasting()) {
             exitCastMode();
+            return;
+        }
+        // 换集在途：对端报的还是上一集的进度，写进记录会污染新一集的起播位置
+        if (castSwitching) {
+            checkPlayImg();
             return;
         }
         long position = CastManager.get().getPosition();
@@ -1526,12 +1539,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void onSpeed() {
         mBinding.control.action.speed.setText(mPlayers.addSpeed());
         mHistory.setSpeed(mPlayers.getSpeed());
+        syncCastSpeed();
         setR1Callback();
     }
 
     private boolean onSpeedLong() {
         mBinding.control.action.speed.setText(mPlayers.toggleSpeed());
         mHistory.setSpeed(mPlayers.getSpeed());
+        syncCastSpeed();
         setR1Callback();
         return true;
     }
@@ -1883,6 +1898,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mHistory.setVodFlag(getFlag().getFlag());
         mHistory.setCreateTime(System.currentTimeMillis());
         mHistory.setPosition(replay ? C.TIME_UNSET : mHistory.getPosition());
+        // 投屏换集时，本地要花几秒解析新地址，这期间对端还在放上一集、还在每秒回报进度。
+        // 不挡住的话那些回报会把刚重置的记录又写成上一集的进度，新的一集就从 10 分钟开播。
+        if (replay && isCasting()) castSwitching = true;
         // Persist a new title before player preparation. This gives the first cloud upload
         // enough time to finish even when the user watches briefly and removes the task.
         if (firstSave && !Setting.isIncognito()) mHistory.update();
@@ -2053,6 +2071,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void onError(ErrorEvent event) {
         mBinding.swipeLayout.setEnabled(true);
+        // 新地址解析失败就永远走不到 castCurrent，标记不清掉的话这次投屏后面都不写观看记录了
+        castSwitching = false;
         Track.delete(mPlayers.getUrl());
         showError(event.getMsg());
         mClock.setCallback(null);
@@ -2345,8 +2365,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onSpeedUp() {
-        if (!mPlayers.isPlaying()) return;
+        // 投屏时本地播放器是停的，得看对端在不在放，否则长按倍速永远不触发
+        if (!(isCasting() ? CastManager.get().isPlaying() : mPlayers.isPlaying())) return;
         mBinding.control.action.speed.setText(mPlayers.setSpeed(Setting.getSpeed()));
+        syncCastSpeed();
         mBinding.widget.speed.startAnimation(ResUtil.getAnim(R.anim.forward));
         mBinding.widget.speed.setVisibility(View.VISIBLE);
     }
@@ -2354,8 +2376,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onSpeedEnd() {
         mBinding.control.action.speed.setText(mPlayers.setSpeed(mHistory.getSpeed()));
+        syncCastSpeed();
         mBinding.widget.speed.setVisibility(View.GONE);
         mBinding.widget.speed.clearAnimation();
+    }
+
+    /** 倍速改在本地播放器上，投屏时还得把同一个值推给对端。 */
+    private void syncCastSpeed() {
+        if (isCasting()) CastManager.get().setSpeed(mPlayers.getSpeed());
     }
 
     @Override
@@ -2399,13 +2427,27 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onSeek(long time) {
         mBinding.widget.action.setImageResource(time > 0 ? R.drawable.ic_widget_forward : R.drawable.ic_widget_rewind);
-        mBinding.widget.time.setText(mPlayers.getPositionTime(time));
+        mBinding.widget.time.setText(isCasting() ? castPositionTime(time) : mPlayers.getPositionTime(time));
         mBinding.widget.seek.setVisibility(View.VISIBLE);
         hideProgress();
     }
 
+    /** 投屏时进度来自对端，不能拿本地播放器算滑动后的目标时间。 */
+    private String castPositionTime(long delta) {
+        long duration = CastManager.get().getDuration();
+        long time = CastManager.get().getPosition() + delta;
+        if (duration > 0 && time > duration) time = duration;
+        if (time < 0) time = 0;
+        return mPlayers.stringToTime(time);
+    }
+
     @Override
     public void onSeekEnd(long time) {
+        if (isCasting()) {
+            mBinding.widget.seek.setVisibility(View.GONE);
+            CastManager.get().seekTo(CastManager.get().getPosition() + time);
+            return;
+        }
         handleLandscapeSeek(time);
     }
     
@@ -2454,6 +2496,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onDoubleTap() {
+        if (isCasting()) {
+            boolean wasPlaying = CastManager.get().isPlaying();
+            CastManager.get().toggle();
+            showGestureFeedback(wasPlaying ? R.drawable.exo_icon_play : R.drawable.exo_icon_pause);
+            return;
+        }
         if (mPlayers.isEmpty()) {
             checkPlay();
             return;
@@ -2466,8 +2514,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onDoubleTapLeft() {
         long seekTime = -TimeUnit.SECONDS.toMillis(Setting.getGestureSeekSeconds());
-        long newPosition = Math.max(0, mPlayers.getPosition() + seekTime);
-        mPlayers.seekTo(newPosition);
+        if (isCasting()) {
+            CastManager.get().seekTo(Math.max(0, CastManager.get().getPosition() + seekTime));
+        } else {
+            long newPosition = Math.max(0, mPlayers.getPosition() + seekTime);
+            mPlayers.seekTo(newPosition);
+        }
         onSeek(seekTime);
         App.post(() -> mBinding.widget.seek.setVisibility(View.GONE), 800);
     }
@@ -2475,9 +2527,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onDoubleTapRight() {
         long seekTime = TimeUnit.SECONDS.toMillis(Setting.getGestureSeekSeconds());
-        long duration = mPlayers.getDuration();
-        long newPosition = Math.min(duration > 0 ? duration : Long.MAX_VALUE, mPlayers.getPosition() + seekTime);
-        mPlayers.seekTo(newPosition);
+        if (isCasting()) {
+            long duration = CastManager.get().getDuration();
+            long newPosition = CastManager.get().getPosition() + seekTime;
+            CastManager.get().seekTo(duration > 0 ? Math.min(duration, newPosition) : newPosition);
+        } else {
+            long duration = mPlayers.getDuration();
+            long newPosition = Math.min(duration > 0 ? duration : Long.MAX_VALUE, mPlayers.getPosition() + seekTime);
+            mPlayers.seekTo(newPosition);
+        }
         onSeek(seekTime);
         App.post(() -> mBinding.widget.seek.setVisibility(View.GONE), 800);
     }
