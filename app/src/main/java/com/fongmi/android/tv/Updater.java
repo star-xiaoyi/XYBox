@@ -37,9 +37,10 @@ public class Updater implements Download.Callback {
     /**
      * dev 通道要能看到 beta。GitHub 的 /releases/latest 按设计会跳过所有 prerelease，
      * 所以预发布包在那个接口上完全不可见（本项目实际踩过：v0.3.2-beta 发出来手机检查不到更新）。
-     * 列表接口按创建时间倒序返回，含 prerelease，取第一条即最新发布。
+     * 不能相信列表顺序：同一份未提交代码连续发 beta 时，GitHub 会给它们相同的 created_at，
+     * beta10 甚至会按字符串夹在 beta1 和 beta2 之间。必须拉回列表后自己按版本号选最大值。
      */
-    private static final String DEV_API = "https://api.github.com/repos/star-xiaoyi/XYBox/releases?per_page=10";
+    private static final String DEV_API = "https://api.github.com/repos/star-xiaoyi/XYBox/releases?per_page=100";
 
     private DialogUpdateBinding binding;
     private Download download;
@@ -131,17 +132,30 @@ public class Updater implements Download.Callback {
 
     /**
      * release 通道拿到的是单个对象，dev 通道拿到的是数组。
-     * 数组里跳过草稿（draft 的资产还没公开，下不下来），保留 prerelease。
+     * 数组里跳过草稿（draft 的资产还没公开，下不下来），保留 prerelease，
+     * 再用和安装判断完全相同的数值规则选最大版本，绝不依赖 GitHub 的返回顺序。
      */
     private JSONObject parseRelease(String response) throws Exception {
         String trimmed = response.trim();
         if (!trimmed.startsWith("[")) return new JSONObject(trimmed);
         JSONArray releases = new JSONArray(trimmed);
+        JSONObject latest = null;
+        String latestVersion = null;
         for (int i = 0; i < releases.length(); i++) {
             JSONObject release = releases.optJSONObject(i);
-            if (release != null && !release.optBoolean("draft")) return release;
+            if (release == null || release.optBoolean("draft")) continue;
+            String version = normalizeVersion(release.optString("tag_name"));
+            if (TextUtils.isEmpty(version)) continue;
+            if (latest == null || compare(version, latestVersion) > 0) {
+                latest = release;
+                latestVersion = version;
+            }
         }
-        return null;
+        return latest;
+    }
+
+    private String normalizeVersion(String tagName) {
+        return tagName.startsWith("v") || tagName.startsWith("V") ? tagName.substring(1) : tagName;
     }
 
     private void tipError(String message) {

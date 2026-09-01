@@ -257,20 +257,27 @@
         android:layout_marginBottom="4dp"
         android:alpha="0">
 
-        <LinearLayout
+        <FrameLayout
             android:id="@+id/previewBox"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/shape_preview"
-            android:gravity="center"
-            android:orientation="vertical">
+            android:foregroundGravity="center">
 
             <TextureView
                 android:id="@+id/previewVideo"
                 android:layout_width="160dp"
                 android:layout_height="90dp" />
 
-        </LinearLayout>
+            <!-- 已经显示过的预览帧覆盖在播放器表面上，回拖命中内存缓存时立即出现。 -->
+            <ImageView
+                android:id="@+id/previewImage"
+                android:layout_width="160dp"
+                android:layout_height="90dp"
+                android:scaleType="fitXY"
+                android:visibility="gone" />
+
+        </FrameLayout>
 
     </FrameLayout>
 
