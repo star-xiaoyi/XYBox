@@ -35,6 +35,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     private boolean changeScale;
     private boolean changeTime;
     private boolean changeEpisode;
+    private boolean speedLock;
+    private boolean blocked;
     private boolean animating;
     private boolean touch;
     private boolean lock;
@@ -62,7 +64,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         int action = e.getActionMasked();
         if (changeEpisode && (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)) onEpisodeEnd();
         if (changeTime && e.getAction() == MotionEvent.ACTION_UP) onSeekEnd();
-        if (changeSpeed && e.getAction() == MotionEvent.ACTION_UP) listener.onSpeedEnd();
+        if (changeSpeed && e.getAction() == MotionEvent.ACTION_UP) onSpeedRelease();
         if (changeBright && e.getAction() == MotionEvent.ACTION_UP) listener.onBrightEnd();
         if (changeVolume && e.getAction() == MotionEvent.ACTION_UP) listener.onVolumeEnd();
         return e.getPointerCount() == 2 ? scaleDetector.onTouchEvent(e) : detector.onTouchEvent(e);
@@ -79,6 +81,51 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
 
     public void setLock(boolean lock) {
         this.lock = lock;
+    }
+
+    /** 拖动进度中，给外面判断要不要出缩略图预览用。 */
+    public boolean isSeeking() {
+        return changeTime;
+    }
+
+    /**
+     * 松手：锁定了就把倍速留着（changeSpeed 归位，别挡住后面的滑动手势），
+     * 没锁定才恢复原速。
+     */
+    private void onSpeedRelease() {
+        changeSpeed = false;
+        if (speedLock) return;
+        listener.onSpeedEnd();
+    }
+
+    /** 解除倍速锁定，单击屏幕或换集时调用。 */
+    public boolean unlockSpeed() {
+        if (!speedLock) return false;
+        speedLock = false;
+        changeSpeed = false;
+        listener.onSpeedEnd();
+        return true;
+    }
+
+    /**
+     * 长按倍速中上下滑：向下滑锁定（松手继续倍速），向上滑直接取消。
+     * 阈值取 40dp，太小会被长按时手指的自然抖动误触。
+     * <p>
+     * deltaY 是 e1.getY() - e2.getY()，向上滑为正。
+     */
+    private void checkSpeedLock(float deltaY) {
+        float threshold = ResUtil.dp2px(40);
+        if (deltaY <= -threshold) {
+            if (speedLock) return;
+            speedLock = true;
+            listener.onSpeedLock();
+        } else if (deltaY >= threshold) {
+            // 取消后这一轮手势就结束了，不能让它顺势变成拖进度或调音量
+            speedLock = false;
+            changeSpeed = false;
+            blocked = true;
+            listener.onSpeedEnd();
+        }
     }
 
     public float getScale() {
@@ -103,22 +150,28 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         changeSpeed = false;
         changeTime = false;
         changeEpisode = false;
+        blocked = false;
         touch = true;
         return true;
     }
 
     @Override
     public void onLongPress(@NonNull MotionEvent e) {
-        if (isEdge(e) || changeScale || lock || e.getPointerCount() > 1) return;
+        if (isEdge(e) || changeScale || lock || blocked || e.getPointerCount() > 1) return;
         changeSpeed = true;
         listener.onSpeedUp();
     }
 
     @Override
     public boolean onScroll(MotionEvent e1, @NonNull MotionEvent e2, float distanceX, float distanceY) {
-        if (isEdge(e1) || changeScale || lock || changeSpeed || e1.getPointerCount() > 1) return true;
+        if (isEdge(e1) || changeScale || lock || blocked || e1.getPointerCount() > 1) return true;
         float deltaX = e2.getX() - e1.getX();
         float deltaY = e1.getY() - e2.getY();
+        // 长按倍速中，上下滑只用来锁定/取消倍速，不触发其它手势
+        if (changeSpeed) {
+            checkSpeedLock(deltaY);
+            return true;
+        }
         // 用累计位移判定方向，不能用 onScroll 传进来的每帧增量：
         // 慢速滑动时增量只有零点几像素，方向判定几乎是随机的。
         if (touch) checkFunc(Math.abs(deltaX), Math.abs(deltaY), e2);
@@ -173,6 +226,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     @Override
     public boolean onSingleTapConfirmed(@NonNull MotionEvent e) {
         if (isEdge(e) || changeScale || e.getPointerCount() > 1) return true;
+        // 倍速锁定中，单击先用来解锁，不去开关控制栏
+        if (unlockSpeed()) return true;
         listener.onSingleTap();
         return true;
     }
@@ -284,6 +339,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     public interface Listener {
 
         void onSpeedUp();
+
+        void onSpeedLock();
 
         void onSpeedEnd();
 

@@ -75,6 +75,7 @@
 
     <!-- Control -->
     <string name="control_speed">倍速</string>
+    <string name="speed_lock">%sX 已鎖定 · 點擊恢復</string>
     <string name="control_scale">縮放</string>
     <string name="control_track">軌道</string>
     <string name="control_other">其它</string>

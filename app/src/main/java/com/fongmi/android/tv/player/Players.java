@@ -376,10 +376,15 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     public String getPositionTime(long time) {
+        return stringToTime(getPositionValue(time));
+    }
+
+    /** 和 getPositionTime 同一套钳制逻辑，只是返回毫秒值，给缩略图预览定位用。 */
+    public long getPositionValue(long time) {
         time = getPosition() + time;
         if (time > getDuration()) time = getDuration();
         else if (time < 0) time = 0;
-        return stringToTime(time);
+        return time;
     }
 
     public String getDurationTime() {
