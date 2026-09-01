@@ -18,6 +18,7 @@ import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.Html;
 import android.text.Layout;
@@ -89,7 +90,7 @@ import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.player.Players;
-import com.fongmi.android.tv.player.PreviewLoader;
+import com.fongmi.android.tv.player.PreviewPlayer;
 import com.fongmi.android.tv.player.exo.ExoUtil;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.service.PlaybackService;
@@ -148,7 +149,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 
-public class VideoActivity extends BaseActivity implements Clock.Callback, CustomKeyDownVod.Listener, TrackDialog.Listener, ControlDialog.Listener, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, CastManager.Listener {
+public class VideoActivity extends BaseActivity implements Clock.Callback, CustomKeyDownVod.Listener, CustomSeekView.ScrubListener, PreviewPlayer.Callback, TrackDialog.Listener, ControlDialog.Listener, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, CastManager.Listener {
+
+    /** 长按倍速那对箭头走完一个来回的毫秒数，也就是没锁定时的最快速度。 */
+    private static final int SPEED_CYCLE = 700;
 
     private ActivityVideoBinding mBinding;
     private ViewGroup.LayoutParams mFrameParams;
@@ -161,7 +165,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private QuickAdapter mQuickAdapter;
     private ParseAdapter mParseAdapter;
     private CustomKeyDownVod mKeyDown;
-    private PreviewLoader mPreview;
+    private PreviewPlayer mPreview;
+    private Runnable mSpeedTick;
+    private boolean mScrubPlaying;
+    private float mSpeedProgress;
+    private float mSpeedPhase;
+    private long mSpeedTime;
     private ExecutorService mExecutor;
     private SiteViewModel mViewModel;
     private FlagAdapter mFlagAdapter;
@@ -366,7 +375,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     protected void initView(Bundle savedInstanceState) {
         mKeyDown = CustomKeyDownVod.create(this, mBinding.exo);
-        mPreview = new PreviewLoader();
+        mPreview = new PreviewPlayer();
         mFrameParams = mBinding.video.getLayoutParams();
         mBinding.progressLayout.showProgress();
         mBinding.swipeLayout.setEnabled(false);
@@ -392,6 +401,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         showDanmaku();
         checkId();
         mHandler = new Handler(Looper.getMainLooper());
+        mSpeedTick = this::tickSpeedIcon;
         mHideGestureFeedback = () -> mBinding.widget.gestureFeedback.animate().alpha(0f).setDuration(150).withEndAction(() -> mBinding.widget.gestureFeedback.setVisibility(View.GONE)).start();
         initTimeBatteryUpdate();
     }
@@ -575,6 +585,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.action.getRoot().setOnTouchListener(this::onActionTouch);
         mBinding.swipeLayout.setOnRefreshListener(this::onSwipeRefresh);
         mBinding.control.seek.setListener(mPlayers);
+        mBinding.control.seek.setScrubListener(this);
+        mPreview.attach(mBinding.control.previewVideo, this);
+        // 倍速锁定只能点这个胶囊解除，点画面其它地方仍然是开关控制栏
+        mBinding.widget.speedLock.setOnClickListener(v -> mKeyDown.unlockSpeed());
     }
 
     private void setRecyclerView() {
@@ -1816,6 +1830,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         updateTimeBattery();
         setR1Callback();
         checkPlayImg();
+        // 控制栏一露面就把预览播放器热起来，等真按到进度条时首帧已经解好了
+        if (!isCasting()) mPreview.prepare(mPlayers.getPosition());
     }
 
     /**
@@ -1862,6 +1878,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void hideControl() {
         mBinding.control.getRoot().setVisibility(View.GONE);
+        // 控制栏收了就不会再拖进度，预览这一路的解码器该还回去了
+        mPreview.idle();
         if (!isFullscreen()) mBinding.detailBack.setBackgroundResource(R.drawable.shape_detail_back);
         App.removeCallbacks(mR1);
     }
@@ -2054,7 +2072,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 checkPlayImg();
                 mPlayers.reset();
                 // 真实播放地址此时才确定，缩略图预览按它建索引
-                if (!isCasting()) mPreview.setSource(mPlayers.getUrl(), mPlayers.getHeaders());
+                if (!isCasting()) mPreview.setSource(mPlayers.getUrl(), mPlayers.getPreviewItem());
                 break;
             case Player.STATE_ENDED:
                 checkEnded(true);
@@ -2417,26 +2435,109 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (!(isCasting() ? CastManager.get().isPlaying() : mPlayers.isPlaying())) return;
         mBinding.control.action.speed.setText(mPlayers.setSpeed(Setting.getSpeed()));
         syncCastSpeed();
-        mBinding.widget.speed.startAnimation(ResUtil.getAnim(R.anim.forward));
-        mBinding.widget.speed.setVisibility(View.VISIBLE);
+        View tip = mBinding.widget.speedLock;
+        tip.animate().cancel();
+        tip.setAlpha(1f);
+        mBinding.widget.speedLockText.setText(R.string.speed_lock);
+        // 先把文字和底色按到 0 再显示：否则第一次长按会闪一下完整的胶囊，
+        // 因为这一帧文字还没测量出宽度，onSpeedProgress 会直接 return 到下一帧才归零。
+        mBinding.widget.speedLockText.setAlpha(0f);
+        tip.getBackground().mutate().setAlpha(0);
+        tip.setVisibility(View.VISIBLE);
+        onSpeedProgress(0);
+        startSpeedIcon();
     }
 
+    /**
+     * 长按倍速 → 锁定的跟手过渡。progress 0 是一对箭头停在正中间，1 是完整的
+     * 「锁定倍速中」胶囊，中间态跟着手指连续变化，用户才看得出还差多少。
+     * <p>
+     * 做法是让文字始终占位，只改透明度和整条的位移：progress 越小就把胶囊往右推得越多，
+     * 推到 0 时箭头正好落回正中。这样箭头和文字的基线天然对齐，也不会因为宽度变化而跳。
+     */
     @Override
-    public void onSpeedLock() {
-        // 锁定后手指可以松开，顶部换成常驻提示，长按倍速的箭头动画收掉
-        mBinding.widget.speed.setVisibility(View.GONE);
-        mBinding.widget.speed.clearAnimation();
-        mBinding.widget.speedLockText.setText(getString(R.string.speed_lock, mPlayers.getSpeedText()));
-        mBinding.widget.speedLock.setVisibility(View.VISIBLE);
+    public void onSpeedProgress(float progress) {
+        mSpeedProgress = progress;
+        View tip = mBinding.widget.speedLock;
+        TextView text = mBinding.widget.speedLockText;
+        // 胶囊平时是 INVISIBLE 而不是 GONE，就是为了让它一直参与测量：
+        // 等到显示那一帧才去拿宽度的话，第一次必然拿到 0，只能 post 到下一帧再补，
+        // 表现就是胶囊连着箭头突然往右跳一下。真取不到时用 Paint 直接量文字兜底。
+        float width = text.getWidth();
+        if (width == 0) width = text.getPaint().measureText(text.getText().toString());
+        text.setAlpha(progress);
+        // 背景 drawable 是和别的胶囊共用的，不 mutate 会把它们一起改透明
+        tip.getBackground().mutate().setAlpha((int) (progress * 255));
+        tip.setTranslationX((1 - progress) * (width + ResUtil.dp2px(8)) / 2f);
     }
 
     @Override
     public void onSpeedEnd() {
         mBinding.control.action.speed.setText(mPlayers.setSpeed(mHistory.getSpeed()));
         syncCastSpeed();
-        mBinding.widget.speed.setVisibility(View.GONE);
-        mBinding.widget.speed.clearAnimation();
-        mBinding.widget.speedLock.setVisibility(View.GONE);
+        View tip = mBinding.widget.speedLock;
+        if (!isVisible(tip)) return;
+        // 没滑到位就松手：胶囊还没显形，直接收掉，不弹"已恢复原速"
+        if (mBinding.widget.speedLockText.getAlpha() < 0.9f) {
+            hideSpeedTip(0);
+            return;
+        }
+        mBinding.widget.speedLockText.setText(R.string.speed_unlock);
+        onSpeedProgress(1);
+        hideSpeedTip(600);
+    }
+
+    private void hideSpeedTip(long delay) {
+        View tip = mBinding.widget.speedLock;
+        tip.animate().cancel();
+        tip.animate().alpha(0f).setStartDelay(delay).setDuration(180).withEndAction(() -> {
+            tip.setVisibility(View.INVISIBLE);
+            tip.setAlpha(1f);
+            tip.setTranslationX(0f);
+            stopSpeedIcon();
+            mBinding.widget.speedLockText.setText(R.string.speed_lock);
+        }).start();
+    }
+
+    private void startSpeedIcon() {
+        mSpeedTime = SystemClock.uptimeMillis();
+        // 相位 0 是波形最左端，从那儿起步箭头会先瞬移到左边再往右冲；
+        // 0.25 正好是波形中点，箭头从中心平滑走起
+        mSpeedPhase = 0.25f;
+        View icon = mBinding.widget.speedIcon;
+        icon.removeCallbacks(mSpeedTick);
+        icon.postOnAnimation(mSpeedTick);
+    }
+
+    private void stopSpeedIcon() {
+        View icon = mBinding.widget.speedIcon;
+        icon.removeCallbacks(mSpeedTick);
+        icon.setTranslationX(0f);
+    }
+
+    /**
+     * 箭头的往返动画自己按帧驱动，不用 R.anim.forward——补间动画没法中途调速，
+     * 而这里要的是"越接近锁定越慢，锁定那一刻刚好停住"。
+     * <p>
+     * 调速只靠收缩幅度，相位始终恒速推进。位移 = 波形 × 幅度 ×(1-progress)，
+     * 走一个来回的距离随进度线性缩短，视觉速度也就随进度线性变化，
+     * progress=1 时幅度归零，箭头正好静止在中心。
+     * <p>
+     * 别再把 (1-progress) 也乘到相位推进上：那样两处各乘一次，实际速度成了
+     * (1-progress)²，刚脱离锁定时慢得几乎不动，接着突然窜起来，完全没有过渡感。
+     */
+    private void tickSpeedIcon() {
+        View icon = mBinding.widget.speedIcon;
+        if (!isVisible(mBinding.widget.speedLock)) return;
+        long now = SystemClock.uptimeMillis();
+        // 卡顿或熄屏回来时 dt 会很大，钳一下免得箭头瞬移
+        float delta = Math.min(64, now - mSpeedTime) / (float) SPEED_CYCLE;
+        mSpeedTime = now;
+        mSpeedPhase = (mSpeedPhase + delta) % 1f;
+        // 0→0.5 往右，0.5→1 往左，和原来 repeatMode="reverse" 的三角波一致
+        float wave = mSpeedPhase < 0.5f ? mSpeedPhase * 2 : (1 - mSpeedPhase) * 2;
+        icon.setTranslationX((wave - 0.5f) * 2 * ResUtil.dp2px(10) * (1 - mSpeedProgress));
+        icon.postOnAnimation(mSpeedTick);
     }
 
     /** 倍速改在本地播放器上，投屏时还得把同一个值推给对端。 */
@@ -2515,40 +2616,102 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.widget.action.setImageResource(time > 0 ? R.drawable.ic_widget_forward : R.drawable.ic_widget_rewind);
         mBinding.widget.time.setText(isCasting() ? castPositionTime(time) : mPlayers.getPositionTime(time));
         mBinding.widget.seek.setVisibility(View.VISIBLE);
-        checkPreview(time);
+        setSeekDuration();
+        // 胶囊在屏幕正中，播放和上下集三个按钮正好压在它上面，滑动期间先收掉
+        if (mKeyDown.isSeeking()) mBinding.control.center.setVisibility(View.GONE);
         hideProgress();
     }
 
-    /**
-     * 只有拖进度条才出缩略图；双击快进和遥控快进走的是同一个 onSeek，那些场景不该弹预览图。
-     * 投屏时本地播放器是停的，也抽不出帧。
-     */
-    private void checkPreview(long time) {
-        if (isCasting() || !mKeyDown.isSeeking()) {
-            hidePreview();
-            return;
-        }
-        long duration = mPlayers.getDuration();
-        mBinding.widget.duration.setText(duration > 0 ? " / " + mPlayers.getDurationTime() : "");
-        mBinding.widget.duration.setVisibility(duration > 0 ? View.VISIBLE : View.GONE);
-        long target = mPlayers.getPositionValue(time);
-        mPreview.load(target, bitmap -> {
-            // 回调是异步的，回来时可能已经松手了
-            if (mBinding.widget.seek.getVisibility() != View.VISIBLE || bitmap == null) return;
-            mBinding.widget.preview.setImageBitmap(bitmap);
-            mBinding.widget.preview.setVisibility(View.VISIBLE);
-        });
+    /** 只有拖动进度时才补总时长；双击快进那种一闪而过的提示不需要。 */
+    private void setSeekDuration() {
+        long duration = currentDuration();
+        boolean show = mKeyDown.isSeeking() && duration > 0;
+        mBinding.widget.duration.setText(show ? " / " + mPlayers.stringToTime(duration) : "");
+        mBinding.widget.duration.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
-    private void hidePreview() {
-        mBinding.widget.preview.setVisibility(View.GONE);
-        mBinding.widget.preview.setImageBitmap(null);
-        mBinding.widget.duration.setVisibility(View.GONE);
+    private long currentDuration() {
+        return isCasting() ? CastManager.get().getDuration() : mPlayers.getDuration();
     }
 
     private void hideSeek() {
         mBinding.widget.seek.setVisibility(View.GONE);
-        hidePreview();
+        mBinding.widget.duration.setVisibility(View.GONE);
+        // 只在控制层还开着时才把按钮放回来，否则会在已隐藏的控制层上凭空亮出三个按钮
+        if (isVisible(mBinding.control.getRoot()) && !isLock()) mBinding.control.center.setVisibility(View.VISIBLE);
+    }
+
+    // ---------- 拖动进度条的画面预览 ----------
+
+    @Override
+    public void onScrubStart(long position) {
+        // 拖动期间把主播放器停下来：源站往往限同 IP 并发，两路一起拉的话预览要等十几秒
+        // 才出得来。带宽和解码全让给预览，松手再接着放。
+        mScrubPlaying = mPlayers.isPlaying();
+        if (mScrubPlaying) mPlayers.pause();
+        mBinding.control.previewFrame.setAlpha(1f);
+        onScrubMove(position);
+    }
+
+    @Override
+    public void onScrubMove(long position) {
+        // 人正按着进度条，控制层不能按"没人操作"自动隐退——这是 beta1/beta2 那个
+        // 拖着拖着控制栏自己消失的原因：点屏幕时就已经 post 了一个定时隐藏，
+        // 拖动全程没有任何东西取消它。
+        App.removeCallbacks(mR1);
+        movePreview(position);
+        mPreview.seek(position);
+    }
+
+    @Override
+    public void onScrubStop(long position, boolean canceled) {
+        mBinding.control.previewFrame.setAlpha(0f);
+        mPreview.idle();
+        // CustomSeekView 紧接着会 seek 并自己 play()，这里只负责把暂停前的状态还原
+        if (mScrubPlaying) mPlayers.play();
+        mScrubPlaying = false;
+        // 松手了才重新开始计时隐藏
+        setR1Callback();
+    }
+
+    @Override
+    public void onPreviewRatio(float ratio) {
+        // 预览窗宽度固定，高度跟着片源比例走，不然 4:3 的片会被拉扁
+        View video = mBinding.control.previewVideo;
+        int height = (int) (video.getWidth() / Math.max(0.5f, ratio));
+        if (video.getWidth() <= 0 || height <= 0 || height == video.getLayoutParams().height) return;
+        video.getLayoutParams().height = height;
+        video.requestLayout();
+    }
+
+    @Override
+    public void onPreviewFail() {
+        // 预览这一路挂了就别占着地方，主播放器不受影响
+        mBinding.control.previewFrame.setAlpha(0f);
+    }
+
+    /**
+     * 预览小窗停在滑块正上方，贴到两边时夹住不让它出框。
+     * 横坐标要按 timeBar 自己的左边界和宽度算——进度条左右各有一个时间文本，
+     * 拿整个 CustomSeekView 或者屏幕宽度算都会偏。
+     */
+    private void movePreview(long position) {
+        long duration = currentDuration();
+        if (duration <= 0) return;
+        View box = mBinding.control.previewBox;
+        int boxWidth = box.getWidth();
+        // 第一帧还没测量出宽度，等布局完再摆一次。必须带上"还在拖"的判断，
+        // 否则松手后 previewFrame 隐藏、宽度永远是 0，这里会无限重投下去。
+        if (boxWidth == 0) {
+            if (mBinding.control.previewFrame.getAlpha() > 0) box.post(() -> movePreview(position));
+            return;
+        }
+        int[] location = new int[2];
+        mBinding.control.previewFrame.getLocationInWindow(location);
+        float ratio = Math.max(0f, Math.min(1f, position / (float) duration));
+        float thumbX = mBinding.control.seek.getTimeBarLeftInWindow() + mBinding.control.seek.getTimeBarWidth() * ratio;
+        float x = thumbX - location[0] - boxWidth / 2f;
+        box.setTranslationX(Math.max(0f, Math.min(x, mBinding.control.previewFrame.getWidth() - boxWidth)));
     }
 
     /** 投屏时进度来自对端，不能拿本地播放器算滑动后的目标时间。 */
@@ -2874,7 +3037,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         // 只摘监听不断投屏：退出播放页时电视该继续放，常驻通知里还能暂停和退出投屏
         CastManager.get().removeListener(this);
         mPlayers.release();
-        mPreview.stop();
+        mPreview.release();
         mClock.release();
         Timer.get().reset();
         RefreshEvent.history();
