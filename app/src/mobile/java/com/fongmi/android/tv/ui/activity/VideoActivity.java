@@ -89,6 +89,7 @@ import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.player.Players;
+import com.fongmi.android.tv.player.PreviewLoader;
 import com.fongmi.android.tv.player.exo.ExoUtil;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.service.PlaybackService;
@@ -160,6 +161,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private QuickAdapter mQuickAdapter;
     private ParseAdapter mParseAdapter;
     private CustomKeyDownVod mKeyDown;
+    private PreviewLoader mPreview;
     private ExecutorService mExecutor;
     private SiteViewModel mViewModel;
     private FlagAdapter mFlagAdapter;
@@ -364,6 +366,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     protected void initView(Bundle savedInstanceState) {
         mKeyDown = CustomKeyDownVod.create(this, mBinding.exo);
+        mPreview = new PreviewLoader();
         mFrameParams = mBinding.video.getLayoutParams();
         mBinding.progressLayout.showProgress();
         mBinding.swipeLayout.setEnabled(false);
@@ -2036,6 +2039,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         switch (event.getState()) {
             case PlayerEvent.PREPARE:
                 setDecode();
+                // 换片源了，上一集锁定的倍速不该带过来
+                mKeyDown.unlockSpeed();
                 // 投屏中：本地只负责把真实地址解析出来，解析完立刻推给电视并停掉本地解码
                 if (isCasting()) castCurrent();
                 else setPosition();
@@ -2048,6 +2053,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 checkControl();
                 checkPlayImg();
                 mPlayers.reset();
+                // 真实播放地址此时才确定，缩略图预览按它建索引
+                if (!isCasting()) mPreview.setSource(mPlayers.getUrl(), mPlayers.getHeaders());
                 break;
             case Player.STATE_ENDED:
                 checkEnded(true);
@@ -2415,11 +2422,21 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     @Override
+    public void onSpeedLock() {
+        // 锁定后手指可以松开，顶部换成常驻提示，长按倍速的箭头动画收掉
+        mBinding.widget.speed.setVisibility(View.GONE);
+        mBinding.widget.speed.clearAnimation();
+        mBinding.widget.speedLockText.setText(getString(R.string.speed_lock, mPlayers.getSpeedText()));
+        mBinding.widget.speedLock.setVisibility(View.VISIBLE);
+    }
+
+    @Override
     public void onSpeedEnd() {
         mBinding.control.action.speed.setText(mPlayers.setSpeed(mHistory.getSpeed()));
         syncCastSpeed();
         mBinding.widget.speed.setVisibility(View.GONE);
         mBinding.widget.speed.clearAnimation();
+        mBinding.widget.speedLock.setVisibility(View.GONE);
     }
 
     /** 倍速改在本地播放器上，投屏时还得把同一个值推给对端。 */
@@ -2498,7 +2515,40 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.widget.action.setImageResource(time > 0 ? R.drawable.ic_widget_forward : R.drawable.ic_widget_rewind);
         mBinding.widget.time.setText(isCasting() ? castPositionTime(time) : mPlayers.getPositionTime(time));
         mBinding.widget.seek.setVisibility(View.VISIBLE);
+        checkPreview(time);
         hideProgress();
+    }
+
+    /**
+     * 只有拖进度条才出缩略图；双击快进和遥控快进走的是同一个 onSeek，那些场景不该弹预览图。
+     * 投屏时本地播放器是停的，也抽不出帧。
+     */
+    private void checkPreview(long time) {
+        if (isCasting() || !mKeyDown.isSeeking()) {
+            hidePreview();
+            return;
+        }
+        long duration = mPlayers.getDuration();
+        mBinding.widget.duration.setText(duration > 0 ? " / " + mPlayers.getDurationTime() : "");
+        mBinding.widget.duration.setVisibility(duration > 0 ? View.VISIBLE : View.GONE);
+        long target = mPlayers.getPositionValue(time);
+        mPreview.load(target, bitmap -> {
+            // 回调是异步的，回来时可能已经松手了
+            if (mBinding.widget.seek.getVisibility() != View.VISIBLE || bitmap == null) return;
+            mBinding.widget.preview.setImageBitmap(bitmap);
+            mBinding.widget.preview.setVisibility(View.VISIBLE);
+        });
+    }
+
+    private void hidePreview() {
+        mBinding.widget.preview.setVisibility(View.GONE);
+        mBinding.widget.preview.setImageBitmap(null);
+        mBinding.widget.duration.setVisibility(View.GONE);
+    }
+
+    private void hideSeek() {
+        mBinding.widget.seek.setVisibility(View.GONE);
+        hidePreview();
     }
 
     /** 投屏时进度来自对端，不能拿本地播放器算滑动后的目标时间。 */
@@ -2513,7 +2563,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onSeekEnd(long time) {
         if (isCasting()) {
-            mBinding.widget.seek.setVisibility(View.GONE);
+            hideSeek();
             CastManager.get().seekTo(CastManager.get().getPosition() + time);
             return;
         }
@@ -2524,7 +2574,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void handleLandscapeSeek(long time) {
         if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
             // 横屏模式下的特殊处理
-            mBinding.widget.seek.setVisibility(View.GONE);
+            hideSeek();
             mPlayers.pause();
             mPlayers.seek(time);
             showProgress();
@@ -2538,7 +2588,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             }, 150); // 横屏模式下延迟更长，确保跳转完成
         } else {
             // 竖屏模式使用原有逻辑
-            mBinding.widget.seek.setVisibility(View.GONE);
+            hideSeek();
             mPlayers.pause();
             mPlayers.seek(time);
             showProgress();
@@ -2756,7 +2806,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                         // 显示快退提示
                         onSeek(seekTime);
                         App.post(() -> {
-                            mBinding.widget.seek.setVisibility(View.GONE);
+                            hideSeek();
                         }, 1000);
                         return true;
                     }
@@ -2771,7 +2821,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                         // 显示快进提示
                         onSeek(seekTime);
                         App.post(() -> {
-                            mBinding.widget.seek.setVisibility(View.GONE);
+                            hideSeek();
                         }, 1000);
                         return true;
                     }
@@ -2824,6 +2874,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         // 只摘监听不断投屏：退出播放页时电视该继续放，常驻通知里还能暂停和退出投屏
         CastManager.get().removeListener(this);
         mPlayers.release();
+        mPreview.stop();
         mClock.release();
         Timer.get().reset();
         RefreshEvent.history();

@@ -85,6 +85,7 @@
 
     <!-- Control -->
     <string name="control_speed">Speed</string>
+    <string name="speed_lock">%sX locked · tap to restore</string>
     <string name="control_scale">Scale</string>
     <string name="control_track">Track</string>
     <string name="control_other">Other</string>
