@@ -30,6 +30,7 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
 
     private Runnable refresh;
     private Players player;
+    private ScrubListener scrubListener;
     /** 投屏时进度来自电视而不是本地播放器，见 {@link Source}。 */
     private Source source;
 
@@ -86,6 +87,25 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
 
     public void setListener(Players player) {
         this.player = player;
+    }
+
+    /** 拖动进度条时外部要跟着出缩略图预览、并挡住控制层的自动隐藏。 */
+    public void setScrubListener(ScrubListener listener) {
+        this.scrubListener = listener;
+    }
+
+    /**
+     * 预览小窗要停在滑块正上方，所以得知道 timeBar 本身的位置——
+     * 不能拿整个 CustomSeekView 算，它左右还各有一个时间文本，宽度不固定。
+     */
+    public int getTimeBarLeftInWindow() {
+        int[] location = new int[2];
+        timeBar.getLocationInWindow(location);
+        return location[0];
+    }
+
+    public int getTimeBarWidth() {
+        return timeBar.getWidth();
     }
 
     /**
@@ -245,17 +265,20 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
     public void onScrubStart(@NonNull TimeBar timeBar, long position) {
         scrubbing = true;
         positionView.setText(player.stringToTime(position));
+        if (scrubListener != null) scrubListener.onScrubStart(position);
     }
 
     @Override
     public void onScrubMove(@NonNull TimeBar timeBar, long position) {
         positionView.setText(player.stringToTime(position));
+        if (scrubListener != null) scrubListener.onScrubMove(position);
     }
 
     @Override
     public void onScrubStop(@NonNull TimeBar timeBar, long position, boolean canceled) {
         scrubbing = false;
-        
+        if (scrubListener != null) scrubListener.onScrubStop(position, canceled);
+
         if (!canceled) {
             // 立即设置进度条位置到目标位置，避免圆球跳回原始位置
             timeBar.setPosition(position);
@@ -282,5 +305,15 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
         boolean isPlaying();
 
         void seekTo(long position);
+    }
+
+    /** 拖动进度条的三个时机，用来出/更新/收掉缩略图预览。 */
+    public interface ScrubListener {
+
+        void onScrubStart(long position);
+
+        void onScrubMove(long position);
+
+        void onScrubStop(long position, boolean canceled);
     }
 }

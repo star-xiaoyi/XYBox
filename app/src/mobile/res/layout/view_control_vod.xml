@@ -240,6 +240,40 @@
         android:layout_centerVertical="true"
         android:layout_marginEnd="8dp" />
 
+    <!--
+      拖动进度条时的画面预览，压在进度条正上方。
+      放在根布局而不是 bottom 里：一来不挤动进度条和动作条的布局流，
+      二来它必须常驻 VISIBLE（只用 alpha 控制显隐）——GONE 或 INVISIBLE 的
+      TextureView 不会创建 SurfaceTexture，ExoPlayer 拿不到输出面就不会解码，
+      预热就成了摆设，每次拖动都要重新建面、建连接、再解码。
+    -->
+    <FrameLayout
+        android:id="@+id/previewFrame"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@+id/bottom"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="4dp"
+        android:alpha="0">
+
+        <LinearLayout
+            android:id="@+id/previewBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/shape_preview"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <TextureView
+                android:id="@+id/previewVideo"
+                android:layout_width="160dp"
+                android:layout_height="90dp" />
+
+        </LinearLayout>
+
+    </FrameLayout>
+
     <LinearLayout
         android:id="@+id/bottom"
         android:layout_width="match_parent"

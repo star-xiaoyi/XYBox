@@ -387,6 +387,12 @@ public class Players implements Player.Listener, ParseCallback {
         return time;
     }
 
+    /** 给预览播放器用：同一路地址、同一套 header 和格式，但不带字幕。 */
+    public androidx.media3.common.MediaItem getPreviewItem() {
+        if (TextUtils.isEmpty(url)) return null;
+        return ExoUtil.getMediaItem(getHeaders(), UrlUtil.uri(url), format, drm, new ArrayList<>(), decode);
+    }
+
     public String getDurationTime() {
         long time = getDuration();
         if (time < 0) time = 0;
