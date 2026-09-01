@@ -1,6 +1,8 @@
 package com.fongmi.android.tv.player;
 
+import android.graphics.Bitmap;
 import android.text.TextUtils;
+import android.util.LruCache;
 import android.view.TextureView;
 
 import androidx.annotation.NonNull;
@@ -36,19 +38,41 @@ import com.fongmi.android.tv.player.exo.ExoUtil;
 public class PreviewPlayer implements Player.Listener {
 
     private static final int STEP = 5000;
+    private static final long SEEK_DEBOUNCE = 100;
+    private static final long SEEK_FORCE_DELAY = 180;
     private static final long IDLE_RELEASE = 10000;
+    private static final int FRAME_CACHE_BYTES = 8 * 1024 * 1024;
+    private static final int FRAME_CACHE_WIDTH = 320;
 
     private final Runnable idleRelease;
+    private final Runnable pendingSeek;
+    private final Runnable forcedSeek;
+    private final LruCache<Integer, Bitmap> frameCache;
     private ExoPlayer player;
     private TextureView view;
     private Callback callback;
     private MediaItem item;
     private String url;
     private int bucket;
+    private int renderedBucket;
+    private int pendingBucket;
+    private int requestedBucket;
+    private boolean forcedWhileBuffering;
 
     public PreviewPlayer() {
-        this.idleRelease = this::release;
+        this.idleRelease = this::releasePlayer;
+        this.pendingSeek = () -> dispatchPendingSeek(false);
+        this.forcedSeek = () -> dispatchPendingSeek(true);
+        this.frameCache = new LruCache<Integer, Bitmap>(FRAME_CACHE_BYTES) {
+            @Override
+            protected int sizeOf(@NonNull Integer key, @NonNull Bitmap value) {
+                return value.getByteCount();
+            }
+        };
         this.bucket = -1;
+        this.renderedBucket = -1;
+        this.pendingBucket = -1;
+        this.requestedBucket = -1;
     }
 
     public void attach(TextureView view, Callback callback) {
@@ -59,9 +83,12 @@ public class PreviewPlayer implements Player.Listener {
     /** 换片源：地址没变就什么都不做，变了就把旧的放掉，下次拖动时按新地址重建。 */
     public void setSource(String url, MediaItem item) {
         if (TextUtils.equals(url, this.url)) return;
+        releasePlayer();
+        frameCache.evictAll();
         this.url = url;
         this.item = item;
-        release();
+        this.requestedBucket = -1;
+        if (callback != null) callback.onPreviewReset();
     }
 
     /**
@@ -72,20 +99,44 @@ public class PreviewPlayer implements Player.Listener {
     public void prepare(long position) {
         App.removeCallbacks(idleRelease);
         if (player != null || item == null || view == null) return;
-        create();
-        // 顺手把首帧落在当前播放位置：用户多半就从这儿开始拖
-        seek(position);
+        // 直接从当前播放位置 prepare，避免先从 0 开始加载、随后又取消并 seek。
+        create(toBucket(position));
     }
 
-    /** 拖动中调用。首次会把预览播放器建起来，之后只在跨过 5 秒格子时才真的 seek。 */
+    /**
+     * 拖动中调用。目标位置先按 5 秒取整，再用 100ms 防抖合并触摸事件。
+     * <p>
+     * 网络帧尚未出来时只保留最后一个目标，不继续向 ExoPlayer 堆 seek。否则长视频上
+     * 每个 ACTION_MOVE 都可能跨过一个 5 秒格，HLS 分片会被每秒取消、重开几十次，
+     * 最后一帧只能等手停下来以后才真正开始加载。
+     */
     public void seek(long position) {
         App.removeCallbacks(idleRelease);
         if (item == null || view == null) return;
-        if (player == null) create();
-        int key = (int) (Math.max(0, position) / STEP);
-        if (key == bucket) return;
-        bucket = key;
-        player.seekTo(key * (long) STEP);
+        int key = toBucket(position);
+        requestedBucket = key;
+        Bitmap cached = frameCache.get(key);
+        if (cached != null) {
+            pendingBucket = -1;
+            App.removeCallbacks(pendingSeek, forcedSeek);
+            if (callback != null) callback.onPreviewFrame(cached);
+            return;
+        }
+        if (callback != null) callback.onPreviewLoading();
+        if (player == null) {
+            create(key);
+            return;
+        }
+        if (key == bucket) {
+            pendingBucket = -1;
+            App.removeCallbacks(pendingSeek, forcedSeek);
+            return;
+        }
+        pendingBucket = key;
+        App.post(pendingSeek, SEEK_DEBOUNCE);
+        // 手指在一个位置停稳后，允许打断一次仍未完成的旧请求，免得最终画面还要
+        // 排在已经过时的 HLS 分片后面。每轮缓冲最多抢占一次，不会退回连续 seek 风暴。
+        App.post(forcedSeek, SEEK_FORCE_DELAY);
     }
 
     /** 松手时调用。不立刻放掉——用户往往会连着拖好几次，留一会儿省得反复重建。 */
@@ -94,8 +145,21 @@ public class PreviewPlayer implements Player.Listener {
     }
 
     public void release() {
-        App.removeCallbacks(idleRelease);
+        releasePlayer();
+        frameCache.evictAll();
+        requestedBucket = -1;
+        item = null;
+        url = null;
+    }
+
+    /** 闲置时只释放解码器；已显示过的帧留到换片源或退出页面，回拖才能立即命中。 */
+    private void releasePlayer() {
+        App.removeCallbacks(idleRelease, pendingSeek, forcedSeek);
+        cacheCurrentFrame();
         bucket = -1;
+        renderedBucket = -1;
+        pendingBucket = -1;
+        forcedWhileBuffering = false;
         if (player == null) return;
         player.removeListener(this);
         player.clearVideoTextureView(view);
@@ -103,7 +167,27 @@ public class PreviewPlayer implements Player.Listener {
         player = null;
     }
 
-    private void create() {
+    private int toBucket(long position) {
+        return (int) (Math.max(0, position) / STEP);
+    }
+
+    private void dispatchPendingSeek(boolean force) {
+        if (player == null || pendingBucket < 0) return;
+        boolean buffering = player.getPlaybackState() == Player.STATE_BUFFERING;
+        // 普通防抖不打断网络加载；手指停稳 180ms 后可以抢占一次过时请求。
+        if (buffering && (!force || forcedWhileBuffering)) return;
+        if (buffering) forcedWhileBuffering = true;
+        int key = pendingBucket;
+        pendingBucket = -1;
+        if (key == bucket) return;
+        App.removeCallbacks(pendingSeek, forcedSeek);
+        // 当前画面已经真正显示过，跳走前存下来；之后往回拖不再访问网络。
+        cacheCurrentFrame();
+        bucket = key;
+        player.seekTo(key * (long) STEP);
+    }
+
+    private void create(int initialBucket) {
         // 预览这一路不跟随解码设置：软解在 seek 密集时更慢，统一交给系统自动选
         player = new ExoPlayer.Builder(App.get())
                 .setLoadControl(buildLoadControl())
@@ -117,7 +201,13 @@ public class PreviewPlayer implements Player.Listener {
         player.setVolume(0);
         player.addListener(this);
         player.setVideoTextureView(view);
-        player.setMediaItem(item);
+        bucket = initialBucket;
+        renderedBucket = -1;
+        requestedBucket = initialBucket;
+        pendingBucket = -1;
+        forcedWhileBuffering = false;
+        // 把目标位置作为初始播放点，prepare 只发起一次正确位置的加载。
+        player.setMediaItem(item, initialBucket * (long) STEP);
         player.prepare();
     }
 
@@ -154,6 +244,38 @@ public class PreviewPlayer implements Player.Listener {
     }
 
     @Override
+    public void onPlaybackStateChanged(int playbackState) {
+        if (playbackState != Player.STATE_READY) return;
+        forcedWhileBuffering = false;
+        if (pendingBucket < 0) return;
+        // 当前帧已完成加载，立即跳到拖动期间记录的最新位置。
+        App.removeCallbacks(pendingSeek, forcedSeek);
+        App.post(pendingSeek);
+    }
+
+    @Override
+    public void onRenderedFirstFrame() {
+        // bucket 是播放器正在请求的位置；只有收到这个回调后，它才真的出现在 TextureView 上。
+        renderedBucket = bucket;
+        cacheCurrentFrame();
+    }
+
+    /**
+     * TextureView 上已经出现的帧压到 320px 宽后放进 8MB LRU。本方法只在首帧渲染完成、
+     * seek 离开当前帧或释放解码器时调用，不跟随手指高频截图。
+     */
+    private void cacheCurrentFrame() {
+        if (view == null || !view.isAvailable() || renderedBucket < 0 || view.getWidth() <= 0 || view.getHeight() <= 0) return;
+        int width = Math.min(FRAME_CACHE_WIDTH, view.getWidth());
+        int height = Math.max(1, Math.round(width * view.getHeight() / (float) view.getWidth()));
+        Bitmap bitmap = view.getBitmap(width, height);
+        if (bitmap == null) return;
+        int key = renderedBucket;
+        frameCache.put(key, bitmap);
+        if (key == requestedBucket && callback != null) callback.onPreviewFrame(bitmap);
+    }
+
+    @Override
     public void onPlayerError(@NonNull PlaybackException error) {
         // 预览出不来就收掉，绝不能影响正在放的那一路。
         // 不能在播放器自己的回调里直接 release，抛到下一个消息再做。
@@ -165,6 +287,15 @@ public class PreviewPlayer implements Player.Listener {
 
         /** 视频宽高比，用来把预览窗调成片源的比例，否则 4:3 的片会被拉扁。 */
         void onPreviewRatio(float ratio);
+
+        /** 命中内存缓存或新帧完成渲染，直接覆盖到预览窗。 */
+        void onPreviewFrame(Bitmap bitmap);
+
+        /** 当前目标没有缓存，先露出 TextureView 的上一帧等待网络更新。 */
+        void onPreviewLoading();
+
+        /** 换片源时清掉上一集留下的占位图。 */
+        void onPreviewReset();
 
         void onPreviewFail();
     }

@@ -12,6 +12,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.BatteryManager;
@@ -2067,12 +2068,18 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 showProgress();
                 break;
             case Player.STATE_READY:
+                mPlayers.reset();
+                // 必须先把真实地址交给预览播放器，再让 showControl 触发预热。
+                // 原顺序先 prepare、后 setSource，首次 prepare 会因 item 为空直接返回。
+                if (!isCasting()) {
+                    mPreview.setSource(mPlayers.getUrl(), mPlayers.getPreviewItem());
+                    // 预热不能依赖控制栏此刻是否可见：网络较慢时主播放器 READY 前控制栏
+                    // 可能已经自动收起，checkControl 不会进 showControl，第一拖就只能现场加载。
+                    mPreview.prepare(mPlayers.getPosition());
+                }
                 hideProgress();
                 checkControl();
                 checkPlayImg();
-                mPlayers.reset();
-                // 真实播放地址此时才确定，缩略图预览按它建索引
-                if (!isCasting()) mPreview.setSource(mPlayers.getUrl(), mPlayers.getPreviewItem());
                 break;
             case Player.STATE_ENDED:
                 checkEnded(true);
@@ -2681,7 +2688,31 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         int height = (int) (video.getWidth() / Math.max(0.5f, ratio));
         if (video.getWidth() <= 0 || height <= 0 || height == video.getLayoutParams().height) return;
         video.getLayoutParams().height = height;
+        mBinding.control.previewImage.getLayoutParams().height = height;
         video.requestLayout();
+        mBinding.control.previewImage.requestLayout();
+    }
+
+    @Override
+    public void onPreviewFrame(Bitmap bitmap) {
+        mBinding.control.previewImage.setImageBitmap(bitmap);
+        mBinding.control.previewImage.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    public void onPreviewLoading() {
+        // 未命中缓存时继续盖着最后一张有效画面，等新帧真正渲染后再无缝替换。
+        // TextureView 在播放器闲置释放或首次 prepare 未完成时可能是黑的，不能主动露出来。
+        if (mBinding.control.previewImage.getDrawable() != null) {
+            mBinding.control.previewImage.setVisibility(View.VISIBLE);
+        }
+    }
+
+    @Override
+    public void onPreviewReset() {
+        // 换集必须清掉旧画面，否则新片源首帧出来前会短暂显示上一集。
+        mBinding.control.previewImage.setImageDrawable(null);
+        mBinding.control.previewImage.setVisibility(View.GONE);
     }
 
     @Override
