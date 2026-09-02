@@ -1,5 +1,11 @@
 <resources>
 
+    <color name="notify_control">#F2FFFFFF</color>
+    <color name="notify_primary">#F2FFFFFF</color>
+    <color name="notify_secondary">#B3FFFFFF</color>
+    <color name="notify_progress">#FFFFC928</color>
+    <color name="notify_progress_track">#40FFFFFF</color>
+
     <!--
       launcher_background 已统一到 values/colors.xml，深浅色同一个黑底。
       这里刻意不再覆盖：Launcher 会缓存图标，深浅两套值只会让桌面和通知栏对不上。

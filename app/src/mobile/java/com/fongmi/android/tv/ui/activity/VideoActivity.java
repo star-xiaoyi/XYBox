@@ -249,6 +249,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     public static void download(Activity activity, Download.Group group) {
         Intent intent = new Intent(activity, VideoActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         intent.putExtra("offline", true);
+        intent.putExtra("offline_group", group.getKey());
         intent.putExtra("name", group.getVodName());
         intent.putExtra("pic", group.getVodPic());
         intent.putExtra("key", group.getSiteKey());
@@ -258,6 +259,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private boolean isOffline() {
         return getIntent().getBooleanExtra("offline", false);
+    }
+
+    private String getOfflineGroup() {
+        return Objects.toString(getIntent().getStringExtra("offline_group"), Download.buildGroupKey(getName()));
     }
 
     public static void collect(Activity activity, String key, String id, String name, String pic) {
@@ -590,6 +595,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mPreview.attach(mBinding.control.previewVideo, this);
         // 倍速锁定只能点这个胶囊解除，点画面其它地方仍然是开关控制栏
         mBinding.widget.speedLock.setOnClickListener(v -> mKeyDown.unlockSpeed());
+        mBinding.widget.screenRestore.setOnClickListener(v -> mKeyDown.resetScale());
     }
 
     private void setRecyclerView() {
@@ -616,7 +622,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void setVideoView() {
         mPlayers.init(mBinding.exo);
-        PlaybackService.start(mPlayers);
         ExoUtil.setSubtitleView(mBinding.exo);
         mPlayers.setDanmakuView(mBinding.danmaku);
         mPlayers.setTag(tag = UUID.randomUUID().toString());
@@ -662,7 +667,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void getDetail() {
-        mViewModel.detailContent(getKey(), getId());
+        // 从离线缓存入口进来必须第一步就读本地数据库。原实现仍先请求原站详情，
+        // 移动数据可用但源站不通时会一直等超时，完全断网反而更快触发本地兜底。
+        // Intent 里仍保留原 key/id，观看记录继续写回原站条目。
+        if (isOffline()) mViewModel.detailContent(SiteViewModel.DOWNLOAD_KEY, getOfflineGroup());
+        else mViewModel.detailContent(getKey(), getId());
     }
 
     private void getDetail(Vod item) {
@@ -692,7 +701,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void setEmpty(boolean finish) {
-        if (isFromCollect() || finish) {
+        // 自动换源详情在代理网络下失败时不能关闭已经打开的播放页。
+        // 原来的 finish 参数直接结束 Activity，正是“缓冲一下退回首页并刷新”的一条路径。
+        if (isFromCollect()) {
             finish();
         } else if (getName().isEmpty()) {
             showEmpty();
@@ -2038,7 +2049,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         } else if (ActionEvent.PREV.equals(event.getAction())) {
             mBinding.control.prev.performClick();
         } else if (ActionEvent.STOP.equals(event.getAction())) {
-            finish();
+            // 通知没有显式停止按钮，系统媒体会话偶发 STOP 只能暂停，不能退出页面。
+            onPaused();
+        } else if (event.isUpdate()) {
+            startPlaybackNotification();
         }
     }
 
@@ -2057,6 +2071,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (!event.getTag().equals(tag)) return;
         switch (event.getState()) {
             case PlayerEvent.PREPARE:
+                // 新片源尚未准备好时不显示一个没有时长和进度的空通知。
+                PlaybackService.stop();
                 setDecode();
                 // 换片源了，上一集锁定的倍速不该带过来
                 mKeyDown.unlockSpeed();
@@ -2080,6 +2096,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 hideProgress();
                 checkControl();
                 checkPlayImg();
+                startPlaybackNotification();
                 break;
             case Player.STATE_ENDED:
                 checkEnded(true);
@@ -2088,12 +2105,20 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 setMetadata();
                 setTrackVisible();
                 mClock.setCallback(this);
+                startPlaybackNotification();
                 break;
             case PlayerEvent.SIZE:
                 checkOrientation();
                 mBinding.control.size.setText(mPlayers.getSizeText());
                 break;
         }
+    }
+
+    /** 只有真正可播放且拿到有效总时长后，才创建顶部播放通知。 */
+    private void startPlaybackNotification() {
+        // 不用 isRunning 拦截：新片源 PREPARE 时 stopService 与 READY 可能紧挨发生，
+        // 这时重新 start 才能消除服务正在退出造成的竞态。
+        if (!isCasting() && mPlayers.isReady() && mPlayers.getDuration() > 0) PlaybackService.start(mPlayers);
     }
 
     private void setPosition() {
@@ -2763,38 +2788,23 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         }
         handleLandscapeSeek(time);
     }
+
+    @Override
+    public void onSeekCancel() {
+        hideSeek();
+    }
     
-    // 添加新的方法，处理横屏模式下的特殊逻辑
     private void handleLandscapeSeek(long time) {
-        if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            // 横屏模式下的特殊处理
-            hideSeek();
-            mPlayers.pause();
-            mPlayers.seek(time);
-            showProgress();
-            App.post(() -> {
-                long actualPosition = mPlayers.getPosition();
-                if (Math.abs(actualPosition - time) > 500) {
-                    mPlayers.seek(time);
-                }
-                onPlay();
-                hideProgress();
-            }, 150); // 横屏模式下延迟更长，确保跳转完成
-        } else {
-            // 竖屏模式使用原有逻辑
-            hideSeek();
-            mPlayers.pause();
-            mPlayers.seek(time);
-            showProgress();
-            App.post(() -> {
-                long actualPosition = mPlayers.getPosition();
-                if (Math.abs(actualPosition - time) > 500) {
-                    mPlayers.seek(time);
-                }
-                onPlay();
-                hideProgress();
-            }, 100); // 竖屏模式下延迟较短
-        }
+        hideSeek();
+        // time 是相对偏移量，先换算成唯一的绝对目标位置，再只跳转一次。
+        // 原逻辑把绝对播放位置和相对偏移量比较，几乎必然误判失败并重复 seek，
+        // 同一次手势会跳两遍、缓冲两遍，网络视频因此更容易短暂黑屏。
+        mPlayers.seekTo(mPlayers.getPositionValue(time));
+    }
+
+    @Override
+    public void onScaleChanged(boolean transformed) {
+        mBinding.widget.screenRestore.setVisibility(transformed ? View.VISIBLE : View.GONE);
     }
 
     @Override
@@ -2896,10 +2906,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             hideDanmaku();
             hideSheet();
         } else {
-            // 退出画中画模式时，重置屏幕暂停标志
+            // VPN/系统浮层切换网络时可能让 Activity 短暂离开前台并触发画中画生命周期。
+            // 这里不能因为 onStop 已执行就 finish，否则会退回首页并触发整页历史刷新。
             mPausedByScreen = false;
+            setStop(false);
             showDanmaku();
-            if (isStop()) finish();
         }
     }
 

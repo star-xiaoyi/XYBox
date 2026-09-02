@@ -29,6 +29,8 @@ public class DownloadService extends Service {
     private static final int NOTIFICATION_ID = 1001;
 
     private static DownloadService instance;
+    private static volatile boolean updateBusy;
+    private static volatile int updateProgress;
     private NotificationManager manager;
 
     /** 有任务要跑时把服务拉起来。 */
@@ -47,6 +49,30 @@ public class DownloadService extends Service {
         }
     }
 
+    /** 应用更新下载共用前台保活，避免切到后台后进程被回收。 */
+    public static void beginUpdate() {
+        updateBusy = true;
+        updateProgress = 0;
+        ensure();
+    }
+
+    public static boolean isUpdateBusy() {
+        return updateBusy;
+    }
+
+    public static void updateProgress(int progress) {
+        updateProgress = Math.max(0, Math.min(progress, 100));
+        update();
+    }
+
+    public static void finishUpdate() {
+        updateBusy = false;
+        updateProgress = 0;
+        if (instance == null) return;
+        if (DownloadManager.get().isBusy()) instance.refresh();
+        else instance.stop();
+    }
+
     /** 进度变化时刷新通知内容，不重复拉服务。 */
     public static void update() {
         if (instance != null) instance.refresh();
@@ -54,7 +80,7 @@ public class DownloadService extends Service {
 
     /** 队列空了就把前台通知收掉。 */
     public static void done() {
-        if (instance != null) instance.stop();
+        if (instance != null && !updateBusy && !DownloadManager.get().isBusy()) instance.stop();
     }
 
     @Override
@@ -68,7 +94,7 @@ public class DownloadService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(NOTIFICATION_ID, build());
-        if (!DownloadManager.get().isBusy()) stop();
+        if (!updateBusy && !DownloadManager.get().isBusy()) stop();
         return START_STICKY;
     }
 
@@ -117,6 +143,12 @@ public class DownloadService extends Service {
                 .setOnlyAlertOnce(true)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW);
+        if (updateBusy) {
+            builder.setContentTitle("正在下载应用更新");
+            builder.setContentText(updateProgress > 0 ? "已下载 " + updateProgress + "%" : "正在连接下载服务器");
+            builder.setProgress(100, updateProgress, updateProgress <= 0);
+            return builder.build();
+        }
         if (item == null) {
             builder.setContentTitle(getString(R.string.download_title));
             builder.setContentText(getString(R.string.download_pending));

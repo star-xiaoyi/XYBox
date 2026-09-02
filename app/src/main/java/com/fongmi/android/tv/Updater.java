@@ -1,6 +1,7 @@
 package com.fongmi.android.tv;
 
 import android.app.Activity;
+import android.content.pm.PackageInfo;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.text.TextUtils;
@@ -11,6 +12,7 @@ import android.view.ViewGroup;
 import androidx.appcompat.app.AlertDialog;
 
 import com.fongmi.android.tv.databinding.DialogUpdateBinding;
+import com.fongmi.android.tv.service.DownloadService;
 import com.fongmi.android.tv.utils.Download;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -48,13 +50,15 @@ public class Updater implements Download.Callback {
     private boolean dev;
     private boolean silent;
     private String apkUrl;
+    private String targetVersion;
 
     public static Updater create() {
         return new Updater();
     }
 
     private File getFile() {
-        return Path.cache("XYBox-update.apk");
+        String version = TextUtils.isEmpty(targetVersion) ? "unknown" : targetVersion.replaceAll("[^0-9A-Za-z._-]", "_");
+        return Path.files("updates/XYBox-update-" + version + ".apk");
     }
 
     /** 用户主动点版本号触发：过程中的失败/无更新都要给反馈。 */
@@ -268,11 +272,13 @@ public class Updater implements Download.Callback {
      */
     private void show(Activity activity, String version, String desc) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        targetVersion = version;
         binding = DialogUpdateBinding.inflate(LayoutInflater.from(activity));
         binding.title.setText(App.get().getString(R.string.update_version, version));
         binding.desc.setText(TextUtils.isEmpty(desc) ? "有新版本可用，建议更新。" : desc.trim());
-        dialog = new AlertDialog.Builder(activity).setView(binding.getRoot()).setCancelable(true).create();
-        dialog.setOnCancelListener(d -> { if (download != null) download.cancel(); });
+        // 系统返回手势、点击弹窗外部和切换前后台都不应取消下载。
+        // 下载只能由界面上明确的“取消”按钮终止。
+        dialog = new AlertDialog.Builder(activity).setView(binding.getRoot()).setCancelable(false).create();
         if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         dialog.show();
         setDialogWidth(activity);
@@ -305,7 +311,10 @@ public class Updater implements Download.Callback {
 
     private void cancel(View view) {
         // 只是这一次不更新，不能顺手关掉整个更新功能，否则之后云端有新版也检查不出来
-        if (download != null) download.cancel();
+        if (download != null) {
+            download.cancel();
+            DownloadService.finishUpdate();
+        }
         dismiss();
     }
 
@@ -318,8 +327,33 @@ public class Updater implements Download.Callback {
         binding.progressGroup.setVisibility(View.VISIBLE);
         binding.progress.setIndeterminate(true);
         binding.progressText.setText(R.string.update_connecting);
+        File cached = getFile();
+        if (isDownloaded(cached)) {
+            binding.progress.setIndeterminate(false);
+            binding.progress.setProgressCompat(100, false);
+            binding.progressText.setText("安装包已下载，正在安装…");
+            success(cached);
+            return;
+        }
+        if (DownloadService.isUpdateBusy()) {
+            Notify.tip("更新正在后台下载，请稍后再试");
+            dismiss();
+            return;
+        }
+        DownloadService.beginUpdate();
         download = Download.create(apkUrl, getFile(), apkUrl, this);
         download.start();
+    }
+
+    /** 下载到一半的 APK 同样以 ZIP 文件头开头，必须让系统解析并核对目标版本。 */
+    private boolean isDownloaded(File file) {
+        if (file == null || !file.isFile() || file.length() == 0 || TextUtils.isEmpty(targetVersion)) return false;
+        try {
+            PackageInfo info = App.get().getPackageManager().getPackageArchiveInfo(file.getAbsolutePath(), 0);
+            return info != null && targetVersion.equals(info.versionName);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void dismiss() {
@@ -332,7 +366,9 @@ public class Updater implements Download.Callback {
     // Download 已经切回主线程了，这里不用再 post 一层
     @Override
     public void progress(int progress) {
-        if (binding == null || progress < 0) return;
+        if (progress < 0) return;
+        DownloadService.updateProgress(progress);
+        if (binding == null) return;
         binding.progress.setIndeterminate(false);
         binding.progress.setProgressCompat(progress, true);
         binding.progressText.setText(String.format(Locale.getDefault(), "正在下载 %d%%", progress));
@@ -346,6 +382,12 @@ public class Updater implements Download.Callback {
 
     @Override
     public void success(File file) {
+        if (!isDownloaded(file)) {
+            if (file != null && file.isFile()) file.delete();
+            error("安装包校验失败，请重新下载");
+            return;
+        }
+        DownloadService.finishUpdate();
         App.post(() -> {
             if (binding != null) {
                 binding.cancel.setVisibility(View.GONE);
@@ -360,6 +402,7 @@ public class Updater implements Download.Callback {
 
     @Override
     public void error(String msg) {
+        DownloadService.finishUpdate();
         App.post(() -> {
             if (binding == null) return;
             binding.progress.setIndeterminate(false);
