@@ -88,6 +88,7 @@
     <string name="speed_lock">Speed on</string>
     <string name="speed_unlock">Restored</string>
     <string name="control_scale">Scale</string>
+    <string name="screen_restore">Restore screen</string>
     <string name="control_track">Track</string>
     <string name="control_other">Other</string>
 

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.media.AudioManager;
 import android.view.GestureDetector;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
@@ -44,6 +45,8 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     private float bright;
     private float volume;
     private float scale;
+    private float scaleFocusX;
+    private float scaleFocusY;
     private long time;
 
     public static CustomKeyDownVod create(Activity activity, View videoView) {
@@ -64,6 +67,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         touchView = v;
         int action = e.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) speedDownY = e.getY();
+        if (action == MotionEvent.ACTION_POINTER_DOWN) cancelSingleGesture(e);
         // 长按倍速一旦触发，GestureDetector 就不再派发 onScroll 了
         // （它内部 ACTION_MOVE 里 if (mInLongPress) 直接 break），
         // 所以锁定/取消的上下滑只能在这里自己判。
@@ -73,15 +77,44 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         if (changeSpeed && e.getAction() == MotionEvent.ACTION_UP) onSpeedRelease();
         if (changeBright && e.getAction() == MotionEvent.ACTION_UP) listener.onBrightEnd();
         if (changeVolume && e.getAction() == MotionEvent.ACTION_UP) listener.onVolumeEnd();
-        return e.getPointerCount() == 2 ? scaleDetector.onTouchEvent(e) : detector.onTouchEvent(e);
+        // 双指手势开始后，这一整组事件都只交给缩放识别器。POINTER_UP 之后虽然只剩
+        // 一根手指，也不能再把残余事件送回单指识别器，否则会误触长按、切集或点击。
+        return changeScale || e.getPointerCount() > 1 ? scaleDetector.onTouchEvent(e) : detector.onTouchEvent(e);
+    }
+
+    private void cancelSingleGesture(MotionEvent event) {
+        MotionEvent cancel = MotionEvent.obtain(event);
+        cancel.setAction(MotionEvent.ACTION_CANCEL);
+        detector.onTouchEvent(cancel);
+        cancel.recycle();
+
+        if (changeSpeed) {
+            boolean lockedBeforeGesture = speedBase >= 1f;
+            if (lockedBeforeGesture) listener.onSpeedProgress(1f);
+            else listener.onSpeedEnd();
+            speedLock = lockedBeforeGesture;
+        }
+        if (changeBright) listener.onBrightEnd();
+        if (changeVolume) listener.onVolumeEnd();
+        if (changeTime) listener.onSeekCancel();
+        if (changeEpisode) videoView.setTranslationY(0f);
+        changeBright = false;
+        changeVolume = false;
+        changeSpeed = false;
+        changeTime = false;
+        changeEpisode = false;
+        touch = false;
+        time = 0;
     }
 
     public void resetScale() {
-        if (scale == 1.0f) return;
+        if (scale == 1.0f && videoView.getTranslationX() == 0f && videoView.getTranslationY() == 0f) return;
+        videoView.animate().cancel();
+        scale = 1.0f;
+        listener.onScaleChanged(false);
         videoView.animate().scaleX(1.0f).scaleY(1.0f).translationX(0f).translationY(0f).setDuration(250).withEndAction(() -> {
             videoView.setPivotY(videoView.getHeight() / 2f);
             videoView.setPivotX(videoView.getWidth() / 2f);
-            scale = 1.0f;
         }).start();
     }
 
@@ -103,7 +136,12 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
      */
     private void onSpeedRelease() {
         changeSpeed = false;
-        if (speedLock) return;
+        // 已锁定但上滑距离不足时，松手要把被拖淡的胶囊弹回完整锁定态。
+        // 只有回拉到 50%、speedLock 真正变为 false 才执行取消。
+        if (speedLock) {
+            listener.onSpeedProgress(1f);
+            return;
+        }
         listener.onSpeedEnd();
     }
 
@@ -128,10 +166,20 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
      * deltaY 是按下点减当前点，向下滑为负，所以取反。
      */
     private void checkSpeedLock(float deltaY) {
+        boolean wasLocked = speedLock;
         float progress = speedBase + -deltaY / ResUtil.dp2px(72);
         progress = Math.max(0f, Math.min(1f, progress));
-        speedLock = progress >= 1f;
+        // 使用带回差的两个阈值：到 100% 才锁定，回拉到 50% 才取消。
+        // 这样同一次长按里下滑锁定后稍微回拉不会立刻取消；已经锁定后重新长按
+        // 上滑也只需要走一半距离，不必把整个胶囊拖到 0。
+        if (!speedLock && progress >= 1f) speedLock = true;
+        else if (speedLock && progress <= 0.5f) speedLock = false;
+        if (speedLock != wasLocked) hapticTick();
         listener.onSpeedProgress(progress);
+    }
+
+    private void hapticTick() {
+        videoView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
     }
 
     public float getScale() {
@@ -165,6 +213,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         if (isEdge(e) || changeScale || lock || e.getPointerCount() > 1) return;
         changeSpeed = true;
         speedBase = speedLock ? 1f : 0f;
+        hapticTick();
         // 已经锁着了就别再走一遍"开始倍速"：速度早就是倍速的，箭头不该重新蹦出来
         if (speedLock) return;
         listener.onSpeedUp();
@@ -318,6 +367,11 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     @Override
     public boolean onScaleBegin(@NonNull ScaleGestureDetector detector) {
         if (changeBright || changeVolume || changeSpeed || changeTime || lock) return changeScale = false;
+        videoView.animate().cancel();
+        videoView.setPivotX(videoView.getWidth() / 2f);
+        videoView.setPivotY(videoView.getHeight() / 2f);
+        scaleFocusX = detector.getFocusX();
+        scaleFocusY = detector.getFocusY();
         return changeScale = true;
     }
 
@@ -328,12 +382,27 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
 
     @Override
     public boolean onScale(@NonNull ScaleGestureDetector detector) {
-        scale *= detector.getScaleFactor();
-        scale = Math.max(1.0f, Math.min(scale, 5.0f));
-        videoView.setPivotX(detector.getFocusX());
-        videoView.setPivotY(detector.getFocusY());
+        float oldScale = scale;
+        scale = Math.max(1.0f, Math.min(oldScale * detector.getScaleFactor(), 5.0f));
+        float ratio = scale / oldScale;
+        float centerX = videoView.getWidth() / 2f;
+        float centerY = videoView.getHeight() / 2f;
+        float focusX = detector.getFocusX();
+        float focusY = detector.getFocusY();
+
+        // 固定画面中心作为缩放支点，再把双指中心的移动量折算成平移。
+        // 如果逐帧修改 pivot，双指往左移动时坐标系会反向补偿，画面看起来反而往右跑。
+        float translationX = ratio * videoView.getTranslationX() + focusX - centerX - ratio * (scaleFocusX - centerX);
+        float translationY = ratio * videoView.getTranslationY() + focusY - centerY - ratio * (scaleFocusY - centerY);
+        float limitX = (scale - 1.0f) * videoView.getWidth() / 2f;
+        float limitY = (scale - 1.0f) * videoView.getHeight() / 2f;
+        videoView.setTranslationX(Math.max(-limitX, Math.min(limitX, translationX)));
+        videoView.setTranslationY(Math.max(-limitY, Math.min(limitY, translationY)));
         videoView.setScaleX(scale);
         videoView.setScaleY(scale);
+        scaleFocusX = focusX;
+        scaleFocusY = focusY;
+        listener.onScaleChanged(scale > 1.001f || Math.abs(videoView.getTranslationX()) > 1f || Math.abs(videoView.getTranslationY()) > 1f);
         return true;
     }
 
@@ -360,6 +429,10 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         void onSeek(long time);
 
         void onSeekEnd(long time);
+
+        void onSeekCancel();
+
+        void onScaleChanged(boolean transformed);
 
         void onSingleTap();
 

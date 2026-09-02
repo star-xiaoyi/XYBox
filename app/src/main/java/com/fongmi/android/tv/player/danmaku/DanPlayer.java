@@ -98,7 +98,24 @@ public class DanPlayer implements DrawHandler.Callback {
 
     public void check(int state) {
         if (state == Player.STATE_BUFFERING) pause();
-        else if (state == Player.STATE_READY) prepared();
+        else if (state == Player.STATE_READY) ready();
+    }
+
+    /**
+     * 主播放器 seek 后也会重新进入 READY，但弹幕本身并没有重新 prepare。
+     * 这里只恢复已经定位好的弹幕，不能再走 prepared()/start(position)，否则会把源里的
+     * “弹幕加载成功”等开场提示当成新一轮弹幕再次播放。
+     */
+    private void ready() {
+        App.post(() -> {
+            boolean playing = player.isPlaying();
+            executor.execute(() -> {
+                if (!isDanmakuPrepared()) return;
+                if (playing) view.resume();
+                else view.pause();
+                view.show();
+            });
+        });
     }
 
     @Override

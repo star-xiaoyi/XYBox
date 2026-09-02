@@ -11,6 +11,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 
+import okhttp3.Request;
 import okhttp3.Response;
 
 public class Download {
@@ -19,6 +20,7 @@ public class Download {
     private final String url;
     private final String fallbackUrl;
     private Callback callback;
+    private volatile boolean canceled;
     private static final int MAX_RETRY_COUNT = 3; // 最大重试次数
 
     public static Download create(String url, File file) {
@@ -46,16 +48,14 @@ public class Download {
 
     public void start() {
         if (url == null || url.isEmpty()) {
-            if (callback != null) {
-                App.post(() -> callback.error("下载URL为空"));
-            }
+            Callback listener = callback;
+            if (listener != null) App.post(() -> { if (!canceled) listener.error("下载URL为空"); });
             return;
         }
         if (url.startsWith("file")) return;
         if (file == null) {
-            if (callback != null) {
-                App.post(() -> callback.error("保存文件路径为空"));
-            }
+            Callback listener = callback;
+            if (listener != null) App.post(() -> { if (!canceled) listener.error("保存文件路径为空"); });
             return;
         }
         if (callback == null) {
@@ -94,9 +94,10 @@ public class Download {
         for (int attempt = 1; attempt <= MAX_RETRY_COUNT; attempt++) {
             try {
                 // 这里原本会把进度打回 0：重试一次进度条就退回原点，看着就是"下到 1% 又归零"
-                if (callback != null && attempt > 1 && lastException != null) {
+                Callback listener = callback;
+                if (!canceled && listener != null && attempt > 1 && lastException != null) {
                     String reason = lastException.getMessage();
-                    App.post(() -> callback.retry(reason));
+                    App.post(() -> { if (!canceled) listener.retry(reason); });
                 }
 
                 boolean success = downloadWithUrl(downloadUrl, source, attempt);
@@ -104,6 +105,7 @@ public class Download {
                     return true;
                 }
             } catch (Exception e) {
+                if (canceled) return false;
                 lastException = e;
                 Logger.w("Download: 下载失败 (来源: " + source + ", 尝试 " + attempt + "/" + MAX_RETRY_COUNT + "): " + e.getMessage());
 
@@ -122,9 +124,10 @@ public class Download {
         }
 
         // 所有尝试都失败
-        if (callback != null && lastException != null) {
+        Callback listener = callback;
+        if (!canceled && listener != null && lastException != null) {
             String errorMsg = lastException.getMessage();
-            App.post(() -> callback.error(errorMsg != null ? errorMsg : "下载失败"));
+            App.post(() -> { if (!canceled) listener.error(errorMsg != null ? errorMsg : "下载失败"); });
         }
         return false;
     }
@@ -143,7 +146,20 @@ public class Download {
         Response res = null;
         InputStream inputStream = null;
         try {
-            res = OkHttp.newCall(downloadUrl, downloadUrl).execute();
+            long existingLength = file.exists() ? file.length() : 0;
+            Request.Builder request = new Request.Builder().url(downloadUrl).tag(downloadUrl);
+            if (existingLength > 0) request.header("Range", "bytes=" + existingLength + "-");
+            res = OkHttp.client().newCall(request.build()).execute();
+
+            // 文件可能已收完整，只是在完成回调前中断；服务器此时会返回 416。
+            if (res.code() == 416 && existingLength > 0) {
+                long total = contentRangeTotal(res.header("Content-Range"));
+                if (total == existingLength && verifyDownloadedFile(file, total)) {
+                    Callback listener = callback;
+                    if (!canceled && listener != null) App.post(() -> { if (!canceled) listener.success(file); });
+                    return true;
+                }
+            }
 
             // 检查HTTP响应状态码
             if (!res.isSuccessful()) {
@@ -165,29 +181,24 @@ public class Download {
 
             // 用 body 的长度而不是原始 Content-Length 头：响应被 gzip 压缩时头里是压缩后的字节数，
             // 拿它去校验解压后的文件必然对不上，会误判成"文件损坏"并一直重试。
-            long expectedLength = res.body().contentLength();
-            if (expectedLength <= 0) expectedLength = -1;
+            boolean append = existingLength > 0 && res.code() == 206;
+            long responseLength = res.body().contentLength();
+            long expectedLength = append ? contentRangeTotal(res.header("Content-Range")) : responseLength;
+            if (expectedLength <= 0 && responseLength > 0) expectedLength = (append ? existingLength : 0) + responseLength;
 
             // 下载文件
-            download(inputStream, expectedLength);
+            download(inputStream, expectedLength, append ? existingLength : 0, append);
 
             if (!verifyDownloadedFile(file, expectedLength)) {
                 throw new Exception("下载的文件不是有效的安装包");
             }
 
             Logger.d("Download: 下载成功 (来源: " + source + ", 尝试 " + attempt + "/" + MAX_RETRY_COUNT + ")");
-            if (callback != null) {
-                App.post(() -> callback.success(file));
-            }
+            Callback listener = callback;
+            if (!canceled && listener != null) App.post(() -> { if (!canceled) listener.success(file); });
             return true;
         } catch (Exception e) {
-            // 如果下载失败，删除可能不完整的文件
-            if (file != null && file.exists()) {
-                try {
-                    file.delete();
-                } catch (Exception ignored) {
-                }
-            }
+            // 网络失败保留半包，下一次请求通过 Range 从已有字节继续。
             throw e;
         } finally {
             // 关闭输入流
@@ -208,6 +219,7 @@ public class Download {
     }
 
     public void cancel() {
+        canceled = true;
         OkHttp.cancel(url);
         if (fallbackUrl != null) {
             OkHttp.cancel(fallbackUrl);
@@ -216,32 +228,46 @@ public class Download {
         callback = null;
     }
 
-    private void download(InputStream is, long length) throws Exception {
+    private void download(InputStream is, long length, long downloadedBytes, boolean append) throws Exception {
         if (is == null) {
             throw new Exception("输入流为空，无法下载");
         }
 
-        try (BufferedInputStream input = new BufferedInputStream(is); FileOutputStream os = new FileOutputStream(file)) {
+        try (BufferedInputStream input = new BufferedInputStream(is); FileOutputStream os = new FileOutputStream(file, append)) {
             byte[] buffer = new byte[8192];
             int readBytes;
-            long totalBytes = 0;
+            long totalBytes = downloadedBytes;
             int lastPercent = -1;
             while ((readBytes = input.read(buffer)) != -1) {
                 totalBytes += readBytes;
                 os.write(buffer, 0, readBytes);
-                if (length <= 0 || callback == null) continue;
+                if (canceled) throw new InterruptedException("下载已取消");
+                Callback listener = callback;
+                if (length <= 0 || listener == null) continue;
                 // 按整数百分比节流：37MB 的包按 8KB 回调会往主线程丢四千多条消息，
                 // 进度条光排队就跟不上，看着像卡住甚至往回跳。
                 int percent = Math.min((int) (totalBytes * 100 / length), 100);
                 if (percent == lastPercent) continue;
                 lastPercent = percent;
-                App.post(() -> callback.progress(percent));
+                App.post(() -> { if (!canceled) listener.progress(percent); });
             }
 
             // 不知道文件大小时全程走不确定态，结束补一个 100
-            if (length <= 0 && callback != null) {
-                App.post(() -> callback.progress(100));
+            Callback listener = callback;
+            if (length <= 0 && !canceled && listener != null) {
+                App.post(() -> { if (!canceled) listener.progress(100); });
             }
+        }
+    }
+
+    private long contentRangeTotal(String contentRange) {
+        if (contentRange == null) return -1;
+        int slash = contentRange.lastIndexOf('/');
+        if (slash < 0 || slash == contentRange.length() - 1) return -1;
+        try {
+            return Long.parseLong(contentRange.substring(slash + 1));
+        } catch (Exception e) {
+            return -1;
         }
     }
 
@@ -253,11 +279,11 @@ public class Download {
                 return false;
             }
 
-            // 长度对不上只记一笔，不据此判失败：流已经读到 EOF，真被截断 OkHttp 自己会抛，
-            // 而中间任何一层（代理、网络拦截器）改写了 Content-Length 都会让这个等式不成立，
-            // 之前就是卡在这里下到 100% 又从头重来。
+            // contentLength 有值时必须完整接收；透明 gzip 时 OkHttp 会返回 -1，不会进入这里。
+            // 否则半包也有合法 ZIP 头，会被误当成完整 APK。
             if (expectedLength > 0 && file.length() != expectedLength) {
                 Logger.w("Download: 长度与响应头不一致 expected=" + expectedLength + " actual=" + file.length());
+                return false;
             }
 
             // 检查APK文件头 (ZIP文件头)

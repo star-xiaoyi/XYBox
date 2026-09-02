@@ -49,7 +49,6 @@ import com.fongmi.android.tv.player.danmaku.DanPlayer;
 import com.fongmi.android.tv.player.exo.ExoUtil;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.utils.FileUtil;
-import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.utils.Util;
@@ -99,6 +98,7 @@ public class Players implements Player.Listener, ParseCallback {
 
     private int decode;
     private int retry;
+    private int networkRetry;
 
     public static Players create(Activity activity) {
         Players player = new Players(activity);
@@ -221,6 +221,7 @@ public class Players implements Player.Listener, ParseCallback {
     public void reset() {
         removeTimeoutCheck();
         retry = 0;
+        networkRetry = 0;
     }
 
     public void clearMediaItems() {
@@ -279,6 +280,10 @@ public class Players implements Player.Listener, ParseCallback {
 
     public boolean isPlaying() {
         return exoPlayer != null && exoPlayer.isPlaying();
+    }
+
+    public boolean isReady() {
+        return exoPlayer != null && exoPlayer.getPlaybackState() == Player.STATE_READY;
     }
 
     public boolean isEnded() {
@@ -573,7 +578,22 @@ public class Players implements Player.Listener, ParseCallback {
 
     private void setPlaybackState(int state) {
         long actions = PlaybackStateCompat.ACTION_SEEK_TO | PlaybackStateCompat.ACTION_PLAY_PAUSE | PlaybackStateCompat.ACTION_SKIP_TO_NEXT | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
-        session.setPlaybackState(new PlaybackStateCompat.Builder().setActions(actions).setState(state, getPosition(), getSpeed()).build());
+        long position = Math.max(getPosition(), 0);
+        float speed = state == PlaybackStateCompat.STATE_PLAYING ? getSpeed() : 0f;
+        session.setPlaybackState(new PlaybackStateCompat.Builder().setActions(actions).setState(state, position, speed).build());
+    }
+
+    /**
+     * setMetadata 通常发生在媒体尚未 READY 时，当时 duration 是 TIME_UNSET。
+     * 准备完成后补写真实时长，系统媒体通知才能展示并驱动可拖动进度条。
+     */
+    private void updateMetadataDuration() {
+        if (session == null) return;
+        long duration = getDuration();
+        MediaMetadataCompat metadata = session.getController().getMetadata();
+        if (duration <= 0 || metadata == null || metadata.getLong(MediaMetadataCompat.METADATA_KEY_DURATION) == duration) return;
+        session.setMetadata(new MediaMetadataCompat.Builder(metadata).putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration).build());
+        ActionEvent.update();
     }
 
     private boolean isIllegal(String url) {
@@ -656,7 +676,8 @@ public class Players implements Player.Listener, ParseCallback {
 
     @Override
     public void onParseSuccess(Map<String, String> headers, String url, String from) {
-        if (!TextUtils.isEmpty(from)) Notify.show(ResUtil.getString(R.string.parse_from, from));
+        // 解析线路、跳过广告等属于源内部状态。后台回来或重连时可能反复解析，
+        // 这些成功信息不再用底部 Toast 打扰用户；真正的解析失败仍走 ErrorEvent。
         if (headers != null) headers.remove(HttpHeaders.RANGE);
         setMediaItem(headers, url);
     }
@@ -669,11 +690,13 @@ public class Players implements Player.Listener, ParseCallback {
     @Override
     public void onEvents(@NonNull Player player, @NonNull Player.Events events) {
         if (!events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_POSITION_DISCONTINUITY, Player.EVENT_MEDIA_METADATA_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED, Player.EVENT_PLAYER_ERROR)) return;
+        updateMetadataDuration();
         switch (player.getPlaybackState()) {
             case Player.STATE_IDLE:
                 setPlaybackState(events.contains(Player.EVENT_PLAYER_ERROR) ? PlaybackStateCompat.STATE_ERROR : PlaybackStateCompat.STATE_NONE);
                 break;
             case Player.STATE_READY:
+                networkRetry = 0;
                 setPlaybackState(player.isPlaying() ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED);
                 break;
             case Player.STATE_BUFFERING:
@@ -711,6 +734,17 @@ public class Players implements Player.Listener, ParseCallback {
         String friendlyMsg = new com.fongmi.android.tv.player.exo.ErrorMsgProvider().get(error);
         Logger.e("Error: " + friendlyMsg);
         
+        if (isNetworkError(error.errorCode)) {
+            // VPN 路由切换时连接可能连续失败几次。先保留当前 MediaItem 和播放位置原地重连，
+            // 不要一两次缓冲失败就重新解析、换源甚至重建详情页。
+            if (++networkRetry <= 5) App.post(this::prepare, Math.min(networkRetry * 700L, 2800L));
+            else {
+                networkRetry = 0;
+                ErrorEvent.extract(tag, friendlyMsg);
+            }
+            return;
+        }
+
         if (retried()) ErrorEvent.extract(tag, friendlyMsg);
         else switch (error.errorCode) {
             case PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW:
@@ -732,5 +766,11 @@ public class Players implements Player.Listener, ParseCallback {
                 ErrorEvent.extract(tag, friendlyMsg);
                 break;
         }
+    }
+
+    private boolean isNetworkError(int errorCode) {
+        return errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+                || errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                || errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS;
     }
 }

@@ -78,6 +78,7 @@
     <string name="speed_lock">倍速中</string>
     <string name="speed_unlock">已恢復</string>
     <string name="control_scale">縮放</string>
+    <string name="screen_restore">還原畫面</string>
     <string name="control_track">軌道</string>
     <string name="control_other">其它</string>
 
