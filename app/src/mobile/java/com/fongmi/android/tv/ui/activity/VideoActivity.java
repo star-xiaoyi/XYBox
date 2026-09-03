@@ -1346,7 +1346,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             CastManager.get().toggle();
             return;
         }
-        if (mPlayers.isPlaying()) onPaused();
+        if (mPlayers.isPlayRequested()) onPaused();
         else if (mPlayers.isEmpty()) onRefresh();
         else onPlay();
     }
@@ -1984,9 +1984,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void checkPlayImg() {
-        boolean playing = isCasting() ? CastManager.get().isPlaying() : mPlayers.isPlaying();
-        mBinding.control.play.setImageResource(playing ? androidx.media3.ui.R.drawable.exo_icon_pause : androidx.media3.ui.R.drawable.exo_icon_play);
-        mPiP.update(this, mPlayers.isPlaying());
+        // isPlaying() 在缓冲期间会变成 false，但此时用户并没有暂停。按钮表示点击后
+        // 将执行的动作，所以只要播放器仍准备继续播放，就始终显示双竖线。
+        boolean playRequested = isCasting() ? CastManager.get().isPlaying() : mPlayers.isPlayRequested();
+        mBinding.control.play.setImageResource(playRequested ? androidx.media3.ui.R.drawable.exo_icon_pause : androidx.media3.ui.R.drawable.exo_icon_play);
+        mPiP.update(this, mPlayers.isPlayRequested());
         ActionEvent.update();
     }
 
@@ -2832,7 +2834,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             checkPlay();
             return;
         }
-        boolean wasPlaying = mPlayers.isPlaying();
+        boolean wasPlaying = mPlayers.isPlayRequested();
         checkPlay();
         showGestureFeedback(wasPlaying ? R.drawable.exo_icon_play : R.drawable.exo_icon_pause);
     }

@@ -282,6 +282,14 @@ public class Players implements Player.Listener, ParseCallback {
         return exoPlayer != null && exoPlayer.isPlaying();
     }
 
+    /**
+     * 用户是否要求播放器继续播放。isPlaying() 在 BUFFERING 时必定为 false，
+     * 不能用来判断播放/暂停按钮，否则网络卡顿会被界面误显示成用户已经暂停。
+     */
+    public boolean isPlayRequested() {
+        return exoPlayer != null && exoPlayer.getPlayWhenReady();
+    }
+
     public boolean isReady() {
         return exoPlayer != null && exoPlayer.getPlaybackState() == Player.STATE_READY;
     }
