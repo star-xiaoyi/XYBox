@@ -109,15 +109,25 @@ public class Flag implements Parcelable {
     }
 
     public Episode find(String remarks, boolean strict) {
-        int number = Util.getDigit(remarks);
         if (getEpisodes().size() == 0) return null;
         if (getEpisodes().size() == 1) return getEpisodes().get(0);
+        Episode episode = findByRemarks(remarks);
+        if (episode != null) return episode;
+        if (getPosition() != -1) return getEpisodes().get(getPosition());
+        return strict ? null : getEpisodes().get(0);
+    }
+
+    /**
+     * 只按集名或集号匹配，不使用这条线路上一次选中的位置，也不默认返回第一集。
+     * 自动换线路时需要先知道是否真的匹配成功，再决定能否安全地按原序号兜底。
+     */
+    public Episode findByRemarks(String remarks) {
+        int number = Util.getDigit(remarks);
         for (Episode item : getEpisodes()) if (item.rule1(remarks)) return item;
         for (Episode item : getEpisodes()) if (item.rule2(number)) return item;
         if (number == -1) for (Episode item : getEpisodes()) if (item.rule3(remarks)) return item;
         if (number == -1) for (Episode item : getEpisodes()) if (item.rule4(remarks)) return item;
-        if (getPosition() != -1) return getEpisodes().get(getPosition());
-        return strict ? null : getEpisodes().get(0);
+        return null;
     }
 
     public static List<Flag> create(String flag, String url) {

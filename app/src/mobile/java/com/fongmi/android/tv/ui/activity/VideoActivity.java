@@ -154,6 +154,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 长按倍速那对箭头走完一个来回的毫秒数，也就是没锁定时的最快速度。 */
     private static final int SPEED_CYCLE = 700;
+    private static final long MIN_AUTO_SWITCH_TIMEOUT = TimeUnit.SECONDS.toMillis(8);
 
     private ActivityVideoBinding mBinding;
     private ViewGroup.LayoutParams mFrameParams;
@@ -920,7 +921,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         setUseParse(VodConfig.hasParse() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags().contains(result.getFlag())) || result.getJx() == 1));
         if (mControlDialog != null && mControlDialog.isVisible()) mControlDialog.setParseVisible(isUseParse());
         mBinding.control.parse.setVisibility(isFullscreen() && isUseParse() ? View.VISIBLE : View.GONE);
-        mPlayers.start(result, isUseParse(), getSite().isChangeable() ? getSite().getTimeout() : -1);
+        mPlayers.start(result, isUseParse(), getPlayerTimeout());
         setQualityVisible(result.getUrl().isMulti());
         mBinding.swipeLayout.setRefreshing(false);
         mPlayers.setKey(getHistoryKey());
@@ -929,12 +930,17 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onItemClick(Flag item) {
-        if (item.isActivated()) return;
+        selectFlag(item, false);
+    }
+
+    private boolean selectFlag(Flag item, boolean autoSwitch) {
+        if (item.isActivated()) return false;
+        int previousPosition = mEpisodeAdapter.isEmpty() ? -1 : mEpisodeAdapter.getPosition();
         mFlagAdapter.setActivated(item);
         mBinding.flag.scrollToPosition(mFlagAdapter.getPosition());
         setEpisodeAdapter(item.getEpisodes());
         setQualityVisible(false);
-        seamless(item);
+        return seamless(item, autoSwitch, previousPosition);
     }
 
     @Override
@@ -950,7 +956,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onItemClick(Result result) {
         try {
-            mPlayers.start(result, isUseParse(), getSite().isChangeable() ? getSite().getTimeout() : -1);
+            mPlayers.start(result, isUseParse(), getPlayerTimeout());
         } catch (Exception e) {
             ErrorEvent.extract(tag, e.getMessage());
             Logger.e("Error", e);
@@ -1107,12 +1113,25 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         setDownloadText();
     }
 
-    private void seamless(Flag flag) {
-        Episode episode = flag.find(mHistory.getVodRemarks(), getMark().isEmpty());
+    private boolean seamless(Flag flag, boolean autoSwitch, int previousPosition) {
+        Episode episode = autoSwitch ? flag.findByRemarks(mHistory.getVodRemarks()) : flag.find(mHistory.getVodRemarks(), getMark().isEmpty());
+        // 国语/粤语等电影线路常用不同集名，无法靠文字匹配；自动换线时按原线路
+        // 的同一序号承接。序号超出目标线路范围则不乱播，由换源流程继续找下一条。
+        if (episode == null && autoSwitch && previousPosition >= 0 && previousPosition < flag.getEpisodes().size()) episode = flag.getEpisodes().get(previousPosition);
         setQualityVisible(episode != null && episode.isActivated() && mQualityAdapter.getItemCount() > 1);
-        if (episode == null || episode.isActivated()) return;
+        if (episode == null) return false;
+        if (episode.isActivated()) {
+            if (autoSwitch) onRefresh();
+            return true;
+        }
         mHistory.setVodRemarks(episode.getName());
         onItemClick(episode);
+        return true;
+    }
+
+    /** 自动换源不能被站点配置压缩到 1 秒；正常进入 READY 后 Players 会立即取消计时。 */
+    private long getPlayerTimeout() {
+        return getSite().isChangeable() ? Math.max(getSite().getTimeout(), MIN_AUTO_SWITCH_TIMEOUT) : -1;
     }
 
     private void setQualityVisible(boolean visible) {
@@ -2073,8 +2092,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (!event.getTag().equals(tag)) return;
         switch (event.getState()) {
             case PlayerEvent.PREPARE:
-                // 新片源尚未准备好时不显示一个没有时长和进度的空通知。
-                PlaybackService.stop();
+                // 第一次播放时服务尚未创建，不会提前出现空通知；切集或换源时则保留现有通知，
+                // 避免 PREPARE 到 READY 之间通知被撤掉又重新出现。转为投屏后本地通知才需要停止。
+                if (isCasting()) PlaybackService.stop();
                 setDecode();
                 // 换片源了，上一集锁定的倍速不该带过来
                 mKeyDown.unlockSpeed();
@@ -2289,7 +2309,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void nextFlag(int position) {
         Flag flag = mFlagAdapter.get(position + 1);
         Notify.show(getString(R.string.play_switch_flag, flag.getFlag()));
-        onItemClick(flag);
+        if (!selectFlag(flag, true)) checkFlag();
     }
 
     private void nextSite() {
