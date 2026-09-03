@@ -44,6 +44,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
     private boolean lock;
     private float bright;
     private float volume;
+    private float sideStartY;
     private float scale;
     private float scaleFocusX;
     private float scaleFocusY;
@@ -228,8 +229,10 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         // 慢速滑动时增量只有零点几像素，方向判定几乎是随机的。
         if (touch) checkFunc(Math.abs(deltaX), Math.abs(deltaY), e2);
         if (changeTime) listener.onSeek(time = (long) (deltaX * 50));
-        if (changeBright) setBright(deltaY);
-        if (changeVolume) setVolume(deltaY);
+        // 亮度/音量要从确认手势类型的那一刻开始计算。方向识别前的 20dp 只用于
+        // 防误触，不能算进实际调节量，否则胶囊首次出现时会直接跳一截。
+        if (changeBright) setBright(sideStartY - e2.getY());
+        if (changeVolume) setVolume(sideStartY - e2.getY());
         if (changeEpisode) dragEpisode(deltaY);
         return true;
     }
@@ -329,6 +332,7 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
 
     private void checkSide(MotionEvent e2) {
         int half = videoWidth() / 2;
+        sideStartY = e2.getY();
         if (e2.getX() > half) changeVolume = Setting.isGestureVolume();
         else changeBright = Setting.isGestureBrightness();
     }
