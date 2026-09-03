@@ -2612,6 +2612,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (progress < 35) mBinding.widget.brightIcon.setImageResource(R.drawable.ic_widget_bright_low);
         else if (progress < 70) mBinding.widget.brightIcon.setImageResource(R.drawable.ic_widget_bright_medium);
         else mBinding.widget.brightIcon.setImageResource(R.drawable.ic_widget_bright_high);
+        // 图标位于胶囊底部：亮色进度填到图标区域时用深色，否则保持白色。
+        mBinding.widget.brightIcon.setColorFilter(ResUtil.getColor(progress >= 20 ? R.color.black_60 : R.color.white));
     }
 
     @Override
@@ -2626,6 +2628,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (progress < 35) mBinding.widget.volumeIcon.setImageResource(R.drawable.ic_widget_volume_low);
         else if (progress < 70) mBinding.widget.volumeIcon.setImageResource(R.drawable.ic_widget_volume_medium);
         else mBinding.widget.volumeIcon.setImageResource(R.drawable.ic_widget_volume_high);
+        mBinding.widget.volumeIcon.setColorFilter(ResUtil.getColor(progress >= 20 ? R.color.black_60 : R.color.white));
     }
 
     @Override
