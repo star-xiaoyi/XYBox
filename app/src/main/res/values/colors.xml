@@ -32,7 +32,7 @@
     <color name="notify_control">#CC202124</color>
     <color name="notify_primary">#E6202124</color>
     <color name="notify_secondary">#99202124</color>
-    <color name="notify_progress">#FFCA9F00</color>
+    <color name="notify_progress">#CC202124</color>
     <color name="notify_progress_track">#33202124</color>
     
     <!-- Launcher icon background (Light mode) -->

@@ -12,21 +12,21 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.support.v4.media.MediaMetadataCompat;
 import android.text.TextUtils;
+import android.widget.RemoteViews;
 
 import androidx.annotation.DrawableRes;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 import androidx.core.app.NotificationCompat;
+import androidx.media.app.NotificationCompat.DecoratedMediaCustomViewStyle;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.ServiceCompat;
 import androidx.core.content.ContextCompat;
-import androidx.media.app.NotificationCompat.MediaStyle;
 import androidx.media.session.MediaButtonReceiver;
 
 import com.bumptech.glide.Glide;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.event.ActionEvent;
 import com.fongmi.android.tv.player.Players;
 import com.fongmi.android.tv.receiver.ActionReceiver;
@@ -54,7 +54,7 @@ public class PlaybackService extends Service {
         @Override
         public void run() {
             if (!nonNull()) return;
-            showNotification();
+            updateNotification();
             handler.postDelayed(this, 1000);
         }
     };
@@ -118,30 +118,51 @@ public class PlaybackService extends Service {
         builder.setColorized(false);
         builder.setOnlyAlertOnce(true);
         builder.setShowWhen(false);
-        builder.setContentText(getArtist());
         builder.setContentTitle(getTitle());
+        builder.setContentText(getArtist());
         builder.setSmallIcon(R.drawable.ic_logo);
         builder.setCategory(NotificationCompat.CATEGORY_TRANSPORT);
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         if (nonNull()) builder.setContentIntent(player.getSession().getController().getSessionActivity());
         if (nonNull()) {
-            builder.setStyle(new MediaStyle()
+            builder.setStyle(new DecoratedMediaCustomViewStyle()
                     .setMediaSession(player.getSession().getSessionToken())
                     .setShowActionsInCompactView(0, 1, 2));
             builder.addAction(buildNotificationAction(R.drawable.ic_notify_prev, androidx.media3.ui.R.string.exo_controls_previous_description, ActionEvent.PREV));
             builder.addAction(getPlayPauseAction());
             builder.addAction(buildNotificationAction(R.drawable.ic_notify_next, androidx.media3.ui.R.string.exo_controls_next_description, ActionEvent.NEXT));
-            long duration = Math.max(player.getDuration(), 0);
-            long position = Math.max(player.getPosition(), 0);
-            int max = (int) Math.min(duration, Integer.MAX_VALUE);
-            int progress = (int) Math.min(position, max);
-            builder.setProgress(Math.max(max, 1), progress, duration <= 0);
+            builder.setCustomContentView(createRemoteViews(R.layout.notification_playback_compact, false));
+            builder.setCustomBigContentView(createRemoteViews(R.layout.notification_playback_expanded, true));
         }
-        builder.setColor(ContextCompat.getColor(this, getAccentColor()));
         Bitmap artwork = getArtwork();
         if (artwork != null && !artwork.isRecycled()) builder.setLargeIcon(artwork);
         loadArtwork();
         return builder.build();
+    }
+
+    private RemoteViews createRemoteViews(int layout, boolean expanded) {
+        RemoteViews views = new RemoteViews(getPackageName(), layout);
+        long duration = Math.max(player.getDuration(), 0);
+        long position = Math.max(player.getPosition(), 0);
+        boolean hasProgress = duration > 0;
+        views.setViewVisibility(R.id.progress_group, hasProgress ? android.view.View.VISIBLE : android.view.View.GONE);
+        if (expanded) {
+            String artist = getArtist();
+            views.setViewVisibility(R.id.artist, TextUtils.isEmpty(artist) ? android.view.View.GONE : android.view.View.VISIBLE);
+            views.setTextViewText(R.id.artist, artist);
+        } else {
+            boolean playRequested = player.isPlayRequested();
+            views.setImageViewResource(R.id.play, playRequested ? R.drawable.ic_notify_pause : R.drawable.ic_notify_play);
+            views.setOnClickPendingIntent(R.id.play, ActionReceiver.getPendingIntent(this, playRequested ? ActionEvent.PAUSE : ActionEvent.PLAY));
+        }
+        if (hasProgress) {
+            int max = (int) Math.min(duration, Integer.MAX_VALUE);
+            int progress = (int) Math.min(position, max);
+            views.setProgressBar(R.id.progress, Math.max(max, 1), progress, false);
+            views.setTextViewText(R.id.position, player.stringToTime(position));
+            views.setTextViewText(R.id.duration, player.stringToTime(duration));
+        }
+        return views;
     }
 
     private void showNotification() {
@@ -149,11 +170,8 @@ public class PlaybackService extends Service {
         ServiceCompat.startForeground(this, Notify.ID, buildNotification(), type);
     }
 
-    private int getAccentColor() {
-        if (Setting.getAccentColor() == Setting.ACCENT_BLUE) return R.color.accent_blue;
-        if (Setting.getAccentColor() == Setting.ACCENT_GREEN) return R.color.accent_green;
-        if (Setting.getAccentColor() == Setting.ACCENT_PURPLE) return R.color.accent_purple;
-        return R.color.accent_yellow;
+    private void updateNotification() {
+        getManager().notify(Notify.ID, buildNotification());
     }
 
     private Bitmap getArtwork() {
@@ -174,7 +192,7 @@ public class PlaybackService extends Service {
             int size = Math.round(96 * getResources().getDisplayMetrics().density);
             cache.put(artUri, Glide.with(this).asBitmap().load(ImgUtil.getUrl(artUri)).override(size, size).skipMemoryCache(false).dontAnimate().signature(ImgUtil.getSignature(artUri)).submit().get());
             // ExoPlayer 只能在创建它的主线程读取状态，通知也统一回主线程重建。
-            App.post(this::showNotification);
+            App.post(this::updateNotification);
         } catch (Exception e) {
             Logger.e("Error", e);
         } finally {
@@ -184,7 +202,7 @@ public class PlaybackService extends Service {
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onActionEvent(ActionEvent event) {
-        if (event.isUpdate()) showNotification();
+        if (event.isUpdate()) updateNotification();
     }
 
     @Override

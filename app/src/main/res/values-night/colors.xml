@@ -3,7 +3,7 @@
     <color name="notify_control">#F2FFFFFF</color>
     <color name="notify_primary">#F2FFFFFF</color>
     <color name="notify_secondary">#B3FFFFFF</color>
-    <color name="notify_progress">#FFFFC928</color>
+    <color name="notify_progress">#F2FFFFFF</color>
     <color name="notify_progress_track">#40FFFFFF</color>
 
     <!--
