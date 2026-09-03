@@ -168,59 +168,88 @@
         android:visibility="gone"
         tools:visibility="visible" />
 
+    <!-- 三个等宽容器让亮度/音量胶囊的中心稳定落在屏幕 1/6 和 5/6 处。
+         不使用固定横向 dp，手机、平板和分屏下都能保持相同比例。 -->
     <LinearLayout
-        android:id="@+id/bright"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|center"
-        android:layout_marginTop="24dp"
-        android:background="@drawable/shape_widget"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:visibility="gone"
-        tools:visibility="visible">
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
 
-        <ImageView
-            android:id="@+id/brightIcon"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="12dp"
-            tools:src="@drawable/ic_widget_bright_high" />
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
 
-        <com.google.android.material.progressindicator.LinearProgressIndicator
-            android:id="@+id/brightProgress"
-            android:layout_width="120dp"
-            android:layout_height="wrap_content"
-            app:indicatorColor="@color/white"
-            app:trackColor="@color/white_30" />
+            <FrameLayout
+                android:id="@+id/bright"
+                android:layout_width="44dp"
+                android:layout_height="140dp"
+                android:layout_gravity="center"
+                android:layout_marginTop="28dp"
+                android:layout_marginBottom="28dp"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:visibility="gone"
+                tools:visibility="visible">
 
-    </LinearLayout>
+                <com.fongmi.android.tv.ui.custom.VerticalLevelIndicator
+                    android:id="@+id/brightProgress"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
 
-    <LinearLayout
-        android:id="@+id/volume"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|center"
-        android:layout_marginTop="24dp"
-        android:background="@drawable/shape_widget"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:visibility="gone"
-        tools:visibility="visible">
+                <ImageView
+                    android:id="@+id/brightIcon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:layout_marginBottom="12dp"
+                    android:importantForAccessibility="no"
+                    tools:src="@drawable/ic_widget_bright_high" />
 
-        <ImageView
-            android:id="@+id/volumeIcon"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="12dp"
-            tools:src="@drawable/ic_widget_volume_high" />
+            </FrameLayout>
 
-        <com.google.android.material.progressindicator.LinearProgressIndicator
-            android:id="@+id/volumeProgress"
-            android:layout_width="120dp"
-            android:layout_height="wrap_content"
-            app:indicatorColor="@color/white"
-            app:trackColor="@color/white_30" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <FrameLayout
+                android:id="@+id/volume"
+                android:layout_width="44dp"
+                android:layout_height="140dp"
+                android:layout_gravity="center"
+                android:layout_marginTop="28dp"
+                android:layout_marginBottom="28dp"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <com.fongmi.android.tv.ui.custom.VerticalLevelIndicator
+                    android:id="@+id/volumeProgress"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <ImageView
+                    android:id="@+id/volumeIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:layout_marginBottom="12dp"
+                    android:importantForAccessibility="no"
+                    tools:src="@drawable/ic_widget_volume_high" />
+
+            </FrameLayout>
+
+        </FrameLayout>
 
     </LinearLayout>
 </FrameLayout>
