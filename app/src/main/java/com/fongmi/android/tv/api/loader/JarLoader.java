@@ -152,6 +152,11 @@ public class JarLoader {
     }
 
     public Object[] proxyInvoke(Map<String, String> params) {
+        // 本地代理请求可能发生在 playerContent 返回数秒之后。期间播放页的跨站搜索
+        // 会不断修改 recent，不能再靠这个全局游标决定由哪个 JAR 处理 m3u8。
+        // 新生成的代理地址会携带固定 jarKey；旧地址仍兼容 recent + fallback。
+        String jarKey = params.get("jarKey");
+        if (jarKey != null && methods.containsKey(jarKey)) return proxyInvoke(methods.get(jarKey), params);
         Object[] result = proxyInvoke(methods.get(recent), params);
         return result != null ? result : tryOthers(params);
     }

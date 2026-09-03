@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.model;
 import com.github.catvod.utils.Logger;
 
+import android.net.Uri;
 import android.text.TextUtils;
 
 import androidx.collection.ArrayMap;
@@ -17,6 +18,7 @@ import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Url;
+import com.fongmi.android.tv.bean.Value;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.exception.ExtractException;
@@ -183,7 +185,7 @@ public class SiteViewModel extends ViewModel {
             result.setUrl(Source.get().fetch(result));
             result.setHeader(site.getHeader());
             result.setKey(key);
-            return result;
+            return bindProxyJar(result, site);
         } else if (site.getType() == 4) {
             ArrayMap<String, String> params = new ArrayMap<>();
             params.put("play", id);
@@ -195,7 +197,7 @@ public class SiteViewModel extends ViewModel {
             result.setUrl(Source.get().fetch(result));
             result.setHeader(site.getHeader());
             result.setKey(key);
-            return result;
+            return bindProxyJar(result, site);
         } else if (site.isEmpty() && "push_agent".equals(key)) {
             Result result = new Result();
             result.setParse(0);
@@ -214,8 +216,29 @@ public class SiteViewModel extends ViewModel {
             result.setUrl(Source.get().fetch(result));
             result.setKey(key);
             SpiderDebug.log(result.toString());
-            return result;
+            return bindProxyJar(result, site);
         }
+    }
+
+    /**
+     * 把站源生成的本地代理地址绑定到它自己的 JAR。
+     * 否则并行搜索其它站点会改写 JarLoader.recent，真正请求 m3u8 时可能误用另一个
+     * JAR 的 Proxy，返回错误页面并被播放器判断为“不支持的视频容器”。
+     */
+    private static Result bindProxyJar(Result result, Site site) {
+        if (site == null || TextUtils.isEmpty(site.getJar())) return result;
+        String jarKey = Util.md5(site.getJar());
+        for (Value value : result.getUrl().getValues()) {
+            try {
+                Uri uri = Uri.parse(value.getV());
+                if (!("127.0.0.1".equals(uri.getHost()) || "localhost".equalsIgnoreCase(uri.getHost()))) continue;
+                if (!"/proxy".equals(uri.getPath()) || uri.getQueryParameter("jarKey") != null) continue;
+                value.setV(uri.buildUpon().appendQueryParameter("jarKey", jarKey).build().toString());
+            } catch (Exception e) {
+                Logger.e("Error", e);
+            }
+        }
+        return result;
     }
 
     private static Result offlineDetail(String groupKey) {

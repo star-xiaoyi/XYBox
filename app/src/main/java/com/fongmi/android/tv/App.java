@@ -23,6 +23,7 @@ import com.fongmi.android.tv.utils.UpdateInstaller;
 import com.fongmi.android.tv.utils.AutoSyncManager;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ThemeUtil;
+import com.fongmi.android.tv.utils.ToastFilter;
 import com.fongmi.android.tv.utils.WebDAVSyncManager;
 import com.fongmi.hook.Hook;
 import com.github.catvod.Init;
@@ -144,6 +145,8 @@ public class App extends Application {
         super.onCreate();
         // 必须在任何 Activity 创建之前应用日夜模式，否则冷启动时系统栏/导航栏颜色与内容区不一致
         ThemeUtil.applyNightMode();
+        // 动态源可能绕过 Notify 直接调用 Toast；先安装进程内过滤器，再初始化其它组件。
+        ToastFilter.install();
         OkHttp.get().setProxy(Setting.getProxy());
         OkHttp.get().setDoh(Doh.objectFrom(Setting.getDoh()));
         // EventBus.builder().addIndex(new EventIndex()).installDefaultEventBus(); // 暂时注释，如果EventIndex不存在则删除

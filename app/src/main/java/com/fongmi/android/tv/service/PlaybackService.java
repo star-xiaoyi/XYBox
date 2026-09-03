@@ -12,19 +12,21 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.support.v4.media.MediaMetadataCompat;
 import android.text.TextUtils;
-import android.widget.RemoteViews;
 
+import androidx.annotation.DrawableRes;
 import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.ServiceCompat;
 import androidx.core.content.ContextCompat;
-import androidx.media.app.NotificationCompat.DecoratedMediaCustomViewStyle;
+import androidx.media.app.NotificationCompat.MediaStyle;
 import androidx.media.session.MediaButtonReceiver;
 
 import com.bumptech.glide.Glide;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.event.ActionEvent;
 import com.fongmi.android.tv.player.Players;
 import com.fongmi.android.tv.receiver.ActionReceiver;
@@ -52,7 +54,7 @@ public class PlaybackService extends Service {
         @Override
         public void run() {
             if (!nonNull()) return;
-            Notify.show(buildNotification());
+            showNotification();
             handler.postDelayed(this, 1000);
         }
     };
@@ -82,6 +84,15 @@ public class PlaybackService extends Service {
         return NotificationManagerCompat.from(this);
     }
 
+    private NotificationCompat.Action buildNotificationAction(@DrawableRes int icon, @StringRes int title, String action) {
+        return new NotificationCompat.Action(icon, getString(title), ActionReceiver.getPendingIntent(this, action));
+    }
+
+    private NotificationCompat.Action getPlayPauseAction() {
+        if (nonNull() && player.isPlayRequested()) return buildNotificationAction(R.drawable.ic_notify_pause, androidx.media3.ui.R.string.exo_controls_pause_description, ActionEvent.PAUSE);
+        return buildNotificationAction(R.drawable.ic_notify_play, androidx.media3.ui.R.string.exo_controls_play_description, ActionEvent.PLAY);
+    }
+
     private MediaMetadataCompat getMetadata() {
         return isNull() ? null : player.getSession().getController().getMetadata();
     }
@@ -103,45 +114,46 @@ public class PlaybackService extends Service {
 
     private Notification buildNotification() {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, Notify.DEFAULT);
-        // 划掉播放通知不等于明确停止播放，避免误发 STOP 导致视频页退出。
         builder.setOngoing(true);
-        // 背景与按钮颜色交给 SystemUI 按深浅主题处理，避免浅色通知上出现白色低对比按钮。
         builder.setColorized(false);
         builder.setOnlyAlertOnce(true);
         builder.setShowWhen(false);
-        // 系统媒体标题保留一份即可；副标题、进度和按钮全部由紧凑布局负责。
+        builder.setContentText(getArtist());
         builder.setContentTitle(getTitle());
         builder.setSmallIcon(R.drawable.ic_logo);
         builder.setCategory(NotificationCompat.CATEGORY_TRANSPORT);
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         if (nonNull()) builder.setContentIntent(player.getSession().getController().getSessionActivity());
-        // 不设置 LargeIcon：部分厂商会在 LargeIcon 右上角强制叠加应用圆形角标。
-        // 海报改为 RemoteViews 内的普通图片，就不会出现那个小圆图标。
-        if (nonNull()) builder.setStyle(new DecoratedMediaCustomViewStyle().setMediaSession(player.getSession().getSessionToken()));
-        RemoteViews views = createRemoteViews();
-        builder.setCustomContentView(views);
-        // 展开态也复用同一份紧凑布局，避免系统记住“展开”状态后留下大片空白。
-        builder.setCustomBigContentView(views);
+        if (nonNull()) {
+            builder.setStyle(new MediaStyle()
+                    .setMediaSession(player.getSession().getSessionToken())
+                    .setShowActionsInCompactView(0, 1, 2));
+            builder.addAction(buildNotificationAction(R.drawable.ic_notify_prev, androidx.media3.ui.R.string.exo_controls_previous_description, ActionEvent.PREV));
+            builder.addAction(getPlayPauseAction());
+            builder.addAction(buildNotificationAction(R.drawable.ic_notify_next, androidx.media3.ui.R.string.exo_controls_next_description, ActionEvent.NEXT));
+            long duration = Math.max(player.getDuration(), 0);
+            long position = Math.max(player.getPosition(), 0);
+            int max = (int) Math.min(duration, Integer.MAX_VALUE);
+            int progress = (int) Math.min(position, max);
+            builder.setProgress(Math.max(max, 1), progress, duration <= 0);
+        }
+        builder.setColor(ContextCompat.getColor(this, getAccentColor()));
+        Bitmap artwork = getArtwork();
+        if (artwork != null && !artwork.isRecycled()) builder.setLargeIcon(artwork);
         loadArtwork();
         return builder.build();
     }
 
-    private RemoteViews createRemoteViews() {
-        RemoteViews views = new RemoteViews(getPackageName(), R.layout.notification_playback_compact);
-        views.setTextViewText(R.id.artist, getArtist());
-        Bitmap art = getArtwork();
-        if (art == null || art.isRecycled()) views.setImageViewResource(R.id.art, R.drawable.ic_notify_art);
-        else views.setImageViewBitmap(R.id.art, art);
-        views.setImageViewResource(R.id.play, nonNull() && player.isPlaying() ? R.drawable.ic_notify_pause : R.drawable.ic_notify_play);
-        views.setOnClickPendingIntent(R.id.play, ActionReceiver.getPendingIntent(this, nonNull() && player.isPlaying() ? ActionEvent.PAUSE : ActionEvent.PLAY));
-        views.setOnClickPendingIntent(R.id.prev, ActionReceiver.getPendingIntent(this, ActionEvent.PREV));
-        views.setOnClickPendingIntent(R.id.next, ActionReceiver.getPendingIntent(this, ActionEvent.NEXT));
-        long duration = Math.max(player.getDuration(), 0);
-        long position = Math.max(player.getPosition(), 0);
-        int max = (int) Math.min(duration, Integer.MAX_VALUE);
-        int progress = (int) Math.min(position, max);
-        views.setProgressBar(R.id.progress, Math.max(max, 1), progress, duration <= 0);
-        return views;
+    private void showNotification() {
+        int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK : 0;
+        ServiceCompat.startForeground(this, Notify.ID, buildNotification(), type);
+    }
+
+    private int getAccentColor() {
+        if (Setting.getAccentColor() == Setting.ACCENT_BLUE) return R.color.accent_blue;
+        if (Setting.getAccentColor() == Setting.ACCENT_GREEN) return R.color.accent_green;
+        if (Setting.getAccentColor() == Setting.ACCENT_PURPLE) return R.color.accent_purple;
+        return R.color.accent_yellow;
     }
 
     private Bitmap getArtwork() {
@@ -161,7 +173,8 @@ public class PlaybackService extends Service {
         try {
             int size = Math.round(96 * getResources().getDisplayMetrics().density);
             cache.put(artUri, Glide.with(this).asBitmap().load(ImgUtil.getUrl(artUri)).override(size, size).skipMemoryCache(false).dontAnimate().signature(ImgUtil.getSignature(artUri)).submit().get());
-            Notify.show(buildNotification());
+            // ExoPlayer 只能在创建它的主线程读取状态，通知也统一回主线程重建。
+            App.post(this::showNotification);
         } catch (Exception e) {
             Logger.e("Error", e);
         } finally {
@@ -171,7 +184,7 @@ public class PlaybackService extends Service {
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onActionEvent(ActionEvent event) {
-        if (event.isUpdate()) Notify.show(buildNotification());
+        if (event.isUpdate()) showNotification();
     }
 
     @Override
@@ -187,8 +200,7 @@ public class PlaybackService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (nonNull()) MediaButtonReceiver.handleIntent(player.getSession(), intent);
-        int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK : 0;
-        ServiceCompat.startForeground(this, Notify.ID, buildNotification(), type);
+        showNotification();
         handler.removeCallbacks(progressTask);
         handler.postDelayed(progressTask, 1000);
         return START_NOT_STICKY;

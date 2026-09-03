@@ -585,7 +585,7 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     private void setPlaybackState(int state) {
-        long actions = PlaybackStateCompat.ACTION_SEEK_TO | PlaybackStateCompat.ACTION_PLAY_PAUSE | PlaybackStateCompat.ACTION_SKIP_TO_NEXT | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
+        long actions = PlaybackStateCompat.ACTION_SEEK_TO | PlaybackStateCompat.ACTION_PLAY | PlaybackStateCompat.ACTION_PAUSE | PlaybackStateCompat.ACTION_PLAY_PAUSE | PlaybackStateCompat.ACTION_SKIP_TO_NEXT | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
         long position = Math.max(getPosition(), 0);
         float speed = state == PlaybackStateCompat.STATE_PLAYING ? getSpeed() : 0f;
         session.setPlaybackState(new PlaybackStateCompat.Builder().setActions(actions).setState(state, position, speed).build());
