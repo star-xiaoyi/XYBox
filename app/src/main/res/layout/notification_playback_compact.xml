@@ -1,107 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="64dp"
+    android:layout_height="36dp"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="6dp"
-    android:paddingEnd="6dp">
+    android:paddingStart="8dp"
+    android:paddingEnd="4dp">
 
     <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="1"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
         android:gravity="center_vertical"
-        android:orientation="vertical">
+        android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/notify_primary"
-            android:textSize="15sp"
-            android:textStyle="bold" />
+        <LinearLayout
+            android:id="@+id/progress_group"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/artist"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/notify_secondary"
-            android:textSize="12sp" />
-
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="3dp"
-            android:layout_marginTop="4dp">
+            <TextView
+                android:id="@+id/position"
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:textColor="@color/notify_secondary"
+                android:textSize="11sp" />
 
             <ProgressBar
-                android:id="@+id/progress_yellow"
+                android:id="@+id/progress"
                 style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_width="0dp"
+                android:layout_height="3dp"
+                android:layout_weight="1"
                 android:progressBackgroundTint="@color/notify_progress_track"
-                android:progressTint="@color/accent_yellow" />
+                android:progressTint="@color/notify_progress" />
 
-            <ProgressBar
-                android:id="@+id/progress_blue"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:progressBackgroundTint="@color/notify_progress_track"
-                android:progressTint="@color/accent_blue"
-                android:visibility="gone" />
+            <TextView
+                android:id="@+id/duration"
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:gravity="end|center_vertical"
+                android:textColor="@color/notify_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
 
-            <ProgressBar
-                android:id="@+id/progress_green"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:progressBackgroundTint="@color/notify_progress_track"
-                android:progressTint="@color/accent_green"
-                android:visibility="gone" />
-
-            <ProgressBar
-                android:id="@+id/progress_purple"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:progressBackgroundTint="@color/notify_progress_track"
-                android:progressTint="@color/accent_purple"
-                android:visibility="gone" />
-        </FrameLayout>
+        <ImageButton
+            android:id="@+id/play"
+            android:layout_width="40dp"
+            android:layout_height="36dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="播放或暂停"
+            android:padding="8dp"
+            android:scaleType="fitCenter" />
     </LinearLayout>
 
-    <ImageButton
-        android:id="@+id/prev"
-        android:layout_width="38dp"
-        android:layout_height="match_parent"
-        android:background="@android:color/transparent"
-        android:contentDescription="上一集"
-        android:padding="10dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_notify_prev" />
-
-    <ImageButton
-        android:id="@+id/play"
-        android:layout_width="40dp"
-        android:layout_height="match_parent"
-        android:background="@android:color/transparent"
-        android:contentDescription="播放或暂停"
-        android:padding="10dp"
-        android:scaleType="fitCenter" />
-
-    <ImageButton
-        android:id="@+id/next"
-        android:layout_width="38dp"
-        android:layout_height="match_parent"
-        android:background="@android:color/transparent"
-        android:contentDescription="下一集"
-        android:padding="10dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_notify_next" />
 </LinearLayout>
