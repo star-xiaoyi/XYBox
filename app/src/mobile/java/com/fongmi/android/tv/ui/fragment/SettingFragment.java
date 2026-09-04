@@ -3,16 +3,20 @@ import com.github.catvod.utils.Logger;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.Intent;
+import android.text.Editable;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -41,6 +45,7 @@ import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.ui.activity.ScanActivity;
 import com.fongmi.android.tv.ui.activity.SettingPlayerActivity;
 import com.fongmi.android.tv.ui.base.BaseFragment;
+import com.fongmi.android.tv.ui.custom.LiquidGlassNavigationView;
 import com.fongmi.android.tv.ui.dialog.AboutDialog;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
@@ -68,12 +73,14 @@ import org.greenrobot.eventbus.ThreadMode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class SettingFragment extends BaseFragment implements ConfigCallback, SiteCallback, LiveCallback, ProxyCallback {
 
     private FragmentSettingBinding mBinding;
     private String[] size;
     private int type;
+    private boolean searchActive;
 
     public static SettingFragment newInstance() {
         return new SettingFragment();
@@ -141,6 +148,10 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     }
 
     private void setLiveSettingsVisibility() {
+        if (searchActive) {
+            filterSettings(mBinding.searchInput.getText().toString());
+            return;
+        }
         boolean isLiveTabVisible = !Setting.isLiveTabVisible(); // 注意：这里取反，因为开关是"隐藏直播"
         mBinding.liveContainer.setVisibility(isLiveTabVisible ? View.VISIBLE : View.GONE);
     }
@@ -182,6 +193,118 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.theme.setOnClickListener(this::setTheme);
         mBinding.accent.setOnClickListener(this::setAccent);
         mBinding.operation.setOnClickListener(this::onOperation);
+        mBinding.laboratory.setOnClickListener(view -> com.fongmi.android.tv.ui.activity.SettingLaboratoryActivity.start(requireActivity()));
+        mBinding.searchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence text, int start, int before, int count) {
+                filterSettings(text == null ? "" : text.toString());
+            }
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+            }
+        });
+    }
+
+    public void toggleSearch() {
+        if (mBinding == null) return;
+        if (searchActive) closeSearch();
+        else openSearch();
+    }
+
+    public boolean closeSearchIfActive() {
+        if (!searchActive) return false;
+        closeSearch();
+        return true;
+    }
+
+    public boolean isSearchActive() {
+        return searchActive;
+    }
+
+    private void openSearch() {
+        searchActive = true;
+        mBinding.normalHeader.setVisibility(View.GONE);
+        mBinding.searchHeader.setVisibility(View.VISIBLE);
+        mBinding.searchInput.requestFocus();
+        getRoot().setGlassAction(LiquidGlassNavigationView.ACTION_CLOSE, true);
+        InputMethodManager manager = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (manager != null) mBinding.searchInput.post(() -> manager.showSoftInput(mBinding.searchInput, InputMethodManager.SHOW_IMPLICIT));
+    }
+
+    private void closeSearch() {
+        searchActive = false;
+        mBinding.searchInput.setText("");
+        mBinding.searchInput.clearFocus();
+        mBinding.searchHeader.setVisibility(View.GONE);
+        mBinding.normalHeader.setVisibility(View.VISIBLE);
+        getRoot().setGlassAction(LiquidGlassNavigationView.ACTION_SEARCH, true);
+        InputMethodManager manager = (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (manager != null) manager.hideSoftInputFromWindow(mBinding.searchInput.getWindowToken(), 0);
+    }
+
+    private void filterSettings(String rawQuery) {
+        String query = rawQuery.trim().toLowerCase(Locale.ROOT);
+        boolean filtering = !query.isEmpty();
+        View[][] groups = getSearchGroups();
+        ViewGroup[] cards = {mBinding.sourceCard, mBinding.appearanceCard, mBinding.playbackCard, mBinding.networkCard, mBinding.storageCard};
+        boolean anyMatch = false;
+
+        for (int groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+            boolean groupMatch = false;
+            for (View row : groups[groupIndex]) {
+                boolean visible = !filtering || matches(row, query);
+                if (row == mBinding.live) visible &= !Setting.isLiveTabVisible();
+                if (row == mBinding.live) mBinding.liveContainer.setVisibility(visible ? View.VISIBLE : View.GONE);
+                else row.setVisibility(visible ? View.VISIBLE : View.GONE);
+                groupMatch |= visible;
+            }
+            cards[groupIndex].setVisibility(groupMatch ? View.VISIBLE : View.GONE);
+            setDividersVisible(cards[groupIndex], !filtering);
+            anyMatch |= groupMatch;
+        }
+
+        mBinding.sourceTip.setVisibility(filtering ? View.GONE : View.VISIBLE);
+        mBinding.searchEmpty.setVisibility(filtering && !anyMatch ? View.VISIBLE : View.GONE);
+    }
+
+    private View[][] getSearchGroups() {
+        return new View[][]{
+                {mBinding.vod, mBinding.live},
+                {mBinding.theme, mBinding.accent, mBinding.size, mBinding.historyVisible, mBinding.liveTabVisible, mBinding.laboratory},
+                {mBinding.player, mBinding.operation, mBinding.incognito},
+                {mBinding.webdav, mBinding.syncSettings, mBinding.doh, mBinding.proxy},
+                {mBinding.cache, mBinding.backup, mBinding.restore, mBinding.version, mBinding.about}
+        };
+    }
+
+    private boolean matches(View view, String query) {
+        if (view instanceof TextView) {
+            CharSequence text = ((TextView) view).getText();
+            if (text != null && text.toString().toLowerCase(Locale.ROOT).contains(query)) return true;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (matches(group.getChildAt(i), query)) return true;
+            }
+        }
+        return false;
+    }
+
+    private void setDividersVisible(ViewGroup group, boolean visible) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child.getClass() == View.class && child.getId() == View.NO_ID) {
+                child.setVisibility(visible ? View.VISIBLE : View.GONE);
+            } else if (child instanceof ViewGroup && child != mBinding.live) {
+                setDividersVisible((ViewGroup) child, visible);
+            }
+        }
     }
 
     @Override

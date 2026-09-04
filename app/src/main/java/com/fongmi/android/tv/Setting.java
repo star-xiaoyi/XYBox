@@ -456,6 +456,14 @@ public class Setting {
         Prefers.put("live_tab_visible", visible);
     }
 
+    public static boolean isLiquidGlassNavigation() {
+        return Prefers.getBoolean("liquid_glass_navigation", false);
+    }
+
+    public static void putLiquidGlassNavigation(boolean enabled) {
+        Prefers.put("liquid_glass_navigation", enabled);
+    }
+
     // 局域网自动同步配置
     public static boolean isAutoSync() {
         return Prefers.getBoolean("auto_sync", false);

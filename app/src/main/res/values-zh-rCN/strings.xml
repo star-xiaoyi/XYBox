@@ -120,6 +120,15 @@
     <string name="setting_operation">操作设置</string>
     <string name="setting_operation_summary">播放手势：双击、亮度、音量</string>
     <string name="setting_cache_summary">点击清理图片缓存和临时文件</string>
+    <string name="setting_laboratory">实验室功能</string>
+    <string name="setting_laboratory_summary">体验仍在开发中的新功能</string>
+    <string name="laboratory_liquid_glass_navigation">玻璃拟态底栏</string>
+    <string name="laboratory_liquid_glass_navigation_summary">悬浮胶囊底栏；Android 13 及以上启用完整液态折射，旧系统使用半透明降级效果</string>
+    <string name="setting_search_hint">搜索设置</string>
+    <string name="setting_search_empty">没有匹配的设置项</string>
+    <string name="action_close_search">关闭搜索</string>
+    <string name="action_change_source">换源</string>
+    <string name="action_back_to_top">回到顶部</string>
     <string name="setting_source">源管理</string>
     <string name="setting_app">应用设置</string>
     <string name="setting_network">网络设置</string>

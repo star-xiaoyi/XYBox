@@ -5,6 +5,13 @@
 # 崩溃页拿到的就是真实类名、方法名和行号。
 -keepattributes SourceFile,LineNumberTable,Signature,*Annotation*
 -renamesourcefileattribute SourceFile
+
+# Room creates the generated database implementation through reflection.
+# AGP 9 / R8 can otherwise remove its implicit no-arg constructor.
+-keepclassmembers class * extends androidx.room.RoomDatabase {
+    <init>();
+}
+
 -keep,allowshrinking,allowoptimization class com.fongmi.android.tv.** { *; }
 -keep,allowshrinking,allowoptimization class com.github.catvod.** { *; }
 

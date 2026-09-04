@@ -1,11 +1,13 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.plugin.compose'
 }
 
 android {
     namespace 'com.fongmi.android.tv'
 
-    compileSdk 36
+    compileSdk 37
+    buildToolsVersion '37.0.0'
     signingConfigs {
         release {
             storeFile file("../keystore/release.jks")
@@ -29,8 +31,8 @@ android {
         // versionCode 规则：(major*1000 + minor*100 + patch) * 10 + (beta 用序号 N，正式用 9)
         // 例：0.3.2-beta1=3021，0.3.2-beta2=3022，0.3.2 正式=3029，下一个 0.3.3-beta1=3031。
         // 正式版的尾数 9 保证它高于同版本的所有 beta，用户才能从 beta 直接覆盖安装到正式版。
-        versionCode 30599
-        versionName "0.3.5"
+        versionCode 40005
+        versionName "0.4.0-beta5"
         ndk { abiFilters "arm64-v8a" }
         // GitHub Token (可选，用于提高API请求限制)
         def githubToken = project.findProperty("GITHUB_TOKEN") ?: ""
@@ -47,16 +49,19 @@ android {
     sourceSets {
         debug {
             java.srcDir 'src/mobile/java'
+            kotlin.srcDir 'src/mobile/java'
             res.srcDir 'src/mobile/res'
         }
         release {
             java.srcDir 'src/mobile/java'
+            kotlin.srcDir 'src/mobile/java'
             res.srcDir 'src/mobile/res'
         }
     }
 
     buildFeatures {
         buildConfig true
+        compose true
         viewBinding true
     }
 
@@ -87,12 +92,6 @@ android {
         }
     }
 
-    android.applicationVariants.configureEach { variant ->
-        variant.outputs.configureEach { output ->
-            outputFileName = "XYBox-${variant.buildType.name}.apk"
-        }
-    }
-
     configurations.configureEach {
         resolutionStrategy {
             force 'com.squareup.okhttp3:okhttp:' + okhttpVersion
@@ -110,6 +109,14 @@ android {
     }
 }
 
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.each { output ->
+            output.outputFileName.set("XYBox-${variant.buildType}.apk")
+        }
+    }
+}
+
 dependencies {
     implementation fileTree(dir: "libs", include: ["*.aar"])
     implementation project(':catvod')
@@ -122,6 +129,8 @@ dependencies {
     implementation project(':tvbus')
     implementation project(':zlive')
     implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'org.jetbrains.compose.foundation:foundation:1.12.0'
+    implementation 'org.jetbrains.compose.ui:ui:1.12.0'
     implementation 'androidx.media:media:1.7.0'
     implementation 'androidx.media3:media3-common:' + media3Version
     implementation 'androidx.media3:media3-container:' + media3Version
@@ -153,7 +162,7 @@ dependencies {
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.guolindev.permissionx:permissionx:1.7.1'
     implementation 'com.hierynomus:smbj:0.13.0'
-    implementation 'io.antmedia:rtmp-client:3.1.0'
+    implementation 'io.antmedia:rtmp-client:3.2.0'
     implementation 'javax.servlet:javax.servlet-api:3.1.0'
     implementation 'org.aomedia.avif.android:avif:1.1.1.14d8e3c4'
     implementation 'org.eclipse.jetty:jetty-client:8.1.21.v20160908'
@@ -173,6 +182,8 @@ dependencies {
     annotationProcessor 'org.greenrobot:eventbus-annotation-processor:3.3.1'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
     implementation 'io.noties.markwon:core:4.6.2'
+    implementation 'io.github.kyant0:backdrop:2.0.1'
+    implementation 'io.github.kyant0:shapes:1.2.1'
     implementation 'com.airbnb.android:lottie:5.2.0'
     implementation 'com.github.ctiao:dfm:0.9.25'
     implementation 'com.github.devin1014.DLNA-Cast:dmc:v2.0.0'

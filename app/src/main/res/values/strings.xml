@@ -125,6 +125,15 @@
     <string name="setting_operation">Operation settings</string>
     <string name="setting_operation_summary">Playback gestures: double tap, brightness, volume</string>
     <string name="setting_cache_summary">Tap to clear cached images and temporary files</string>
+    <string name="setting_laboratory">Laboratory</string>
+    <string name="setting_laboratory_summary">Try features still under development</string>
+    <string name="laboratory_liquid_glass_navigation">Liquid glass bottom bar</string>
+    <string name="laboratory_liquid_glass_navigation_summary">Floating capsule with full refraction on Android 13+ and a translucent fallback on older systems</string>
+    <string name="setting_search_hint">Search settings</string>
+    <string name="setting_search_empty">No matching settings</string>
+    <string name="action_close_search">Close search</string>
+    <string name="action_change_source">Change source</string>
+    <string name="action_back_to_top">Back to top</string>
     <string name="app_version">v3.1.1</string>
     <string name="about_github">View on GitHub</string>
 
