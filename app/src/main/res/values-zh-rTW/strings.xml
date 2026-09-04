@@ -241,4 +241,13 @@
     <string name="no_history_config">暫無其他匯入記錄</string>
     <string name="crash_title">應用程式當機了</string>
 
+    <string name="setting_laboratory">實驗室功能</string>
+    <string name="setting_laboratory_summary">體驗仍在開發中的新功能</string>
+    <string name="laboratory_liquid_glass_navigation">玻璃擬態底欄</string>
+    <string name="laboratory_liquid_glass_navigation_summary">懸浮膠囊底欄；Android 13 及以上啟用完整液態折射，舊系統使用半透明降級效果</string>
+    <string name="setting_search_hint">搜尋設定</string>
+    <string name="setting_search_empty">沒有符合的設定項目</string>
+    <string name="action_close_search">關閉搜尋</string>
+    <string name="action_change_source">換源</string>
+    <string name="action_back_to_top">回到頂部</string>
 </resources>

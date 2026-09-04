@@ -69,6 +69,7 @@ import com.fongmi.android.tv.ui.dialog.LinkDialog;
 import com.fongmi.android.tv.ui.dialog.ReceiveDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
 import com.fongmi.android.tv.ui.custom.CustomTextListener;
+import com.fongmi.android.tv.ui.custom.LiquidGlassNavigationView;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -113,6 +114,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private boolean mSearchViewReady;
     /** 当前是否允许显示悬浮按钮（空源时整体隐藏）。 */
     private boolean mFabEnabled;
+    private int mContextAction = LiquidGlassNavigationView.ACTION_NONE;
     private boolean mSearchHeaderExpanded;
     private boolean mHeaderAnimationReady;
     private int mSuggestionGeneration;
@@ -419,7 +421,6 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
             hideFabButtons();
         } else {
             mFabEnabled = true;
-            mBinding.top.setVisibility(View.GONE);
             showActionFab(position);
         }
     }
@@ -427,9 +428,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     // 隐藏所有悬浮按钮的方法
     private void hideFabButtons() {
         mFabEnabled = false;
-        mBinding.top.setVisibility(View.GONE);
-        mBinding.link.setVisibility(View.GONE);
-        mBinding.filter.setVisibility(View.GONE);
+        setContextAction(LiquidGlassNavigationView.ACTION_NONE);
     }
 
     private void checkRetry() {
@@ -517,10 +516,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     /** 显示「回到顶部」，把筛选/链接按钮收起。 */
     private void showTopFab() {
-        if (mBinding.top.getVisibility() == View.VISIBLE) return;
-        mBinding.filter.hide();
-        mBinding.link.hide();
-        mBinding.top.show();
+        if (mContextAction == LiquidGlassNavigationView.ACTION_TOP) return;
+        setContextAction(LiquidGlassNavigationView.ACTION_TOP);
     }
 
     /** 回到列表顶部时恢复原来的筛选/链接按钮。 */
@@ -530,16 +527,50 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     private void showActionFab(int position) {
         if (!mFabEnabled) return;
-        mBinding.top.hide();
         boolean hasFilter = position >= 0 && mAdapter.getItemCount() > position
                 && !mAdapter.get(position).getFilters().isEmpty();
-        if (hasFilter) {
+        setContextAction(hasFilter ? LiquidGlassNavigationView.ACTION_FILTER : LiquidGlassNavigationView.ACTION_LINK);
+    }
+
+    private void setContextAction(int action) {
+        mContextAction = action;
+        renderContextAction();
+    }
+
+    private void renderContextAction() {
+        if (mBinding == null) return;
+        HomeActivity activity = getActivity() instanceof HomeActivity ? (HomeActivity) getActivity() : null;
+        boolean glass = activity != null && activity.isGlassNavigationEnabled();
+        if (glass) {
+            mBinding.top.setVisibility(View.GONE);
             mBinding.link.setVisibility(View.GONE);
-            mBinding.filter.show();
-        } else {
             mBinding.filter.setVisibility(View.GONE);
-            mBinding.link.show();
+            activity.setGlassAction(mContextAction, mContextAction != LiquidGlassNavigationView.ACTION_NONE);
+            return;
         }
+        if (activity != null) activity.setGlassAction(LiquidGlassNavigationView.ACTION_NONE, false);
+        mBinding.top.setVisibility(mContextAction == LiquidGlassNavigationView.ACTION_TOP ? View.VISIBLE : View.GONE);
+        mBinding.link.setVisibility(mContextAction == LiquidGlassNavigationView.ACTION_LINK ? View.VISIBLE : View.GONE);
+        mBinding.filter.setVisibility(mContextAction == LiquidGlassNavigationView.ACTION_FILTER ? View.VISIBLE : View.GONE);
+    }
+
+    public void onNavigationModeChanged() {
+        renderContextAction();
+    }
+
+    public void syncGlassAction() {
+        HomeActivity activity = getActivity() instanceof HomeActivity ? (HomeActivity) getActivity() : null;
+        if (activity != null) activity.setGlassAction(mContextAction, mContextAction != LiquidGlassNavigationView.ACTION_NONE);
+    }
+
+    public void performGlassAction() {
+        if (mContextAction == LiquidGlassNavigationView.ACTION_FILTER) onFilter(mBinding.filter);
+        else if (mContextAction == LiquidGlassNavigationView.ACTION_LINK) onLink(mBinding.link);
+        else if (mContextAction == LiquidGlassNavigationView.ACTION_TOP) onTop(mBinding.top);
+    }
+
+    public void performGlassLongAction() {
+        if (mContextAction == LiquidGlassNavigationView.ACTION_FILTER) onLink(mBinding.link);
     }
 
     private boolean onLink(View view) {
