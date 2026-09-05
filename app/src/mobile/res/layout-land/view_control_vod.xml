@@ -236,6 +236,44 @@
         android:layout_centerVertical="true"
         android:layout_marginEnd="8dp" />
 
+    <!--
+      横屏和平板同样需要拖动预览。必须与 layout/ 中保持相同的一组 id，
+      否则 ViewBinding 会把这些字段生成为可空值，拖动进度条时会直接崩溃。
+      TextureView 常驻 VISIBLE，仅通过父容器 alpha 控制显隐，便于提前建好输出面。
+    -->
+    <FrameLayout
+        android:id="@+id/previewFrame"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@+id/bottom"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="4dp"
+        android:alpha="0">
+
+        <FrameLayout
+            android:id="@+id/previewBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/shape_preview"
+            android:foregroundGravity="center">
+
+            <TextureView
+                android:id="@+id/previewVideo"
+                android:layout_width="160dp"
+                android:layout_height="90dp" />
+
+            <ImageView
+                android:id="@+id/previewImage"
+                android:layout_width="160dp"
+                android:layout_height="90dp"
+                android:scaleType="fitXY"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
+    </FrameLayout>
+
     <LinearLayout
         android:id="@+id/bottom"
         android:layout_width="match_parent"

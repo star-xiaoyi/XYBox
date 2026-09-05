@@ -124,7 +124,7 @@
     <string name="player_gesture_title">播放器手勢</string>
     <string name="player_gesture_double_tap_play">雙擊播放/暫停</string>
     <string name="player_gesture_double_tap_seek">雙擊左右快退/快進</string>
-    <string name="player_gesture_seek_seconds">快退/快進時長</string>
+    <string name="player_gesture_seek_seconds">快退/快進時長（秒）</string>
     <string name="player_gesture_seek_seconds_value">%1$d 秒</string>
     <string name="player_gesture_brightness">左側滑動調節亮度</string>
     <string name="player_gesture_volume">右側滑動調節音量</string>
@@ -197,6 +197,13 @@
         <item>自動</item>
     </string-array>
 
+    <string-array name="select_player_engine">
+        <item>ExoPlayer（軟解）</item>
+        <item>ExoPlayer（硬解）</item>
+        <item>ExoPlayer（自動）</item>
+        <item>MPV</item>
+    </string-array>
+
     <string-array name="select_quality">
         <item>低</item>
         <item>中</item>
@@ -243,8 +250,74 @@
 
     <string name="setting_laboratory">實驗室功能</string>
     <string name="setting_laboratory_summary">體驗仍在開發中的新功能</string>
+    <string name="setting_title">設定</string>
+    <string name="setting_section_sources">內容來源</string>
+    <string name="setting_section_appearance">外觀與首頁</string>
+    <string name="setting_section_playback">播放與操作</string>
+    <string name="setting_section_network_sync">網路與同步</string>
+    <string name="setting_section_storage_about">隱私與資料</string>
+    <string name="setting_section_laboratory">實驗室</string>
+    <string name="setting_section_about">關於</string>
+    <string name="setting_theme">外觀模式</string>
+    <string name="setting_theme_system">跟隨系統</string>
+    <string name="setting_theme_light">淺色</string>
+    <string name="setting_theme_dark">深色</string>
+    <string name="setting_accent">主題色</string>
+    <string name="setting_accent_yellow">黃色</string>
+    <string name="setting_accent_blue">藍色</string>
+    <string name="setting_accent_green">綠色</string>
+    <string name="setting_accent_purple">紫色</string>
+    <string name="setting_webdav">WebDAV 同步</string>
+    <string name="setting_webdav_summary">透過雲端同步記錄、播放源和偏好</string>
+    <string name="setting_lan_sync">區域網路裝置同步</string>
+    <string name="setting_lan_sync_summary">掃碼連接同一網路中的裝置</string>
+    <string name="setting_about">關於 XYBox</string>
+    <string name="setting_source_tip">點擊匯入播放源，長按可編輯</string>
+    <string name="setting_player_summary">播放核心、解碼、字幕和背景播放</string>
+    <string name="setting_operation">操作設定</string>
+    <string name="setting_operation_summary">播放手勢：雙擊、亮度、音量</string>
+    <string name="setting_cache_summary">點擊清理圖片快取和暫存檔</string>
     <string name="laboratory_liquid_glass_navigation">玻璃擬態底欄</string>
     <string name="laboratory_liquid_glass_navigation_summary">懸浮膠囊底欄；Android 13 及以上啟用完整液態折射，舊系統使用半透明降級效果</string>
+    <string name="glass_showcase_title">液態玻璃樣式展廳</string>
+    <string name="glass_showcase_summary">查看並操作 Backdrop 專案的全部命名樣式</string>
+    <string name="glass_showcase_hint">所有樣式都可以實際操作。以後你可以直接用下方名稱告訴我想採用哪一種。</string>
+    <string name="glass_showcase_buttons">液態按鈕</string>
+    <string name="glass_showcase_button_transparent">透明按鈕</string>
+    <string name="glass_showcase_button_surface">表面按鈕</string>
+    <string name="glass_showcase_button_tinted">著色按鈕</string>
+    <string name="glass_showcase_button_circle">圓形按鈕 · 已點擊 %1$d 次</string>
+    <string name="glass_showcase_toggle">液態開關</string>
+    <string name="glass_showcase_slider">液態滑桿</string>
+    <string name="glass_showcase_tabs_three">三項液態標籤欄</string>
+    <string name="glass_showcase_tabs_four">四項液態標籤欄</string>
+    <string name="glass_showcase_tab">標籤 %1$d</string>
+    <string name="glass_showcase_dialog">玻璃對話框</string>
+    <string name="glass_showcase_dialog_toggle">顯示或收起對話框</string>
+    <string name="glass_showcase_dialog_title">玻璃對話框標題</string>
+    <string name="glass_showcase_dialog_body">在一塊圓角面板上組合模糊、折射和色彩調節效果。</string>
+    <string name="glass_showcase_lock_screen">鎖定畫面玻璃</string>
+    <string name="glass_showcase_control_center">控制中心玻璃</string>
+    <string name="glass_showcase_magnifier">液態放大鏡</string>
+    <string name="glass_showcase_magnifier_text">拖動透鏡，觀察即時折射</string>
+    <string name="glass_showcase_playground">可調玻璃實驗台</string>
+    <string name="glass_showcase_playground_shape">切換圓角形態</string>
+    <string name="glass_showcase_adaptive">自適應明暗玻璃</string>
+    <string name="glass_showcase_drag">拖動我</string>
+    <string name="glass_showcase_progressive_blur">漸進模糊</string>
+    <string name="glass_showcase_progressive_blur_hint">由清晰漸變為模糊</string>
+    <string name="glass_showcase_scroll_container">捲動玻璃容器</string>
+    <string name="glass_showcase_lazy_container">惰性捲動玻璃容器</string>
+    <string name="player_engine">播放器引擎</string>
+    <string name="player_section_video">畫面與核心</string>
+    <string name="player_section_behavior">播放行為</string>
+    <string name="player_section_audio">音訊</string>
+    <string name="player_section_caption">字幕與彈幕</string>
+    <string name="player_section_advanced">背景與進階</string>
+    <string name="operation_section_tap">點擊手勢</string>
+    <string name="operation_section_swipe">滑動手勢</string>
+    <string name="operation_section_episode">選集手勢</string>
+    <string name="laboratory_section_navigation">導航實驗</string>
     <string name="setting_search_hint">搜尋設定</string>
     <string name="setting_search_empty">沒有符合的設定項目</string>
     <string name="action_close_search">關閉搜尋</string>

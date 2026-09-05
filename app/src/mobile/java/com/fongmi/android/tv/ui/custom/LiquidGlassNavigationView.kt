@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -159,37 +160,62 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                 }
             }
 
-            Row(
+            BoxWithConstraints(
                 modifier = Modifier
-                    .wrapContentWidth()
+                    .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
             ) {
-                LiquidBottomTabs(
-                    selectedTabIndex = selectedIndex,
-                    onTabSelected = { index ->
-                        items.getOrNull(index)?.let { listener?.onGlassNavigationSelected(it.id) }
-                    },
-                    backdrop = backdrop,
-                    frameNanos = frameNanos,
-                    tabsCount = items.size,
-                    accentColor = accentState,
-                    containerColor = containerColor,
-                    modifier = Modifier
-                        .width(228.dp)
-                        .height(52.dp)
-                ) {
-                    items.forEach { item ->
-                        LiquidBottomTab(
-                            onClick = { listener?.onGlassNavigationSelected(item.id) },
-                            modifier = Modifier.semantics {
-                                role = Role.Tab
-                                contentDescription = context.getString(item.label)
+                val tabs: @Composable (Modifier) -> Unit = { tabsModifier ->
+                    LiquidBottomTabs(
+                        selectedTabIndex = selectedIndex,
+                        onTabSelected = { index ->
+                            items.getOrNull(index)?.let { listener?.onGlassNavigationSelected(it.id) }
+                        },
+                        backdrop = backdrop,
+                        frameNanos = frameNanos,
+                        tabsCount = items.size,
+                        accentColor = accentState,
+                        containerColor = containerColor,
+                        modifier = tabsModifier
+                    ) {
+                        items.forEach { item ->
+                            LiquidBottomTab(
+                                onClick = { listener?.onGlassNavigationSelected(item.id) },
+                                modifier = Modifier.semantics {
+                                    role = Role.Tab
+                                    contentDescription = context.getString(item.label)
+                                }
+                            ) {
+                                Image(
+                                    painter = painterResource(item.icon),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(22.dp),
+                                    colorFilter = ColorFilter.tint(contentColor)
+                                )
+                            }
+                        }
+                    }
+                }
+                val action: @Composable (Modifier) -> Unit = { actionModifier ->
+                    if (actionVisibleState) {
+                        LiquidButton(
+                            onClick = { listener?.onGlassContextAction() },
+                            onLongClick = if (actionState == ACTION_FILTER) {
+                                { listener?.onGlassContextLongAction() }
+                            } else {
+                                null
+                            },
+                            backdrop = backdrop,
+                            frameNanos = frameNanos,
+                            surfaceColor = containerColor,
+                            modifier = actionModifier.semantics {
+                                role = Role.Button
+                                contentDescription = context.getString(actionDescription(actionState))
                             }
                         ) {
                             Image(
-                                painter = painterResource(item.icon),
+                                painter = painterResource(actionIcon(actionState)),
                                 contentDescription = null,
                                 modifier = Modifier.size(22.dp),
                                 colorFilter = ColorFilter.tint(contentColor)
@@ -198,32 +224,22 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                     }
                 }
 
-                if (actionVisibleState) {
-                    Spacer(Modifier.width(8.dp))
-                    LiquidButton(
-                        onClick = { listener?.onGlassContextAction() },
-                        onLongClick = if (actionState == ACTION_FILTER) {
-                            { listener?.onGlassContextLongAction() }
-                        } else {
-                            null
-                        },
-                        backdrop = backdrop,
-                        frameNanos = frameNanos,
-                        surfaceColor = containerColor,
+                if (maxWidth < 576.dp) {
+                    // 手机维持 beta5 的视觉重心：胶囊和圆钮作为一个整体居中，不在左侧留下空洞。
+                    Row(
                         modifier = Modifier
-                            .size(52.dp)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = context.getString(actionDescription(actionState))
-                            }
+                            .align(Alignment.Center)
+                            .wrapContentWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Image(
-                            painter = painterResource(actionIcon(actionState)),
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                            colorFilter = ColorFilter.tint(contentColor)
-                        )
+                        tabs(Modifier.width(228.dp).height(52.dp))
+                        if (actionVisibleState) Spacer(Modifier.width(8.dp))
+                        action(Modifier.size(52.dp))
                     }
+                } else {
+                    // 600dp 及以上的平板/横向长屏：胶囊居中，功能键固定在右手侧。
+                    tabs(Modifier.align(Alignment.Center).width(228.dp).height(52.dp))
+                    action(Modifier.align(Alignment.CenterEnd).size(52.dp))
                 }
             }
         }

@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/screen_background"
     android:clipChildren="false"
     android:clipToPadding="false"
-    android:fitsSystemWindows="true">
-
-    <com.fongmi.android.tv.ui.custom.SettingsPlayerGlassContentView
-        android:id="@+id/glassContent"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
 
     <com.fongmi.android.tv.ui.custom.SettingsGlassBackHeaderView
         android:id="@+id/header"
@@ -19,4 +15,9 @@
         android:elevation="16dp"
         android:outlineProvider="none" />
 
-</FrameLayout>
+    <com.fongmi.android.tv.ui.custom.LiquidGlassShowcaseView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+</LinearLayout>

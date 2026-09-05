@@ -7,26 +7,25 @@ import android.os.Bundle;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.databinding.ActivitySettingOperationBinding;
+import com.fongmi.android.tv.databinding.ActivityLiquidGlassShowcaseBinding;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 
-public class SettingOperationActivity extends BaseActivity {
+public class LiquidGlassShowcaseActivity extends BaseActivity {
 
-    private ActivitySettingOperationBinding mBinding;
+    private ActivityLiquidGlassShowcaseBinding mBinding;
 
     public static void start(Activity activity) {
-        activity.startActivity(new Intent(activity, SettingOperationActivity.class));
+        activity.startActivity(new Intent(activity, LiquidGlassShowcaseActivity.class));
     }
 
     @Override
     protected ViewBinding getBinding() {
-        return mBinding = ActivitySettingOperationBinding.inflate(getLayoutInflater());
+        return mBinding = ActivityLiquidGlassShowcaseBinding.inflate(getLayoutInflater());
     }
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        mBinding.header.setTitle(getString(R.string.setting_operation));
-        mBinding.glassContent.refresh();
+        mBinding.header.setTitle(getString(R.string.glass_showcase_title));
     }
 
     @Override

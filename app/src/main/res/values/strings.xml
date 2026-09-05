@@ -103,9 +103,11 @@
     <string name="setting_title">Settings</string>
     <string name="setting_section_sources">Content Sources</string>
     <string name="setting_section_appearance">Appearance &amp; Home</string>
-    <string name="setting_section_playback">Playback &amp; Privacy</string>
+    <string name="setting_section_playback">Playback &amp; Gestures</string>
     <string name="setting_section_network_sync">Network &amp; Sync</string>
-    <string name="setting_section_storage_about">Storage &amp; About</string>
+    <string name="setting_section_storage_about">Privacy &amp; Data</string>
+    <string name="setting_section_laboratory">Laboratory</string>
+    <string name="setting_section_about">About</string>
     <string name="setting_theme">Appearance</string>
     <string name="setting_theme_system">Follow system</string>
     <string name="setting_theme_light">Light</string>
@@ -129,6 +131,35 @@
     <string name="setting_laboratory_summary">Try features still under development</string>
     <string name="laboratory_liquid_glass_navigation">Liquid glass bottom bar</string>
     <string name="laboratory_liquid_glass_navigation_summary">Floating capsule with full refraction on Android 13+ and a translucent fallback on older systems</string>
+    <string name="glass_showcase_title">Liquid Glass Gallery</string>
+    <string name="glass_showcase_summary">View and interact with every named Backdrop catalog style</string>
+    <string name="glass_showcase_hint">Every sample is interactive. Use the names below when describing the style you want.</string>
+    <string name="glass_showcase_buttons">Liquid buttons</string>
+    <string name="glass_showcase_button_transparent">Transparent button</string>
+    <string name="glass_showcase_button_surface">Surface button</string>
+    <string name="glass_showcase_button_tinted">Tinted button</string>
+    <string name="glass_showcase_button_circle">Circle button · tapped %1$d times</string>
+    <string name="glass_showcase_toggle">Liquid toggle</string>
+    <string name="glass_showcase_slider">Liquid slider</string>
+    <string name="glass_showcase_tabs_three">Three-tab liquid bar</string>
+    <string name="glass_showcase_tabs_four">Four-tab liquid bar</string>
+    <string name="glass_showcase_tab">Tab %1$d</string>
+    <string name="glass_showcase_dialog">Glass dialog</string>
+    <string name="glass_showcase_dialog_toggle">Show or hide dialog</string>
+    <string name="glass_showcase_dialog_title">Glass dialog title</string>
+    <string name="glass_showcase_dialog_body">Blur, refraction and color controls are combined on one rounded panel.</string>
+    <string name="glass_showcase_lock_screen">Lock-screen glass</string>
+    <string name="glass_showcase_control_center">Control-center glass</string>
+    <string name="glass_showcase_magnifier">Liquid magnifier</string>
+    <string name="glass_showcase_magnifier_text">Drag the lens to inspect the live refraction</string>
+    <string name="glass_showcase_playground">Adjustable glass playground</string>
+    <string name="glass_showcase_playground_shape">Switch corner shape</string>
+    <string name="glass_showcase_adaptive">Adaptive luminance glass</string>
+    <string name="glass_showcase_drag">Drag me</string>
+    <string name="glass_showcase_progressive_blur">Progressive blur</string>
+    <string name="glass_showcase_progressive_blur_hint">Clear to blurred</string>
+    <string name="glass_showcase_scroll_container">Scrolling glass container</string>
+    <string name="glass_showcase_lazy_container">Lazy scrolling glass container</string>
     <string name="setting_search_hint">Search settings</string>
     <string name="setting_search_empty">No matching settings</string>
     <string name="action_close_search">Close search</string>
@@ -162,7 +193,7 @@
     <string name="player_gesture_title">Player gestures</string>
     <string name="player_gesture_double_tap_play">Double tap to play or pause</string>
     <string name="player_gesture_double_tap_seek">Double tap sides to rewind or fast-forward</string>
-    <string name="player_gesture_seek_seconds">Rewind / fast-forward step</string>
+    <string name="player_gesture_seek_seconds">Rewind / fast-forward step (sec)</string>
     <string name="player_gesture_seek_seconds_value">%1$d sec</string>
     <string name="player_gesture_brightness">Swipe left side for brightness</string>
     <string name="player_gesture_volume">Swipe right side for volume</string>
@@ -170,6 +201,16 @@
     <string name="player_gesture_episode_port">Swipe vertically to change episode (portrait)</string>
     <string name="player_gesture_episode_land">Swipe vertically to change episode (landscape)</string>
     <string name="player_ua">User-Agent</string>
+    <string name="player_engine">Player engine</string>
+    <string name="player_section_video">Video &amp; Display</string>
+    <string name="player_section_behavior">Playback Behavior</string>
+    <string name="player_section_audio">Audio</string>
+    <string name="player_section_caption">Subtitles &amp; Danmaku</string>
+    <string name="player_section_advanced">Background &amp; Advanced</string>
+    <string name="operation_section_tap">Tap Gestures</string>
+    <string name="operation_section_swipe">Swipe Gestures</string>
+    <string name="operation_section_episode">Episode Switching</string>
+    <string name="laboratory_section_navigation">Navigation Experiments</string>
 
     <!-- Search -->
     <string name="search_keyword">Keywords…</string>
@@ -241,6 +282,13 @@
     <string-array name="select_render">
         <item>Surface</item>
         <item>Texture</item>
+    </string-array>
+
+    <string-array name="select_player_engine">
+        <item>ExoPlayer (software)</item>
+        <item>ExoPlayer (hardware)</item>
+        <item>ExoPlayer (auto)</item>
+        <item>MPV</item>
     </string-array>
 
     <string-array name="select_quality">

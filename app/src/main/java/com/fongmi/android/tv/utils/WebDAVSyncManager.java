@@ -180,7 +180,11 @@ public final class WebDAVSyncManager {
     public SyncResult syncNow() {
         final long generationAtStart;
         synchronized (this) {
-            if (syncing) return new SyncResult(false, "同步正在进行中，请稍候", 0, 0);
+            if (syncing) {
+                // 本轮上传期间又产生了观看进度，结束后必须再同步一次。
+                flushAfterSync = true;
+                return new SyncResult(false, "同步正在进行中，请稍候", 0, 0);
+            }
             syncing = true;
             flushAfterSync = false;
             generationAtStart = dirtyGeneration;

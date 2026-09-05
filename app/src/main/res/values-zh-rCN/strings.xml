@@ -98,9 +98,11 @@
     <string name="setting_title">设置</string>
     <string name="setting_section_sources">内容来源</string>
     <string name="setting_section_appearance">外观与首页</string>
-    <string name="setting_section_playback">播放与隐私</string>
+    <string name="setting_section_playback">播放与操作</string>
     <string name="setting_section_network_sync">网络与同步</string>
-    <string name="setting_section_storage_about">存储与关于</string>
+    <string name="setting_section_storage_about">隐私与数据</string>
+    <string name="setting_section_laboratory">实验室</string>
+    <string name="setting_section_about">关于</string>
     <string name="setting_theme">外观模式</string>
     <string name="setting_theme_system">跟随系统</string>
     <string name="setting_theme_light">浅色</string>
@@ -124,6 +126,35 @@
     <string name="setting_laboratory_summary">体验仍在开发中的新功能</string>
     <string name="laboratory_liquid_glass_navigation">玻璃拟态底栏</string>
     <string name="laboratory_liquid_glass_navigation_summary">悬浮胶囊底栏；Android 13 及以上启用完整液态折射，旧系统使用半透明降级效果</string>
+    <string name="glass_showcase_title">液态玻璃样式展厅</string>
+    <string name="glass_showcase_summary">查看并操作 Backdrop 项目的全部命名样式</string>
+    <string name="glass_showcase_hint">所有样式都可以实际操作。以后你可以直接用下方名称告诉我想采用哪一种。</string>
+    <string name="glass_showcase_buttons">液态按钮</string>
+    <string name="glass_showcase_button_transparent">透明按钮</string>
+    <string name="glass_showcase_button_surface">表面按钮</string>
+    <string name="glass_showcase_button_tinted">着色按钮</string>
+    <string name="glass_showcase_button_circle">圆形按钮 · 已点击 %1$d 次</string>
+    <string name="glass_showcase_toggle">液态开关</string>
+    <string name="glass_showcase_slider">液态滑杆</string>
+    <string name="glass_showcase_tabs_three">三项液态标签栏</string>
+    <string name="glass_showcase_tabs_four">四项液态标签栏</string>
+    <string name="glass_showcase_tab">标签 %1$d</string>
+    <string name="glass_showcase_dialog">玻璃对话框</string>
+    <string name="glass_showcase_dialog_toggle">显示或收起对话框</string>
+    <string name="glass_showcase_dialog_title">玻璃对话框标题</string>
+    <string name="glass_showcase_dialog_body">在一块圆角面板上组合模糊、折射和色彩调节效果。</string>
+    <string name="glass_showcase_lock_screen">锁屏玻璃</string>
+    <string name="glass_showcase_control_center">控制中心玻璃</string>
+    <string name="glass_showcase_magnifier">液态放大镜</string>
+    <string name="glass_showcase_magnifier_text">拖动透镜，观察实时折射</string>
+    <string name="glass_showcase_playground">可调玻璃实验台</string>
+    <string name="glass_showcase_playground_shape">切换圆角形态</string>
+    <string name="glass_showcase_adaptive">自适应明暗玻璃</string>
+    <string name="glass_showcase_drag">拖动我</string>
+    <string name="glass_showcase_progressive_blur">渐进模糊</string>
+    <string name="glass_showcase_progressive_blur_hint">由清晰渐变为模糊</string>
+    <string name="glass_showcase_scroll_container">滚动玻璃容器</string>
+    <string name="glass_showcase_lazy_container">惰性滚动玻璃容器</string>
     <string name="setting_search_hint">搜索设置</string>
     <string name="setting_search_empty">没有匹配的设置项</string>
     <string name="action_close_search">关闭搜索</string>
@@ -160,7 +191,7 @@
     <string name="player_gesture_title">播放器手势</string>
     <string name="player_gesture_double_tap_play">双击播放/暂停</string>
     <string name="player_gesture_double_tap_seek">双击左右快退/快进</string>
-    <string name="player_gesture_seek_seconds">快退/快进时长</string>
+    <string name="player_gesture_seek_seconds">快退/快进时长（秒）</string>
     <string name="player_gesture_seek_seconds_value">%1$d 秒</string>
     <string name="player_gesture_brightness">左侧滑动调节亮度</string>
     <string name="player_gesture_volume">右侧滑动调节音量</string>
@@ -168,6 +199,16 @@
     <string name="player_gesture_episode_port">竖屏上下滑动切换集数</string>
     <string name="player_gesture_episode_land">横屏上下滑动切换集数</string>
     <string name="player_ua">User-Agent</string>
+    <string name="player_engine">播放器引擎</string>
+    <string name="player_section_video">画面与核心</string>
+    <string name="player_section_behavior">播放行为</string>
+    <string name="player_section_audio">音频</string>
+    <string name="player_section_caption">字幕与弹幕</string>
+    <string name="player_section_advanced">后台与高级</string>
+    <string name="operation_section_tap">点击手势</string>
+    <string name="operation_section_swipe">滑动手势</string>
+    <string name="operation_section_episode">选集手势</string>
+    <string name="laboratory_section_navigation">导航实验</string>
 
     <!-- Search -->
     <string name="search_keyword">关键字…</string>
@@ -233,6 +274,13 @@
         <item>软解</item>
         <item>硬解</item>
         <item>自动</item>
+    </string-array>
+
+    <string-array name="select_player_engine">
+        <item>ExoPlayer（软解）</item>
+        <item>ExoPlayer（硬解）</item>
+        <item>ExoPlayer（自动）</item>
+        <item>MPV</item>
     </string-array>
 
     <string-array name="select_quality">

@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceAtMost
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.zIndex
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -39,6 +40,7 @@ internal fun LiquidButton(
     modifier: Modifier = Modifier,
     tint: Color = Color.Unspecified,
     surfaceColor: Color = Color.Unspecified,
+    dragResponse: Float = 0.05f,
     content: @Composable RowScope.() -> Unit
 ) {
     val animationScope = rememberCoroutineScope()
@@ -48,6 +50,8 @@ internal fun LiquidButton(
 
     Row(
         modifier
+            // 在同一 Compose 层级中始终压过普通卡片内容，拖动形变不会被相邻控件盖住。
+            .zIndex(10f)
             .drawBackdrop(
                 backdrop = backdrop,
                 shape = { Capsule() },
@@ -62,10 +66,9 @@ internal fun LiquidButton(
                     val progress = interactiveHighlight.pressProgress
                     val scale = lerp(1f, 1f + 4.dp.toPx() / size.height, progress)
                     val maxOffset = size.minDimension
-                    val initialDerivative = 0.05f
                     val offset = interactiveHighlight.offset
-                    translationX = maxOffset * tanh(initialDerivative * offset.x / maxOffset)
-                    translationY = maxOffset * tanh(initialDerivative * offset.y / maxOffset)
+                    translationX = maxOffset * tanh(dragResponse * offset.x / maxOffset)
+                    translationY = maxOffset * tanh(dragResponse * offset.y / maxOffset)
 
                     val maxDragScale = 4.dp.toPx() / size.height
                     val offsetAngle = atan2(offset.y, offset.x)

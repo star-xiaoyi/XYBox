@@ -179,6 +179,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private List<Dialog> mDialogs;
     private List<String> mBroken;
     private History mHistory;
+    /** 当前选中的剧集已经真正进入可播放状态，避免失败片源覆盖或合并掉旧记录。 */
+    private boolean mHistoryPlaybackConfirmed;
     private Players mPlayers;
     private Vod mCurrentVod;  // 保存当前视频对象，用于演职人员跳转
     private boolean fullscreen;
@@ -1310,6 +1312,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         long position = CastManager.get().getPosition();
         long duration = CastManager.get().getDuration();
         if (mHistory != null && position > 0) {
+            mHistoryPlaybackConfirmed = true;
             mHistory.setPosition(position);
             if (duration > 0) mHistory.setDuration(duration);
             if (!Setting.isIncognito()) App.execute(() -> mHistory.updateProgress());
@@ -1965,10 +1968,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void checkHistory(Vod item) {
+        mHistoryPlaybackConfirmed = false;
         mHistory = History.find(getHistoryKey());
         mHistory = mHistory == null ? createHistory(item) : mHistory;
         if (!TextUtils.isEmpty(getMark())) mHistory.setVodRemarks(getMark());
-        if (Setting.isIncognito() && mHistory.getKey().equals(getHistoryKey())) mHistory.delete();
         mBinding.control.action.opening.setText(mHistory.getOpening() <= 0 ? getString(R.string.play_op) : mPlayers.stringToTime(mHistory.getOpening()));
         mBinding.control.action.ending.setText(mHistory.getEnding() <= 0 ? getString(R.string.play_ed) : mPlayers.stringToTime(mHistory.getEnding()));
         mBinding.control.action.speed.setText(mPlayers.setSpeed(mHistory.getSpeed()));
@@ -1986,16 +1989,20 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void updateHistory(Episode item, boolean replay) {
-        boolean firstSave = mHistory.getCreateTime() <= 0;
+        mHistoryPlaybackConfirmed = false;
         replay = replay || !item.equals(mHistory.getEpisode());
         mHistory.setEpisodeUrl(item.getUrl());
         mHistory.setVodRemarks(item.getName());
         mHistory.setVodFlag(getFlag().getFlag());
         mHistory.setCreateTime(System.currentTimeMillis());
         mHistory.setPosition(replay ? C.TIME_UNSET : mHistory.getPosition());
-        // Persist a new title before player preparation. This gives the first cloud upload
-        // enough time to finish even when the user watches briefly and removes the task.
-        if (firstSave && !Setting.isIncognito()) mHistory.update();
+    }
+
+    /** 只有播放器确认片源可用后才允许创建/更新记录，失败片源不会碰数据库里的旧记录。 */
+    private void confirmHistoryPlayback() {
+        if (mHistoryPlaybackConfirmed || mHistory == null) return;
+        mHistoryPlaybackConfirmed = true;
+        if (!Setting.isIncognito()) mHistory.update();
     }
 
     private void checkControl() {
@@ -2048,7 +2055,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         long position, duration;
         mHistory.setPosition(position = mPlayers.getPosition());
         mHistory.setDuration(duration = mPlayers.getDuration());
-        if (position >= 0 && duration > 0 && !Setting.isIncognito()) App.execute(() -> mHistory.updateProgress());
+        if (position >= 0 && duration > 0 && !Setting.isIncognito()) {
+            confirmHistoryPlayback();
+            App.execute(() -> mHistory.updateProgress());
+        }
         if (mHistory.getEnding() > 0 && duration > 0 && mHistory.getEnding() + position >= duration) {
             checkEnded(false);
         }
@@ -2107,6 +2117,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 break;
             case Player.STATE_READY:
                 mPlayers.reset();
+                confirmHistoryPlayback();
+                // 换集时 onReset 会暂停时钟；同轨媒体不一定再次派发 TRACK，
+                // READY 时恢复采样，确保当前集和进度持续写入观看记录。
+                mClock.setCallback(this);
                 // 必须先把真实地址交给预览播放器，再让 showControl 触发预热。
                 // 原顺序先 prepare、后 setSource，首次 prepare 会因 item 为空直接返回。
                 if (!isCasting()) {
@@ -2124,6 +2138,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 checkEnded(true);
                 break;
             case PlayerEvent.TRACK:
+                confirmHistoryPlayback();
                 setMetadata();
                 setTrackVisible();
                 mClock.setCallback(this);
@@ -3001,7 +3016,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void savePlaybackProgress() {
-        if (mHistory == null || mHistory.getCreateTime() <= 0 || Setting.isIncognito()) return;
+        if (!mHistoryPlaybackConfirmed || mHistory == null || mHistory.getCreateTime() <= 0 || Setting.isIncognito()) return;
         if (isCasting()) {
             // 投屏时进度在电视那边，本地播放器是停着的，读它只会把记录写回 0
             // 换集在途时对端报的还是上一集的进度，这时候一个字都不能写

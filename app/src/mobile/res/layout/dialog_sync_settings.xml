@@ -191,7 +191,7 @@
             android:textColor="@color/white"
             android:textSize="16sp" />
 
-        <com.fongmi.android.tv.ui.custom.CustomSwitch
+        <com.fongmi.android.tv.ui.custom.LiquidGlassSwitch
             android:id="@+id/autoSyncSwitch"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content" />
