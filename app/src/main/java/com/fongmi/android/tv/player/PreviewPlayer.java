@@ -144,6 +144,11 @@ public class PreviewPlayer implements Player.Listener {
         App.post(idleRelease, IDLE_RELEASE);
     }
 
+    /** 主播放器正在重新缓冲时立即让出网络和解码器，帧缓存与片源信息仍然保留。 */
+    public void suspend() {
+        releasePlayer();
+    }
+
     public void release() {
         releasePlayer();
         frameCache.evictAll();
@@ -213,9 +218,7 @@ public class PreviewPlayer implements Player.Listener {
 
     /**
      * 预览只要一张 160dp 宽的小图，所以反着来：多码率源强制挑最低的那一路，
-     * 再把分辨率上限压到 640x360。主播放器那套 buildTrackSelector 是
-     * setForceHighestSupportedBitrate，照抄过来等于用 1080P 的码率去解一张缩略图，
-     * 网络源上慢得没法用。顺带关掉音频和字幕轨，一路都不解。
+     * 再把分辨率上限压到 640x360。顺带关掉音频和字幕轨，一路都不解。
      */
     private DefaultTrackSelector buildTrackSelector() {
         DefaultTrackSelector selector = new DefaultTrackSelector(App.get());

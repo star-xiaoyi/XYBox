@@ -8,6 +8,8 @@ import android.text.TextUtils;
 import android.view.accessibility.CaptioningManager;
 
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.C;
+import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.TrackSelectionOverride;
@@ -43,14 +45,17 @@ public class ExoUtil {
     }
 
     public static LoadControl buildLoadControl() {
-        int multiplier = Setting.getBuffer();
+        // 原实现把默认 50 秒直接乘 1~10，最高档意图达到 500 秒。若真正按时间执行，
+        // 高码率片源可能吃掉数百 MB 内存。这里保留档位含义，但收敛到 50~95 秒。
+        int bufferMs = DefaultLoadControl.DEFAULT_MIN_BUFFER_MS + (Setting.getBuffer() - 1) * 5000;
         return new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                        DefaultLoadControl.DEFAULT_MIN_BUFFER_MS * multiplier,
-                        DefaultLoadControl.DEFAULT_MAX_BUFFER_MS * multiplier,
-                        DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
-                        DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS)
-                .setBackBuffer(30 * 1000, true)
+                        bufferMs,
+                        bufferMs,
+                        1500,
+                        5000)
+                // 保留 Media3 的默认字节上限，避免高码率视频仅为追满时长而占用过多内存。
+                .setBackBuffer(15 * 1000, true)
                 .build();
     }
 
@@ -60,7 +65,7 @@ public class ExoUtil {
         if (Setting.isPreferAAC()) builder.setPreferredAudioMimeType(MimeTypes.AUDIO_AAC);
         builder.setPreferredTextLanguage(Locale.getDefault().getISO3Language());
         builder.setTunnelingEnabled(Setting.isTunnel());
-        builder.setForceHighestSupportedBitrate(true);
+        // 不强制最高码率，让 HLS/DASH 的自适应轨道能根据带宽和缓冲量升降档。
         trackSelector.setParameters(builder.build());
         return trackSelector;
     }
@@ -79,24 +84,61 @@ public class ExoUtil {
 
     public static boolean haveTrack(Tracks tracks, int type) {
         int count = 0;
-        for (Tracks.Group trackGroup : tracks.getGroups()) if (trackGroup.getType() == type) count += trackGroup.length;
+        for (Tracks.Group trackGroup : tracks.getGroups()) {
+            if (trackGroup.getType() != type) continue;
+            for (int i = 0; i < trackGroup.length; i++) if (trackGroup.isTrackSupported(i)) count++;
+        }
         return count > 0;
     }
 
     public static void selectTrack(ExoPlayer player, int group, int track) {
+        if (!isTrackValid(player, group, track)) return;
         List<Integer> trackIndices = new ArrayList<>();
         selectTrack(player, group, track, trackIndices);
         setTrackParameters(player, group, trackIndices);
     }
 
+    public static void selectVideoQuality(ExoPlayer player, int group, int track) {
+        if (!isTrackValid(player, group, track)) return;
+        Tracks.Group tracks = player.getCurrentTracks().getGroups().get(group);
+        if (tracks.getType() != C.TRACK_TYPE_VIDEO || !tracks.isTrackSupported(track)) return;
+        Format format = tracks.getTrackFormat(track);
+        // 清晰度作为自适应上限，而不是把播放器锁死到某一条码流。弱网时仍可自动降档，
+        // DASH/HLS 的某一路临时不可用时也能选择同上限内的其他视频轨。
+        androidx.media3.common.TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters()
+                .buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                .clearVideoSizeConstraints()
+                .setMaxVideoBitrate(Integer.MAX_VALUE);
+        if (format.width > 0 && format.height > 0) builder.setMaxVideoSize(format.width, format.height);
+        if (format.bitrate > 0) builder.setMaxVideoBitrate(format.bitrate);
+        player.setTrackSelectionParameters(builder.build());
+    }
+
     public static void deselectTrack(ExoPlayer player, int group, int track) {
+        if (!isTrackValid(player, group, track)) return;
         List<Integer> trackIndices = new ArrayList<>();
         deselectTrack(player, group, track, trackIndices);
         setTrackParameters(player, group, trackIndices);
     }
 
     public static void resetTrack(ExoPlayer player) {
-        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().clearOverrides().build());
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters()
+                .buildUpon()
+                .clearOverrides()
+                .clearVideoSizeConstraints()
+                .setMaxVideoBitrate(Integer.MAX_VALUE)
+                .build());
+    }
+
+    public static void resetTrack(ExoPlayer player, int type) {
+        androidx.media3.common.TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters()
+                .buildUpon()
+                .clearOverridesOfType(type);
+        if (type == C.TRACK_TYPE_VIDEO) {
+            builder.clearVideoSizeConstraints().setMaxVideoBitrate(Integer.MAX_VALUE);
+        }
+        player.setTrackSelectionParameters(builder.build());
     }
 
     public static void setSubtitleView(PlayerView exo) {
@@ -115,8 +157,16 @@ public class ExoUtil {
     }
 
     public static String getMimeType(int errorCode) {
-        if (errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED || errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED || errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED) return MimeTypes.APPLICATION_M3U8;
+        // 无扩展名的 HLS 地址会先被当作普通容器探测，失败后用 HLS 再试一次。
+        // 普通 IO 错误和已经识别出的 manifest 错误不能硬套成 HLS，否则只会重复报错。
+        if (errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED || errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) return MimeTypes.APPLICATION_M3U8;
         return null;
+    }
+
+    public static boolean isMimeType(String value, String mimeType) {
+        if (TextUtils.isEmpty(value)) return false;
+        if (mimeType.equalsIgnoreCase(value)) return true;
+        return MimeTypes.APPLICATION_M3U8.equals(mimeType) && (value.toLowerCase(Locale.US).contains("mpegurl") || value.toLowerCase(Locale.US).contains("m3u8"));
     }
 
     public static MediaItem getMediaItem(Map<String, String> headers, Uri uri, String mimeType, Drm drm, List<Sub> subs, int decode) {
@@ -124,7 +174,7 @@ public class ExoUtil {
         builder.setRequestMetadata(getRequestMetadata(headers, uri));
         builder.setSubtitleConfigurations(getSubtitleConfigs(subs));
         if (drm != null) builder.setDrmConfiguration(drm.get());
-        if (mimeType != null) builder.setMimeType(mimeType);
+        if (!TextUtils.isEmpty(mimeType)) builder.setMimeType(mimeType);
         builder.setMediaId(uri.toString());
         builder.setImageDurationMs(15000);
         return builder.build();
@@ -143,7 +193,7 @@ public class ExoUtil {
     }
 
     private static void selectTrack(ExoPlayer player, int group, int track, List<Integer> trackIndices) {
-        if (group >= player.getCurrentTracks().getGroups().size()) return;
+        if (!isTrackValid(player, group, track)) return;
         Tracks.Group trackGroup = player.getCurrentTracks().getGroups().get(group);
         for (int i = 0; i < trackGroup.length; i++) {
             if (i == track || trackGroup.isTrackSelected(i)) trackIndices.add(i);
@@ -151,7 +201,7 @@ public class ExoUtil {
     }
 
     private static void deselectTrack(ExoPlayer player, int group, int track, List<Integer> trackIndices) {
-        if (group >= player.getCurrentTracks().getGroups().size()) return;
+        if (!isTrackValid(player, group, track)) return;
         Tracks.Group trackGroup = player.getCurrentTracks().getGroups().get(group);
         for (int i = 0; i < trackGroup.length; i++) {
             if (i != track && trackGroup.isTrackSelected(i)) trackIndices.add(i);
@@ -159,7 +209,12 @@ public class ExoUtil {
     }
 
     private static void setTrackParameters(ExoPlayer player, int group, List<Integer> trackIndices) {
-        if (group >= player.getCurrentTracks().getGroups().size()) return;
+        if (group < 0 || group >= player.getCurrentTracks().getGroups().size()) return;
         player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().setOverrideForType(new TrackSelectionOverride(player.getCurrentTracks().getGroups().get(group).getMediaTrackGroup(), trackIndices)).build());
+    }
+
+    private static boolean isTrackValid(ExoPlayer player, int group, int track) {
+        if (group < 0 || group >= player.getCurrentTracks().getGroups().size()) return false;
+        return track >= 0 && track < player.getCurrentTracks().getGroups().get(group).length;
     }
 }

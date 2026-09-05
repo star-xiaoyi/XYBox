@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
@@ -212,7 +213,11 @@ class LiquidGlassFilterView @JvmOverloads constructor(
     ) {
         AnimatedVisibility(
             visible = visible,
-            modifier = modifier.padding(start = 12.dp, end = 12.dp, bottom = 104.dp),
+            // 底栏本身是 52dp 高、上下各留 7dp；再留 12dp 视觉间距。
+            // 系统手势条高度按设备实时读取，避免固定 104dp 在部分手机上把卡片顶得太高。
+            modifier = modifier
+                .navigationBarsPadding()
+                .padding(start = 12.dp, end = 12.dp, bottom = 78.dp),
             enter = expandVertically(tween(240), expandFrom = Alignment.Bottom) + fadeIn(tween(160)),
             exit = shrinkVertically(tween(190), shrinkTowards = Alignment.Bottom) + fadeOut(tween(120))
         ) {

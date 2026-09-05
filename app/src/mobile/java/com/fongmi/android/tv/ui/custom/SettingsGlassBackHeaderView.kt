@@ -10,8 +10,11 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,7 +26,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -38,9 +40,9 @@ import androidx.compose.ui.unit.sp
 import com.fongmi.android.tv.R
 import com.fongmi.android.tv.ui.custom.liquid.LiquidButton
 import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.drawPlainBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
@@ -82,32 +84,61 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
     @Composable
     private fun CurrentHeaderContent() {
         val light = !isSystemInDarkTheme()
-        val background = Color(context.getColor(R.color.screen_background))
-        val glass = if (light) Color.White.copy(alpha = 0.38f)
-        else Color(0xFF202024).copy(alpha = 0.46f)
+        val glass = if (light) Color(0xFFF8F8FA).copy(alpha = 0.86f)
+        else Color(0xFF161618).copy(alpha = 0.82f)
+        val headerSurface = glass
         val text = Color(context.getColor(R.color.text_primary))
         val frameNanos = remember { mutableLongStateOf(0L) }
-        val backdrop = rememberCanvasBackdrop {
-            drawRect(
-                Brush.linearGradient(
-                    if (light) {
-                        listOf(Color(0xFFF7F9FC), Color(0xFFE4E7ED), Color(0xFFFFFBF5))
-                    } else {
-                        listOf(Color(0xFF20242B), Color(0xFF090A0D), Color(0xFF282229))
+        val backdrop = rememberLayerBackdrop()
+        val headerLocation = remember { IntArray(2) }
+        val sourceLocation = remember { IntArray(2) }
+        val sourceView = backdropViewState
+
+        LaunchedEffect(renderingEnabledState, sourceView) {
+            while (renderingEnabledState && sourceView != null) {
+                withFrameNanos { frameNanos.longValue = it }
+            }
+        }
+
+        Box(Modifier.fillMaxWidth()) {
+            Canvas(Modifier.matchParentSize().layerBackdrop(backdrop)) {
+                frameNanos.longValue
+                if (sourceView != null && sourceView.isAttachedToWindow) {
+                    this@SettingsGlassBackHeaderView.getLocationInWindow(headerLocation)
+                    sourceView.getLocationInWindow(sourceLocation)
+                    drawIntoCanvas { canvas ->
+                        val nativeCanvas = canvas.nativeCanvas
+                        val saveCount = nativeCanvas.save()
+                        nativeCanvas.translate(
+                            (sourceLocation[0] - headerLocation[0]).toFloat(),
+                            (sourceLocation[1] - headerLocation[1]).toFloat()
+                        )
+                        sourceView.draw(nativeCanvas)
+                        nativeCanvas.restoreToCount(saveCount)
                     }
-                )
+                }
+            }
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .drawPlainBackdrop(
+                        backdrop = backdrop,
+                        shape = { RoundedRectangle(0.dp) },
+                        effects = {
+                            vibrancy()
+                            blur(8.dp.toPx())
+                            lens(24.dp.toPx(), 24.dp.toPx())
+                        },
+                        onDrawBehind = { frameNanos.longValue },
+                        onDrawSurface = { drawRect(headerSurface) }
+                    )
             )
-        }
-
-        LaunchedEffect(Unit) {
-            while (true) withFrameNanos { frameNanos.longValue = it }
-        }
-
-        Box(Modifier.fillMaxSize().background(background)) {
             Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 10.dp),
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .height(64.dp)
+                    .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LiquidButton(
@@ -116,13 +147,13 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
                     frameNanos = frameNanos,
                     surfaceColor = glass,
                     dragResponse = 0.42f,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(42.dp)
                 ) {
                     Image(
                         painter = painterResource(R.drawable.ic_back),
                         contentDescription = stringResource(R.string.back),
                         colorFilter = ColorFilter.tint(text),
-                        modifier = Modifier.size(19.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 

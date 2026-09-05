@@ -127,7 +127,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     private void applyContainerPadding() {
         if (mBinding == null) return;
         boolean navVisible = mBinding.navigation.getVisibility() == View.VISIBLE || mBinding.glassNavigation.getVisibility() == View.VISIBLE;
-        mBinding.container.setPadding(0, mTopInset, 0, navVisible ? 0 : mBottomInset);
+        // 设置页自己的顶部组件会读取状态栏安全区域，让背景真正延伸到系统栏下方。
+        // 其他首页页面仍由容器统一避让，避免改变现有布局。
+        int top = currentPosition == 1 ? 0 : mTopInset;
+        mBinding.container.setPadding(0, top, 0, navVisible ? 0 : mBottomInset);
     }
 
     @Override
@@ -220,6 +223,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     public void change(int position) {
+        if (position != 0) {
+            VodFragment fragment = getVodFragment();
+            if (fragment != null) fragment.dismissFilterPanel();
+        }
         currentPosition = position;
         setSettingsChrome(position == 1);
         mManager.change(position);
@@ -244,6 +251,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
             getWindow().setStatusBarContrastEnforced(false);
         }
         mBinding.getRoot().setBackgroundColor(getColor(R.color.screen_background));
+        applyContainerPadding();
     }
 
     public void setBottomNavigationVisible(boolean visible) {

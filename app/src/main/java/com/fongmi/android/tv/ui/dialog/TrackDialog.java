@@ -107,13 +107,23 @@ public final class TrackDialog extends BaseDialog implements TrackAdapter.OnClic
 
     private void addTrack(List<Track> items) {
         List<Tracks.Group> groups = player.get().getCurrentTracks().getGroups();
+        Track savedVideo = type == C.TRACK_TYPE_VIDEO ? getSavedTrack() : null;
+        boolean savedVideoValid = isTrackAvailable(groups, savedVideo);
+        if (type == C.TRACK_TYPE_VIDEO) {
+            Track auto = new Track(type, getString(R.string.track_auto));
+            auto.setGroup(-1);
+            auto.setTrack(-1);
+            auto.setSelected(!savedVideoValid);
+            items.add(auto);
+        }
         for (int i = 0; i < groups.size(); i++) {
             Tracks.Group trackGroup = groups.get(i);
             if (trackGroup.getType() != type) continue;
             for (int j = 0; j < trackGroup.length; j++) {
+                if (!trackGroup.isTrackSupported(j)) continue;
                 Track item = new Track(type, provider.getTrackName(trackGroup.getTrackFormat(j)));
                 item.setAdaptive(trackGroup.isAdaptiveSupported());
-                item.setSelected(trackGroup.isTrackSelected(j));
+                item.setSelected(type == C.TRACK_TYPE_VIDEO ? savedVideoValid && savedVideo.getGroup() == i && savedVideo.getTrack() == j : trackGroup.isTrackSelected(j));
                 item.setGroup(i);
                 item.setTrack(j);
                 items.add(item);
@@ -123,9 +133,26 @@ public final class TrackDialog extends BaseDialog implements TrackAdapter.OnClic
 
     @Override
     public void onItemClick(Track item) {
+        if (item.isAuto()) {
+            Track.delete(player.getKey(), type);
+            player.resetTrack(type);
+            dismiss();
+            return;
+        }
         player.setTrack(Arrays.asList(item.key(player.getKey()).save()));
-        if (item.isAdaptive()) return;
+        if (item.isAdaptive() && type != C.TRACK_TYPE_VIDEO) return;
         dismiss();
+    }
+
+    private Track getSavedTrack() {
+        for (Track item : Track.find(player.getKey())) if (item.getType() == type && item.isSelected()) return item;
+        return null;
+    }
+
+    private boolean isTrackAvailable(List<Tracks.Group> groups, Track item) {
+        if (item == null || item.getGroup() < 0 || item.getGroup() >= groups.size()) return false;
+        Tracks.Group group = groups.get(item.getGroup());
+        return group.getType() == type && item.getTrack() >= 0 && item.getTrack() < group.length && group.isTrackSupported(item.getTrack());
     }
 
     @Override

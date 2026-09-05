@@ -1763,6 +1763,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.handleLand.setVisibility(View.GONE);
         mBinding.detailBack.setVisibility(View.GONE);
         setRotate(portrait, true);
+        applyPortraitViewingOffset(portrait);
         mPlayers.setDanmakuSize(1.0f);
         Util.hideSystemUI(this);
         mKeyDown.resetScale();
@@ -1772,6 +1773,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void exitFullscreen() {
         if (!isFullscreen()) return;
+        applyPortraitViewingOffset(false);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
         App.post(() -> mBinding.episode.scrollToPosition(mEpisodeAdapter.getPosition()), 50);
         mBinding.control.full.setVisibility(View.VISIBLE);
@@ -1864,8 +1866,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         updateTimeBattery();
         setR1Callback();
         checkPlayImg();
-        // 控制栏一露面就把预览播放器热起来，等真按到进度条时首帧已经解好了
-        if (!isCasting()) mPreview.prepare(mPlayers.getPosition());
+        // 起播和弱网阶段优先给主画面。已有 15 秒余量时再预热；否则第一次拖动仍会
+        // 现场创建预览播放器，功能不会消失。
+        if (!isCasting() && mPlayers.getBuffered() - mPlayers.getPosition() >= 15000) mPreview.prepare(mPlayers.getPosition());
     }
 
     /**
@@ -2113,6 +2116,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 else setPosition();
                 break;
             case Player.STATE_BUFFERING:
+                mPreview.suspend();
                 showProgress();
                 break;
             case Player.STATE_READY:
@@ -2121,14 +2125,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 // 换集时 onReset 会暂停时钟；同轨媒体不一定再次派发 TRACK，
                 // READY 时恢复采样，确保当前集和进度持续写入观看记录。
                 mClock.setCallback(this);
-                // 必须先把真实地址交给预览播放器，再让 showControl 触发预热。
-                // 原顺序先 prepare、后 setSource，首次 prepare 会因 item 为空直接返回。
-                if (!isCasting()) {
-                    mPreview.setSource(mPlayers.getUrl(), mPlayers.getPreviewItem());
-                    // 预热不能依赖控制栏此刻是否可见：网络较慢时主播放器 READY 前控制栏
-                    // 可能已经自动收起，checkControl 不会进 showControl，第一拖就只能现场加载。
-                    mPreview.prepare(mPlayers.getPosition());
-                }
+                // 先登记片源；预热由 showControl 根据主播放器的缓冲余量决定。
+                if (!isCasting()) mPreview.setSource(mPlayers.getUrl(), mPlayers.getPreviewItem());
                 hideProgress();
                 checkControl();
                 checkPlayImg();
@@ -2208,7 +2206,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void onError(ErrorEvent event) {
         mBinding.swipeLayout.setEnabled(true);
-        Track.delete(mPlayers.getUrl());
+        // 轨道偏好保存时使用的是影片历史 key，而不是解析后的临时播放地址。
+        // 删除地址 key 会让不可用的清晰度偏好一直残留，重试后仍然重复应用。
+        Track.delete(mPlayers.getKey());
         showError(event.getMsg());
         mClock.setCallback(null);
         mPlayers.resetTrack();
@@ -2358,6 +2358,22 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void setFullscreen(boolean fullscreen) {
         Util.toggleFullscreen(this, this.fullscreen = fullscreen);
+    }
+
+    /**
+     * 竖屏全屏的几何中心在纵长屏幕上看起来略偏下。
+     * 画面、播放按钮和居中反馈使用同一偏移，横屏及退出全屏时恢复原位。
+     */
+    private void applyPortraitViewingOffset(boolean portraitFull) {
+        int heightDp = getResources().getConfiguration().screenHeightDp;
+        int offsetDp = Math.max(16, Math.min(24, Math.round(heightDp * 0.02f)));
+        float offset = portraitFull ? -ResUtil.dp2px(offsetDp) : 0f;
+        mBinding.playerSurface.setTranslationY(offset);
+        mBinding.control.center.setTranslationY(offset);
+        mBinding.widget.error.setTranslationY(offset);
+        mBinding.widget.progress.setTranslationY(offset);
+        mBinding.widget.seek.setTranslationY(offset);
+        mBinding.widget.gestureFeedback.setTranslationY(offset);
     }
 
     private boolean isInitAuto() {
@@ -2941,6 +2957,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, @NonNull Configuration newConfig) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
         if (!isFullscreen()) setVideoView(isInPictureInPictureMode);
+        applyPortraitViewingOffset(!isInPictureInPictureMode && isFullscreen() && newConfig.orientation == Configuration.ORIENTATION_PORTRAIT);
         if (isInPictureInPictureMode) {
             hideControl();
             hideDanmaku();
@@ -2959,6 +2976,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         super.onConfigurationChanged(newConfig);
         if (!isFullscreen()) applyOrientation();
         if (isFullscreen()) Util.hideSystemUI(this);
+        applyPortraitViewingOffset(isFullscreen() && newConfig.orientation == Configuration.ORIENTATION_PORTRAIT && !mPiP.isInMode(this));
         // 转屏后动作条要按新方向重算，否则一直停在进入时那一套
         if (isVisible(mBinding.control.getRoot())) showControl();
         else setActionVisible();
