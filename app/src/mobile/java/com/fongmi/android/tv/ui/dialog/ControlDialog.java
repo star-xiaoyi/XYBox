@@ -95,10 +95,8 @@ public class ControlDialog extends BaseDialog implements ParseAdapter.OnClickLis
     protected void initView() {
         if (player == null) dismiss();
         if (player == null) return;
-        binding.decode.setText(parent.control.action.decode.getText());
         binding.ending.setText(parent.control.action.ending.getText());
         binding.opening.setText(parent.control.action.opening.getText());
-        binding.loop.setActivated(parent.control.action.loop.isActivated());
         binding.timer.setActivated(Timer.get().isRunning());
         
         // 设置定时器回调并更新按钮文字
@@ -125,8 +123,6 @@ public class ControlDialog extends BaseDialog implements ParseAdapter.OnClickLis
         binding.video.setOnClickListener(v -> dismiss(parent.control.action.video));
         binding.player.setOnClickListener(v -> dismiss(parent.control.action.player));
         binding.danmaku.setOnClickListener(v -> dismiss(parent.control.action.danmaku));
-        binding.loop.setOnClickListener(v -> active(binding.loop, parent.control.action.loop));
-        binding.decode.setOnClickListener(v -> click(binding.decode, parent.control.action.decode));
         binding.ending.setOnClickListener(v -> click(binding.ending, parent.control.action.ending));
         binding.opening.setOnClickListener(v -> click(binding.opening, parent.control.action.opening));
         binding.player.setOnLongClickListener(v -> longClick(binding.player, parent.control.action.player));
@@ -167,11 +163,6 @@ public class ControlDialog extends BaseDialog implements ParseAdapter.OnClickLis
         view.setActivated(true);
     }
 
-    private void active(View view, TextView target) {
-        target.performClick();
-        view.setActivated(target.isActivated());
-    }
-
     private void click(TextView view, TextView target) {
         target.performClick();
         view.setText(target.getText());
@@ -195,7 +186,6 @@ public class ControlDialog extends BaseDialog implements ParseAdapter.OnClickLis
     public void setPlayer() {
         binding.speed.setValue(Math.max(player.getSpeed(), 0.5f));
         binding.player.setText(parent.control.action.player.getText());
-        binding.decode.setVisibility(parent.control.action.decode.getVisibility());
         binding.danmaku.setVisibility(parent.control.action.danmaku.getVisibility());
         // 初始化倍速数值显示
         binding.speedValue.setText(String.format("%.1fx", Math.max(player.getSpeed(), 0.5f)));

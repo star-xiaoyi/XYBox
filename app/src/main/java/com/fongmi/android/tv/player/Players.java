@@ -2,6 +2,7 @@ package com.fongmi.android.tv.player;
 import com.github.catvod.utils.Logger;
 
 import static androidx.media3.common.Player.COMMAND_SET_SPEED_AND_PITCH;
+import static androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF;
 import static androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON;
 import static androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER;
 
@@ -123,29 +124,23 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     public void init(PlayerView view) {
+        // 设置页和直播的长按菜单都会直接写入首选项；每次重建时重新读取，
+        // 避免 Players 构造时缓存的旧值继续支配后续播放。
+        decode = Setting.getDecode();
         releasePlayer();
         setPlayer(view);
         setMediaItem();
     }
 
     private void setPlayer(PlayerView view) {
-        int playerEngine = Setting.getPlayerEngine();
-
-        // 根据播放器引擎选择不同的播放器
-        if (playerEngine == Players.MPV) {
-            // MPV播放器 - 暂时使用ExoPlayer作为后备，等集成MPV后替换
-            initExoPlayer(view, decode);
-        } else {
-            // ExoPlayer播放器 (软解/硬解/自动)
-            initExoPlayer(view, decode);
-        }
+        initExoPlayer(view, decode);
     }
 
     private void initExoPlayer(PlayerView view, int decodeMode) {
         int renderMode;
         if (decodeMode == HARD) {
-            // 系统解码器优先，并保留 FFmpeg 作为设备不支持该音视频格式时的兜底。
-            renderMode = EXTENSION_RENDERER_MODE_ON;
+            // 只注册系统 MediaCodec，确保“硬解”不会静默落到 FFmpeg。
+            renderMode = EXTENSION_RENDERER_MODE_OFF;
         } else if (decodeMode == SOFT) {
             // FFmpeg 扩展排在系统解码器前面。
             renderMode = EXTENSION_RENDERER_MODE_PREFER;
@@ -769,7 +764,9 @@ public class Players implements Player.Listener, ParseCallback {
             case PlaybackException.ERROR_CODE_DECODER_INIT_FAILED:
             case PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED:
             case PlaybackException.ERROR_CODE_DECODING_FAILED:
-                toggleDecode();
+                // RenderersFactory 已负责当前模式内的解码器兜底。这里再循环切换会把一次
+                // 播放故障永久写成“软解”，导致用户选择的硬解/自动随后全部失效。
+                ErrorEvent.extract(tag, friendlyMsg);
                 break;
             case PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED:
             case PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED:

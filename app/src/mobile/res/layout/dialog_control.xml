@@ -178,16 +178,6 @@
                 tools:text="EXO" />
 
             <TextView
-                android:id="@+id/decode"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:background="@drawable/selector_dialog_button_bg"
-                android:textColor="@color/dialog_button_text"
-                android:textSize="14sp"
-                tools:text="硬解" />
-
-            <TextView
                 android:id="@+id/opening"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -293,16 +283,6 @@
             android:textSize="14sp"
             android:visibility="gone"
             tools:visibility="visible" />
-
-        <TextView
-            android:id="@+id/loop"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:background="@drawable/selector_dialog_button_bg"
-            android:text="@string/play_loop"
-            android:textColor="@color/dialog_button_text"
-            android:textSize="14sp" />
 
         <TextView
             android:id="@+id/timer"
