@@ -303,6 +303,8 @@ public class History {
     /** 播放进度更新：本地照常落库，云端按节流上传。 */
     public void updateProgress() {
         try {
+            // createTime 同时用于历史排序和 WebDAV 冲突比较；每次有效进度都要刷新。
+            setCreateTime(System.currentTimeMillis());
             merge(find(), false);
             save(true);
         } catch (Exception e) {

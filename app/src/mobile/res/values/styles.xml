@@ -181,9 +181,33 @@
     </style>
 
     <style name="SettingsSectionTitle" parent="TextAppearance.Material3.LabelLarge">
-        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="android:textColor">@color/text_secondary</item>
         <item name="android:textSize">13sp</item>
         <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="SettingsPageTitle" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">28sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="SettingsSectionHeader" parent="SettingsSectionTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <style name="SettingsRowIcon">
+        <item name="android:layout_width">24dp</item>
+        <item name="android:layout_height">24dp</item>
+        <item name="android:layout_marginEnd">16dp</item>
+        <item name="android:contentDescription">@null</item>
+        <item name="android:importantForAccessibility">no</item>
+        <item name="android:tint">@color/text_secondary</item>
     </style>
 
     <style name="SettingsCard">
@@ -192,6 +216,7 @@
         <item name="android:background">@drawable/shape_settings_card</item>
         <item name="android:orientation">vertical</item>
         <item name="android:clipToOutline">true</item>
+        <item name="android:layout_marginBottom">12dp</item>
     </style>
 
     <style name="SettingsRow">

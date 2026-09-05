@@ -151,6 +151,10 @@
             android:screenOrientation="fullUser" />
 
         <activity
+            android:name=".ui.activity.LiquidGlassShowcaseActivity"
+            android:screenOrientation="fullUser" />
+
+        <activity
             android:name=".ui.activity.VideoActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|uiMode|orientation"
             android:launchMode="singleTop"

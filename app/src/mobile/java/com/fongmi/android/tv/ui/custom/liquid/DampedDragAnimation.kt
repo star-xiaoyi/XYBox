@@ -52,6 +52,7 @@ internal class DampedDragAnimation(
 
     val modifier: Modifier = Modifier.pointerInput(Unit) {
         inspectDragGestures(
+            consumeDragChanges = true,
             onDragStart = { down ->
                 onDragStarted(down.position)
                 press()
