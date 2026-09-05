@@ -3,8 +3,12 @@ package com.fongmi.android.tv.ui.activity;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.View;
 
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
@@ -27,6 +31,13 @@ public class SettingLaboratoryActivity extends BaseActivity {
 
     @Override
     protected void initView(Bundle savedInstanceState) {
+        int headerOffset = Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 72, getResources().getDisplayMetrics()));
+        ViewCompat.setOnApplyWindowInsetsListener(mBinding.getRoot(), (view, insets) -> {
+            Insets statusBars = insets.getInsets(WindowInsetsCompat.Type.statusBars());
+            mBinding.content.setPadding(0, statusBars.top + headerOffset, 0, 0);
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(mBinding.getRoot());
         mBinding.header.setTitle(getString(R.string.setting_laboratory));
         mBinding.header.setBackdropView(mBinding.content);
         mBinding.header.setRenderingEnabled(true);

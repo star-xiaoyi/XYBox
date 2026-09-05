@@ -542,10 +542,13 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         HomeActivity activity = getActivity() instanceof HomeActivity ? (HomeActivity) getActivity() : null;
         boolean glass = activity != null && activity.isGlassNavigationEnabled();
         if (glass) {
+            int action = mBinding.filterPanel.isPanelVisible()
+                    ? LiquidGlassNavigationView.ACTION_CLOSE
+                    : mContextAction;
             mBinding.top.setVisibility(View.GONE);
             mBinding.link.setVisibility(View.GONE);
             mBinding.filter.setVisibility(View.GONE);
-            activity.setGlassAction(mContextAction, mContextAction != LiquidGlassNavigationView.ACTION_NONE);
+            activity.setGlassAction(action, action != LiquidGlassNavigationView.ACTION_NONE);
             return;
         }
         if (activity != null) activity.setGlassAction(LiquidGlassNavigationView.ACTION_NONE, false);
@@ -560,10 +563,18 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     public void syncGlassAction() {
         HomeActivity activity = getActivity() instanceof HomeActivity ? (HomeActivity) getActivity() : null;
-        if (activity != null) activity.setGlassAction(mContextAction, mContextAction != LiquidGlassNavigationView.ACTION_NONE);
+        if (activity == null || mBinding == null) return;
+        int action = mBinding.filterPanel.isPanelVisible()
+                ? LiquidGlassNavigationView.ACTION_CLOSE
+                : mContextAction;
+        activity.setGlassAction(action, action != LiquidGlassNavigationView.ACTION_NONE);
     }
 
     public void performGlassAction() {
+        if (mBinding.filterPanel.isPanelVisible()) {
+            mBinding.filterPanel.dismiss();
+            return;
+        }
         if (mContextAction == LiquidGlassNavigationView.ACTION_FILTER) onFilter(mBinding.filter);
         else if (mContextAction == LiquidGlassNavigationView.ACTION_LINK) onLink(mBinding.link);
         else if (mContextAction == LiquidGlassNavigationView.ACTION_TOP) onTop(mBinding.top);
@@ -625,8 +636,15 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void onFilterPanelVisibilityChanged(boolean visible) {
+        renderContextAction();
         if (getActivity() instanceof HomeActivity) {
             ((HomeActivity) getActivity()).setFilterOverlayVisible(visible);
+        }
+    }
+
+    public void dismissFilterPanel() {
+        if (mBinding != null && mBinding.filterPanel.isPanelVisible()) {
+            mBinding.filterPanel.dismiss();
         }
     }
 

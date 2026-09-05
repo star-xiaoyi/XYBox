@@ -4,8 +4,7 @@
     android:layout_height="match_parent"
     android:background="@color/screen_background"
     android:clipChildren="false"
-    android:clipToPadding="false"
-    android:fitsSystemWindows="true">
+    android:clipToPadding="false">
 
     <com.fongmi.android.tv.ui.custom.LiquidGlassShowcaseView
         android:id="@+id/content"
@@ -15,7 +14,7 @@
     <com.fongmi.android.tv.ui.custom.SettingsGlassBackHeaderView
         android:id="@+id/header"
         android:layout_width="match_parent"
-        android:layout_height="90dp"
+        android:layout_height="wrap_content"
         android:elevation="0dp"
         android:outlineProvider="none" />
 

@@ -5,6 +5,7 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
+import androidx.media3.common.C;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.bean.Track;
@@ -69,8 +70,16 @@ public class TrackAdapter extends RecyclerView.Adapter<TrackAdapter.ViewHolder> 
 
         @Override
         public void onClick(View view) {
-            Track item = mItems.get(getLayoutPosition()).toggle();
-            notifyItemChanged(getLayoutPosition());
+            int position = getLayoutPosition();
+            if (position == RecyclerView.NO_POSITION) return;
+            Track item = mItems.get(position);
+            if (item.getType() == C.TRACK_TYPE_VIDEO) {
+                for (int i = 0; i < mItems.size(); i++) mItems.get(i).setSelected(i == position);
+                notifyDataSetChanged();
+            } else {
+                item.toggle();
+                notifyItemChanged(position);
+            }
             mListener.onItemClick(item);
         }
     }

@@ -15,6 +15,11 @@
         android:clickable="true"
         android:focusable="true">
 
+        <FrameLayout
+            android:id="@+id/playerSurface"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
         <androidx.media3.ui.PlayerView
             android:id="@+id/exo"
             style="@style/Player.Vod"
@@ -91,6 +96,8 @@
                 android:textSize="13sp" />
 
         </LinearLayout>
+
+        </FrameLayout>
 
         <include
             android:id="@+id/widget"

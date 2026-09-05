@@ -54,7 +54,8 @@
     <string name="play_reverse">Reverse</string>
     <string name="play_track_text">Text</string>
     <string name="play_track_audio">Audio</string>
-    <string name="play_track_video">Video</string>
+    <string name="play_track_video">Quality</string>
+    <string name="track_auto">Automatic (recommended)</string>
     <string name="play_forward_hint">Normal play switched</string>
     <string name="play_backward_hint">Reverse play switched</string>
     <string name="play_now">Playing: <xliff:g name="name">%s</xliff:g></string>
@@ -324,7 +325,7 @@
 
     <string-array name="select_track">
         <item>Select audio track</item>
-        <item>Select video track</item>
+        <item>Select quality</item>
         <item>Select subtitle track</item>
     </string-array>
 

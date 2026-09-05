@@ -144,11 +144,14 @@ public class Players implements Player.Listener, ParseCallback {
     private void initExoPlayer(PlayerView view, int decodeMode) {
         int renderMode;
         if (decodeMode == HARD) {
-            renderMode = EXTENSION_RENDERER_MODE_ON; // 强制硬解
+            // 系统解码器优先，并保留 FFmpeg 作为设备不支持该音视频格式时的兜底。
+            renderMode = EXTENSION_RENDERER_MODE_ON;
         } else if (decodeMode == SOFT) {
-            renderMode = EXTENSION_RENDERER_MODE_PREFER; // 强制软解
+            // FFmpeg 扩展排在系统解码器前面。
+            renderMode = EXTENSION_RENDERER_MODE_PREFER;
         } else {
-            renderMode = androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF; // 自动选择
+            // 系统解码器优先，系统不支持时允许 FFmpeg 扩展接手。
+            renderMode = EXTENSION_RENDERER_MODE_ON;
         }
 
         exoPlayer = new ExoPlayer.Builder(App.get())
@@ -572,13 +575,18 @@ public class Players implements Player.Listener, ParseCallback {
         if (exoPlayer != null) ExoUtil.resetTrack(exoPlayer);
     }
 
+    public void resetTrack(int type) {
+        if (exoPlayer != null) ExoUtil.resetTrack(exoPlayer, type);
+    }
+
     public void setTrack(List<Track> tracks) {
         for (Track track : tracks) setTrack(track);
     }
 
     private void setTrack(Track item) {
         if (item.isSelected()) {
-            ExoUtil.selectTrack(exoPlayer, item.getGroup(), item.getTrack());
+            if (item.getType() == C.TRACK_TYPE_VIDEO) ExoUtil.selectVideoQuality(exoPlayer, item.getGroup(), item.getTrack());
+            else ExoUtil.selectTrack(exoPlayer, item.getGroup(), item.getTrack());
         } else {
             ExoUtil.deselectTrack(exoPlayer, item.getGroup(), item.getTrack());
         }
@@ -763,12 +771,13 @@ public class Players implements Player.Listener, ParseCallback {
             case PlaybackException.ERROR_CODE_DECODING_FAILED:
                 toggleDecode();
                 break;
-            case PlaybackException.ERROR_CODE_IO_UNSPECIFIED:
             case PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED:
-            case PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED:
             case PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED:
-            case PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED:
-                setFormat(ExoUtil.getMimeType(error.errorCode));
+                {
+                    String fallbackMimeType = ExoUtil.getMimeType(error.errorCode);
+                    if (fallbackMimeType == null || ExoUtil.isMimeType(format, fallbackMimeType)) ErrorEvent.extract(tag, friendlyMsg);
+                    else setFormat(fallbackMimeType);
+                }
                 break;
             default:
                 ErrorEvent.extract(tag, friendlyMsg);

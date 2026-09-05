@@ -54,7 +54,8 @@
     <string name="play_reverse">倒序</string>
     <string name="play_track_text">字幕</string>
     <string name="play_track_audio">音軌</string>
-    <string name="play_track_video">視軌</string>
+    <string name="play_track_video">清晰度</string>
+    <string name="track_auto">自動（推薦）</string>
     <string name="play_forward_hint">已切換正序播放</string>
     <string name="play_backward_hint">已切換倒序播放</string>
     <string name="play_now">正在播放：<xliff:g name="name">%s</xliff:g></string>
@@ -237,7 +238,7 @@
 
     <string-array name="select_track">
         <item>選擇音軌</item>
-        <item>選擇視軌</item>
+        <item>選擇清晰度</item>
         <item>選擇字幕</item>
     </string-array>
 

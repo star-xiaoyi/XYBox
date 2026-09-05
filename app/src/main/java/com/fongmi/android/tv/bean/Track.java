@@ -90,6 +90,10 @@ public class Track {
         return adaptive;
     }
 
+    public boolean isAuto() {
+        return group < 0 && track < 0;
+    }
+
     public void setAdaptive(boolean adaptive) {
         this.adaptive = adaptive;
     }
@@ -117,5 +121,10 @@ public class Track {
     public static void delete(String key) {
         if (TextUtils.isEmpty(key)) return;
         AppDatabase.get().getTrackDao().delete(key);
+    }
+
+    public static void delete(String key, int type) {
+        if (TextUtils.isEmpty(key)) return;
+        AppDatabase.get().getTrackDao().delete(key, type);
     }
 }
