@@ -574,12 +574,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.action.text.setOnClickListener(this::onTrack);
         mBinding.control.action.audio.setOnClickListener(this::onTrack);
         mBinding.control.action.video.setOnClickListener(this::onTrack);
-        mBinding.control.action.loop.setOnClickListener(view -> onLoop());
         mBinding.control.action.scale.setOnClickListener(view -> onScale());
         mBinding.control.action.speed.setOnClickListener(view -> onSpeed());
         mBinding.control.action.reset.setOnClickListener(view -> onReset());
         mBinding.control.action.player.setOnClickListener(view -> onChoose());
-        mBinding.control.action.decode.setOnClickListener(view -> onDecode());
         mBinding.control.action.ending.setOnClickListener(view -> onEnding());
         mBinding.control.action.opening.setOnClickListener(view -> onOpening());
         mBinding.control.action.danmaku.setOnClickListener(view -> onDanmaku());
@@ -629,7 +627,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mPlayers.setDanmakuView(mBinding.danmaku);
         mPlayers.setTag(tag = UUID.randomUUID().toString());
         applyOrientation();
-        mBinding.control.action.decode.setText(mPlayers.getDecodeText());
         mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
         mBinding.video.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> mPiP.update(getActivity(), view));
     }
@@ -640,10 +637,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         } else {
             mBinding.video.setLayoutParams(mFrameParams);
         }
-    }
-
-    private void setDecode() {
-        mBinding.control.action.decode.setText(mPlayers.getDecodeText());
     }
 
     private void setScale(int scale) {
@@ -985,8 +978,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void setEpisodeAdapter(List<Episode> items) {
         mBinding.control.action.episodes.setVisibility(items.size() < 2 ? View.GONE : View.VISIBLE);
-        mBinding.control.nextRoot.setVisibility(items.size() < 2 ? View.GONE : View.VISIBLE);
-        mBinding.control.prevRoot.setVisibility(items.size() < 2 ? View.GONE : View.VISIBLE);
+        mBinding.control.next.setVisibility(items.size() < 2 ? View.GONE : View.VISIBLE);
+        mBinding.control.prev.setVisibility(items.size() < 2 ? View.GONE : View.VISIBLE);
         mBinding.episode.setVisibility(items.size() == 0 ? View.GONE : View.VISIBLE);
         mBinding.reverse.setVisibility(items.size() < 2 ? View.GONE : View.VISIBLE);
         mBinding.more.setVisibility(items.size() < 10 ? View.GONE : View.VISIBLE);
@@ -1618,10 +1611,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         showDanmaku();
     }
 
-    private void onLoop() {
-        mBinding.control.action.loop.setActivated(!mBinding.control.action.loop.isActivated());
-    }
-
     private void onScale() {
         int index = getScale();
         String[] array = ResUtil.getStringArray(R.array.select_scale);
@@ -1666,12 +1655,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         Setting.putReset(Math.abs(Setting.getReset() - 1));
         mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
         return true;
-    }
-
-    private void onDecode() {
-        mPlayers.toggleDecode();
-        setR1Callback();
-        setDecode();
     }
 
     private void onEnding() {
@@ -1857,7 +1840,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.size.setVisibility(portraitFull ? View.GONE : View.VISIBLE);
         setTimeSlot(portraitFull);
         setActionVisible();
-        mBinding.control.center.setVisibility(isLock() ? View.GONE : View.VISIBLE);
+        mBinding.control.center.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.bottom.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.top.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.getRoot().setVisibility(View.VISIBLE);
@@ -1892,14 +1875,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     /**
-     * 全屏动作条：内核选择和弹幕开关一律不出；竖屏全屏再收掉解码、轨道和选集，
-     * 只留自动、倍速、原始、刷新、片头、片尾。
+     * 全屏动作条：内核选择、解码选择和弹幕开关一律不出；竖屏全屏再收掉轨道，
+     * 只留原始、倍速、自动、刷新、片头、片尾。
      */
     private void setActionVisible() {
         boolean land = isLand();
         mBinding.control.action.player.setVisibility(View.GONE);
         mBinding.control.action.danmaku.setVisibility(View.GONE);
-        mBinding.control.action.decode.setVisibility(land ? View.VISIBLE : View.GONE);
         mBinding.control.action.exit.setVisibility(land && isFullscreen() ? View.VISIBLE : View.GONE);
         // 选集横竖屏都保留，只要不止一集
         mBinding.control.action.episodes.setVisibility(mEpisodeAdapter.getItemCount() < 2 ? View.GONE : View.VISIBLE);
@@ -2108,7 +2090,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 // 第一次播放时服务尚未创建，不会提前出现空通知；切集或换源时则保留现有通知，
                 // 避免 PREPARE 到 READY 之间通知被撤掉又重新出现。转为投屏后本地通知才需要停止。
                 if (isCasting()) PlaybackService.stop();
-                setDecode();
                 // 换片源了，上一集锁定的倍速不该带过来
                 mKeyDown.unlockSpeed();
                 // 投屏中：本地只负责把真实地址解析出来，解析完立刻推给电视并停掉本地解码
@@ -2173,14 +2154,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void checkEnded(boolean notify) {
-        if (mBinding.control.action.loop.isActivated()) {
-            onReset(true);
-        } else {
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            checkNext(notify);
-            checkPlayImg();
-            flushProgress();
-        }
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        checkNext(notify);
+        checkPlayImg();
+        flushProgress();
     }
 
     private void setTrackVisible() {
@@ -2362,14 +2339,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /**
      * 竖屏全屏的几何中心在纵长屏幕上看起来略偏下。
-     * 画面、播放按钮和居中反馈使用同一偏移，横屏及退出全屏时恢复原位。
+     * 画面和居中反馈使用同一偏移，横屏及退出全屏时恢复原位。
      */
     private void applyPortraitViewingOffset(boolean portraitFull) {
         int heightDp = getResources().getConfiguration().screenHeightDp;
         int offsetDp = Math.max(16, Math.min(24, Math.round(heightDp * 0.02f)));
         float offset = portraitFull ? -ResUtil.dp2px(offsetDp) : 0f;
         mBinding.playerSurface.setTranslationY(offset);
-        mBinding.control.center.setTranslationY(offset);
         mBinding.widget.error.setTranslationY(offset);
         mBinding.widget.progress.setTranslationY(offset);
         mBinding.widget.seek.setTranslationY(offset);
@@ -2705,8 +2681,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.widget.time.setText(isCasting() ? castPositionTime(time) : mPlayers.getPositionTime(time));
         mBinding.widget.seek.setVisibility(View.VISIBLE);
         setSeekDuration();
-        // 胶囊在屏幕正中，播放和上下集三个按钮正好压在它上面，滑动期间先收掉
-        if (mKeyDown.isSeeking()) mBinding.control.center.setVisibility(View.GONE);
         hideProgress();
     }
 
@@ -2725,8 +2699,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void hideSeek() {
         mBinding.widget.seek.setVisibility(View.GONE);
         mBinding.widget.duration.setVisibility(View.GONE);
-        // 只在控制层还开着时才把按钮放回来，否则会在已隐藏的控制层上凭空亮出三个按钮
-        if (isVisible(mBinding.control.getRoot()) && !isLock()) mBinding.control.center.setVisibility(View.VISIBLE);
     }
 
     // ---------- 拖动进度条的画面预览 ----------

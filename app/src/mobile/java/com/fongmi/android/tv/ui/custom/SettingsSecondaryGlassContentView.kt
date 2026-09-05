@@ -98,7 +98,7 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
 
     private data class PlayerState(
         val render: Int = 0,
-        val engine: Int = 0,
+        val decode: Int = 0,
         val scale: Int = 0,
         val buffer: Int = 1,
         val speed: Float = 3f,
@@ -128,7 +128,7 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
         val dohItems = VodConfig.get().doh
         state = PlayerState(
             render = Setting.getRender(),
-            engine = Setting.getPlayerEngine(),
+            decode = Setting.getDecode(),
             scale = Setting.getScale(),
             buffer = Setting.getBuffer(),
             speed = Setting.getSpeed(),
@@ -161,7 +161,7 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
                 if (index == 1 && state.tunnel) Setting.putTunnel(false)
                 state.copy(render = index, tunnel = if (index == 1) false else state.tunnel)
             }
-            ENGINE -> state.copy(engine = index).also { Setting.putPlayerEngine(index) }
+            DECODE -> state.copy(decode = index).also { Setting.putDecode(index) }
             SCALE -> state.copy(scale = index).also { Setting.putScale(index) }
             CAPTION -> state.copy(caption = index == 1).also { Setting.putCaption(index == 1) }
             DOH -> state.copy(dohIndex = index).also { networkSettingListener?.onDohSelected(index) }
@@ -191,7 +191,7 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
         val backdrop = rememberLayerBackdrop()
         val frameNanos = remember { mutableLongStateOf(0L) }
         val renderOptions = remember { ResUtil.getStringArray(R.array.select_render).toList() }
-        val engineOptions = remember { ResUtil.getStringArray(R.array.select_player_engine).toList() }
+        val decodeOptions = remember { ResUtil.getStringArray(R.array.select_decode).toList() }
         val scaleOptions = remember { ResUtil.getStringArray(R.array.select_scale).toList() }
         val captionOptions = remember { ResUtil.getStringArray(R.array.select_caption).toList() }
         LaunchedEffect(Unit) {
@@ -202,7 +202,7 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
             GlassGroup(palette) {
                 ChoiceSettingRow(RENDER, R.string.player_render, renderOptions, state.render, backdrop, palette)
                 SecondaryDivider(palette)
-                ChoiceSettingRow(ENGINE, R.string.player_engine, engineOptions, state.engine, backdrop, palette)
+                ChoiceSettingRow(DECODE, R.string.player_decode, decodeOptions, state.decode, backdrop, palette)
                 SecondaryDivider(palette)
                 ChoiceSettingRow(SCALE, R.string.player_scale, scaleOptions, state.scale, backdrop, palette)
             }
@@ -443,7 +443,7 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
 
     companion object {
         private const val RENDER = 1
-        private const val ENGINE = 2
+        private const val DECODE = 2
         private const val SCALE = 3
         private const val BUFFER = 4
         private const val SPEED = 5
