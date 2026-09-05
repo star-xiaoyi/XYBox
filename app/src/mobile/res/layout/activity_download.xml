@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -8,22 +9,22 @@
     android:orientation="vertical">
 
     <LinearLayout
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <ImageView
+        <com.fongmi.android.tv.ui.custom.LiquidGlassIconButtonView
             android:id="@+id/back"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginEnd="12dp"
-            android:background="@drawable/shape_icon_circle"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginEnd="4dp"
             android:contentDescription="@string/back"
-            android:padding="8dp"
-            android:src="@drawable/ic_back"
-            android:tint="@color/text_primary" />
+            app:glassIcon="@drawable/ic_back"
+            app:glassIconSize="20dp"
+            app:glassIconTint="@color/text_primary" />
 
         <TextView
             android:id="@+id/title"
@@ -35,26 +36,24 @@
             android:textSize="20sp"
             android:textStyle="bold" />
 
-        <ImageView
+        <com.fongmi.android.tv.ui.custom.LiquidGlassIconButtonView
             android:id="@+id/task"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginStart="12dp"
-            android:background="@drawable/shape_icon_circle"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="4dp"
             android:contentDescription="@string/download_tasks"
-            android:padding="8dp"
-            android:src="@drawable/ic_action_download_list"
-            android:tint="@color/text_primary" />
+            app:glassIcon="@drawable/ic_action_download_list"
+            app:glassIconSize="20dp"
+            app:glassIconTint="@color/text_primary" />
 
-        <ImageView
+        <com.fongmi.android.tv.ui.custom.LiquidGlassIconButtonView
             android:id="@+id/delete"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginStart="12dp"
-            android:background="@drawable/shape_icon_circle"
-            android:padding="8dp"
-            android:src="@drawable/ic_action_delete"
-            android:tint="@color/text_primary"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="4dp"
+            app:glassIcon="@drawable/ic_action_delete"
+            app:glassIconSize="20dp"
+            app:glassIconTint="@color/text_primary"
             android:visibility="gone"
             tools:visibility="visible" />
 

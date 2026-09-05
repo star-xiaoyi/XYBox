@@ -40,6 +40,12 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
 
     @Override
     protected void initView(Bundle savedInstanceState) {
+        mBinding.back.setBackdropView(mBinding.toolbar);
+        mBinding.sync.setBackdropView(mBinding.toolbar);
+        mBinding.delete.setBackdropView(mBinding.toolbar);
+        mBinding.back.setRenderingEnabled(true);
+        mBinding.sync.setRenderingEnabled(true);
+        mBinding.delete.setRenderingEnabled(true);
         setRecyclerView();
         getHistory();
     }

@@ -37,6 +37,11 @@ public class AboutDialog extends BaseDialog {
         binding.github.setOnClickListener(v -> openGitHub());
     }
 
+    @Override
+    protected boolean transparent() {
+        return true;
+    }
+
     private void openGitHub() {
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);

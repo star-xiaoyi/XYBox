@@ -1,23 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/screen_background"
     android:clipChildren="false"
     android:clipToPadding="false"
-    android:fitsSystemWindows="true"
-    android:orientation="vertical">
+    android:fitsSystemWindows="true">
+
+    <com.fongmi.android.tv.ui.custom.LiquidGlassShowcaseView
+        android:id="@+id/content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
     <com.fongmi.android.tv.ui.custom.SettingsGlassBackHeaderView
         android:id="@+id/header"
         android:layout_width="match_parent"
         android:layout_height="90dp"
-        android:elevation="16dp"
+        android:elevation="0dp"
         android:outlineProvider="none" />
 
-    <com.fongmi.android.tv.ui.custom.LiquidGlassShowcaseView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
-
-</LinearLayout>
+</FrameLayout>

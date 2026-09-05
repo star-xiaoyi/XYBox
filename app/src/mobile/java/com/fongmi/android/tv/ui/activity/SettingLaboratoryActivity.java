@@ -28,6 +28,8 @@ public class SettingLaboratoryActivity extends BaseActivity {
     @Override
     protected void initView(Bundle savedInstanceState) {
         mBinding.header.setTitle(getString(R.string.setting_laboratory));
+        mBinding.header.setBackdropView(mBinding.content);
+        mBinding.header.setRenderingEnabled(true);
         mBinding.liquidGlassNavigationSwitch.setChecked(Setting.isLiquidGlassNavigation());
     }
 

@@ -63,7 +63,6 @@ import com.fongmi.android.tv.ui.adapter.SearchSuggestionAdapter;
 import com.fongmi.android.tv.ui.adapter.TypeAdapter;
 import com.fongmi.android.tv.ui.base.BaseFragment;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
-import com.fongmi.android.tv.ui.dialog.FilterDialog;
 import com.fongmi.android.tv.ui.dialog.LastWatchToast;
 import com.fongmi.android.tv.ui.dialog.LinkDialog;
 import com.fongmi.android.tv.ui.dialog.ReceiveDialog;
@@ -158,7 +157,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         loadHistory();
         App.setAppLaunched();
     }
-    
+
     // 初始化启动状态：区分已有配置和无配置的情况
     private void initStartupState() {
         // 检查是否已经有保存的配置，添加空值检查
@@ -229,6 +228,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
             return fragment != null && fragment.canScrollUp();
         });
         mBinding.filter.setOnLongClickListener(this::onLink);
+        mBinding.filterPanel.setOnVisibilityChangedListener(this::onFilterPanelVisibilityChanged);
         mBinding.pager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
             @Override
             public void onPageSelected(int position) {
@@ -616,7 +616,18 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void onFilter(View view) {
-        if (mAdapter.getItemCount() > 0) FilterDialog.create().filter(mAdapter.get(mBinding.pager.getCurrentItem()).getFilters()).show(this);
+        if (mAdapter.getItemCount() > 0) {
+            mBinding.filterPanel.show(
+                    mAdapter.get(mBinding.pager.getCurrentItem()).getFilters(),
+                    this,
+                    mBinding.swipeLayout);
+        }
+    }
+
+    private void onFilterPanelVisibilityChanged(boolean visible) {
+        if (getActivity() instanceof HomeActivity) {
+            ((HomeActivity) getActivity()).setFilterOverlayVisible(visible);
+        }
     }
 
     private void enterSearchEditing() {
@@ -998,13 +1009,16 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void setLogo() {
-        Glide.with(App.get()).load(UrlUtil.convert(VodConfig.get().getConfig().getLogo())).circleCrop().override(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL).error(R.drawable.ic_logo).listener(getListener()).into(mBinding.logo);
+        Config config = VodConfig.get().getConfig();
+        String logo = config == null ? "" : config.getLogo();
+        Glide.with(this).load(UrlUtil.convert(logo)).circleCrop().override(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL).error(R.drawable.ic_logo).listener(getLogoListener()).into(mBinding.logo);
     }
 
-    private RequestListener<Drawable> getListener() {
+    private RequestListener<Drawable> getLogoListener() {
         return new RequestListener<>() {
             @Override
             public boolean onLoadFailed(@Nullable GlideException e, Object model, @NonNull Target<Drawable> target, boolean isFirstResource) {
+                if (mBinding == null) return false;
                 mBinding.logo.getLayoutParams().width = ResUtil.dp2px(24);
                 mBinding.logo.getLayoutParams().height = ResUtil.dp2px(24);
                 return false;
@@ -1012,6 +1026,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
             @Override
             public boolean onResourceReady(@NonNull Drawable resource, @NonNull Object model, Target<Drawable> target, @NonNull DataSource dataSource, boolean isFirstResource) {
+                if (mBinding == null) return false;
                 mBinding.logo.getLayoutParams().width = ResUtil.dp2px(36);
                 mBinding.logo.getLayoutParams().height = ResUtil.dp2px(36);
                 return false;
@@ -1087,6 +1102,10 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     @Override
     public boolean canBack() {
+        if (mBinding.filterPanel.isPanelVisible()) {
+            mBinding.filterPanel.dismiss();
+            return false;
+        }
         if (mSearchResultsVisible) {
             hideSearchContent();
             return false;
@@ -1108,6 +1127,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     @Override
     public void onDestroyView() {
+        onFilterPanelVisibilityChanged(false);
         setBottomNavigationVisible(true);
         hideSearchSuggestions();
         super.onDestroyView();

@@ -35,6 +35,8 @@ public class SettingPlayerActivity extends BaseActivity {
     @Override
     protected void initView(Bundle savedInstanceState) {
         mBinding.header.setTitle(getString(R.string.setting_player));
+        mBinding.header.setBackdropView(mBinding.glassContent);
+        mBinding.header.setRenderingEnabled(true);
         mBinding.glassContent.refresh();
     }
 

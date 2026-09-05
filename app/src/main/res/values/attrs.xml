@@ -3,4 +3,11 @@
     <declare-styleable name="CustomRecyclerView">
         <attr name="maxHeight" format="dimension" />
     </declare-styleable>
+
+    <declare-styleable name="LiquidGlassIconButtonView">
+        <attr name="glassIcon" format="reference" />
+        <attr name="glassIconSize" format="dimension" />
+        <attr name="glassIconTint" format="color" />
+        <attr name="glassIconTintEnabled" format="boolean" />
+    </declare-styleable>
 </resources>
