@@ -16,7 +16,7 @@
         android:id="@+id/header"
         android:layout_width="match_parent"
         android:layout_height="90dp"
-        android:elevation="16dp"
+        android:elevation="0dp"
         android:outlineProvider="none" />
 
 </FrameLayout>

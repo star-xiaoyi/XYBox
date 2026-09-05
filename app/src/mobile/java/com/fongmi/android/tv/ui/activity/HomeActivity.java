@@ -109,6 +109,11 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             mTopInset = bars.top;
             mBottomInset = bars.bottom;
+            RelativeLayout.LayoutParams statusParams = (RelativeLayout.LayoutParams) mBinding.statusScrim.getLayoutParams();
+            if (statusParams.height != mTopInset) {
+                statusParams.height = mTopInset;
+                mBinding.statusScrim.setLayoutParams(statusParams);
+            }
             mBinding.navigation.setPadding(0, 0, 0, mBottomInset);
             applyContainerPadding();
             return insets;
@@ -274,6 +279,14 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     public boolean isGlassNavigationEnabled() {
         return glassNavigationEnabled;
+    }
+
+    public void setFilterOverlayVisible(boolean visible) {
+        if (mBinding == null) return;
+        boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        float targetAlpha = visible ? (night ? 0.22f : 0.12f) : 0f;
+        mBinding.statusScrim.animate().cancel();
+        mBinding.statusScrim.animate().alpha(targetAlpha).setDuration(160L).start();
     }
 
     public void setGlassAction(int action, boolean visible) {

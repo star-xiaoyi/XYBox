@@ -430,4 +430,11 @@
 
     </LinearLayout>
 
+    <com.fongmi.android.tv.ui.custom.LiquidGlassFilterView
+        android:id="@+id/filter_panel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:elevation="0dp"
+        android:outlineProvider="none" />
+
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -1,25 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/screen_background"
     android:clipChildren="false"
     android:clipToPadding="false"
-    android:fitsSystemWindows="true"
-    android:orientation="vertical">
-
-    <com.fongmi.android.tv.ui.custom.SettingsGlassBackHeaderView
-        android:id="@+id/header"
-        android:layout_width="match_parent"
-        android:layout_height="90dp"
-        android:elevation="16dp"
-        android:outlineProvider="none" />
+    android:fitsSystemWindows="true">
 
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:clipToPadding="false"
         android:fillViewport="true"
-        android:overScrollMode="never">
+        android:overScrollMode="never"
+        android:paddingTop="90dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -123,4 +118,12 @@
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
-</LinearLayout>
+
+    <com.fongmi.android.tv.ui.custom.SettingsGlassBackHeaderView
+        android:id="@+id/header"
+        android:layout_width="match_parent"
+        android:layout_height="90dp"
+        android:elevation="0dp"
+        android:outlineProvider="none" />
+
+</FrameLayout>

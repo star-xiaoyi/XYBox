@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -69,21 +70,29 @@ internal fun LiquidSlider(
         val trackWidth = constraints.maxWidth
         val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
         val animationScope = rememberCoroutineScope()
+        val currentValue by rememberUpdatedState(value)
+        val currentOnValueChange by rememberUpdatedState(onValueChange)
         var didDrag by remember { mutableStateOf(false) }
-        var dragValue by remember { mutableFloatStateOf(value()) }
+        var dragging by remember { mutableStateOf(false) }
+        var dragValue by remember { mutableFloatStateOf(currentValue()) }
         val animation = remember(animationScope) {
             DampedDragAnimation(
                 animationScope = animationScope,
-                initialValue = value(),
+                initialValue = currentValue(),
                 valueRange = valueRange,
                 visibilityThreshold = visibilityThreshold,
                 initialScale = 1f,
                 pressedScale = 1.5f,
                 onDragStarted = {
                     didDrag = false
-                    dragValue = value()
+                    dragging = true
+                    dragValue = currentValue()
                 },
-                onDragStopped = { if (didDrag) onValueChange(targetValue) },
+                onDragStopped = {
+                    if (didDrag) currentOnValueChange(dragValue)
+                    dragging = false
+                    didDrag = false
+                },
                 onDrag = { _, dragAmount ->
                     if (!didDrag) didDrag = dragAmount.x != 0f
                     val delta = (valueRange.endInclusive - valueRange.start) * (dragAmount.x / trackWidth)
@@ -91,14 +100,17 @@ internal fun LiquidSlider(
                     // 否则每个 MotionEvent 的小位移都会被舍掉，看起来就像只能点击。
                     dragValue = if (isLtr) (dragValue + delta).coerceIn(valueRange)
                     else (dragValue - delta).coerceIn(valueRange)
-                    onValueChange(dragValue)
+                    // 液态滑块先连续追随手指；外部数值仍可按 0.5/1.0 等步长吸附。
+                    // 两者不能共用吸附后的值，否则每一帧都会丢掉不足一个步长的位移。
+                    updateValue(dragValue)
+                    currentOnValueChange(dragValue)
                 }
             )
         }
 
         LaunchedEffect(animation) {
-            snapshotFlow { value() }.collectLatest { current ->
-                if (animation.targetValue != current) animation.updateValue(current)
+            snapshotFlow { currentValue() to dragging }.collectLatest { (current, isDragging) ->
+                if (!isDragging && animation.targetValue != current) animation.updateValue(current)
             }
         }
 
@@ -113,7 +125,7 @@ internal fun LiquidSlider(
                             else valueRange.endInclusive - delta
                         ).coerceIn(valueRange)
                         animation.animateToValue(target)
-                        onValueChange(target)
+                        currentOnValueChange(target)
                     }
                 }
                 .fillMaxSize(),

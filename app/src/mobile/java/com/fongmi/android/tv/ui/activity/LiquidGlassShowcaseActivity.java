@@ -26,6 +26,8 @@ public class LiquidGlassShowcaseActivity extends BaseActivity {
     @Override
     protected void initView(Bundle savedInstanceState) {
         mBinding.header.setTitle(getString(R.string.glass_showcase_title));
+        mBinding.header.setBackdropView(mBinding.content);
+        mBinding.header.setRenderingEnabled(true);
     }
 
     @Override

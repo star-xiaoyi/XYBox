@@ -1,6 +1,8 @@
 package com.fongmi.android.tv.ui.custom
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.util.AttributeSet
 import androidx.annotation.ColorInt
 import androidx.compose.animation.AnimatedVisibility
@@ -150,6 +152,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
     private var webDavActionListener: OnWebDavActionListener? = null
     private var expandedAction by mutableIntStateOf(0)
     private var webDavProviderExpanded by mutableStateOf(false)
+    private var aboutVisible by mutableStateOf(false)
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -325,6 +328,115 @@ class SettingsGlassContentView @JvmOverloads constructor(
                 drawRect(Brush.linearGradient(listOf(palette.backdropStart, palette.backdropEnd)))
             }
             SettingsList(backdrop, frameNanos, palette, state)
+            if (aboutVisible) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.14f))
+                        .combinedClickable(
+                            interactionSource = null,
+                            indication = null,
+                            onClick = { aboutVisible = false }
+                        )
+                )
+            }
+            AboutGlassSheet(
+                visible = aboutVisible,
+                backdrop = backdrop,
+                frameNanos = frameNanos,
+                palette = palette,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+
+    @Composable
+    private fun AboutGlassSheet(
+        visible: Boolean,
+        backdrop: Backdrop,
+        frameNanos: androidx.compose.runtime.LongState,
+        palette: SettingsPalette,
+        modifier: Modifier
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            modifier = modifier.padding(start = 12.dp, end = 12.dp, bottom = 104.dp),
+            enter = expandVertically(tween(240), expandFrom = Alignment.Bottom) + fadeIn(tween(160)),
+            exit = shrinkVertically(tween(190), shrinkTowards = Alignment.Bottom) + fadeOut(tween(120))
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .drawBackdrop(
+                        backdrop = backdrop,
+                        shape = { RoundedRectangle(28.dp) },
+                        effects = {
+                            colorControls(brightness = 0.08f, saturation = 1.28f)
+                            blur(12.dp.toPx())
+                            lens(18.dp.toPx(), 36.dp.toPx(), depthEffect = true)
+                        },
+                        highlight = { Highlight.Plain },
+                        onDrawSurface = { drawRect(palette.glass) }
+                    )
+                    .combinedClickable(
+                        interactionSource = null,
+                        indication = null,
+                        onClick = {}
+                    )
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BasicText(
+                        text = stringResource(R.string.setting_about),
+                        modifier = Modifier.weight(1f),
+                        style = TextStyle(palette.text, 20.sp, FontWeight.Bold)
+                    )
+                    LiquidButton(
+                        onClick = { aboutVisible = false },
+                        backdrop = backdrop,
+                        frameNanos = frameNanos,
+                        surfaceColor = palette.glass,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_action_close),
+                            contentDescription = stringResource(R.string.action_close_search),
+                            colorFilter = ColorFilter.tint(palette.text),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+                BasicText(
+                    stringResource(R.string.about_dev_title),
+                    style = TextStyle(palette.text, 14.sp, FontWeight.Bold)
+                )
+                BasicText(
+                    stringResource(R.string.about_dev_body),
+                    style = TextStyle(palette.secondary, 13.sp, FontWeight.Medium, lineHeight = 19.sp)
+                )
+                Spacer(Modifier.height(2.dp))
+                BasicText(
+                    stringResource(R.string.about_disclaimer_title),
+                    style = TextStyle(palette.text, 14.sp, FontWeight.Bold)
+                )
+                BasicText(
+                    stringResource(R.string.about_disclaimer_body),
+                    style = TextStyle(palette.secondary, 13.sp, FontWeight.Medium, lineHeight = 19.sp)
+                )
+                Spacer(Modifier.height(2.dp))
+                EditorButton(
+                    text = stringResource(R.string.about_github),
+                    backdrop = backdrop,
+                    frameNanos = frameNanos,
+                    palette = palette,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PROJECT_URL)))
+                    }
+                }
+            }
         }
     }
 
@@ -457,7 +569,10 @@ class SettingsGlassContentView @JvmOverloads constructor(
             ACTION_RESTORE -> ActionRow(id, R.drawable.ic_settings_restore, R.string.setting_restore, null, palette)
             ACTION_LABORATORY -> ActionRow(id, R.drawable.ic_setting_laboratory, R.string.setting_laboratory, R.string.setting_laboratory_summary, palette)
             ACTION_VERSION -> ActionRow(id, R.drawable.ic_settings_update, null, null, palette, current.version, true)
-            ACTION_ABOUT -> ActionRow(id, R.drawable.ic_settings_info, R.string.setting_about, null, palette)
+            ACTION_ABOUT -> ActionRow(
+                id, R.drawable.ic_settings_info, R.string.setting_about, null, palette,
+                customOnClick = { aboutVisible = true }
+            )
         }
     }
 
@@ -986,14 +1101,18 @@ class SettingsGlassContentView @JvmOverloads constructor(
         summary: Int?,
         palette: SettingsPalette,
         value: String? = null,
-        longClickable: Boolean = false
+        longClickable: Boolean = false,
+        customOnClick: (() -> Unit)? = null
     ) {
         SettingsRow(
             icon = icon,
             title = title?.let { stringResource(it) } ?: value.orEmpty(),
             summary = summary?.let { stringResource(it) },
             palette = palette,
-            onClick = { actionListener?.onAction(id) },
+            onClick = customOnClick ?: {
+                actionListener?.onAction(id)
+                Unit
+            },
             onLongClick = if (longClickable) ({ longActionListener?.onLongAction(id) }) else null
         ) {
             if (!value.isNullOrEmpty() && title != null) {
@@ -1185,6 +1304,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
         const val ACTION_ABOUT = 24
         const val WEBDAV_TEST = 25
         const val WEBDAV_SAVE = 26
+        private const val PROJECT_URL = "https://github.com/star-xiaoyi/XYBox"
         private const val JIANGUOYUN_URL = "https://dav.jianguoyun.com/dav/XYBox/"
     }
 }

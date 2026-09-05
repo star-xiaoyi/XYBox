@@ -26,6 +26,8 @@ public class SettingOperationActivity extends BaseActivity {
     @Override
     protected void initView(Bundle savedInstanceState) {
         mBinding.header.setTitle(getString(R.string.setting_operation));
+        mBinding.header.setBackdropView(mBinding.glassContent);
+        mBinding.header.setRenderingEnabled(true);
         mBinding.glassContent.refresh();
     }
 

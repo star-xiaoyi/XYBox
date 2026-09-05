@@ -34,4 +34,15 @@
         android:layout_alignParentBottom="true"
         android:visibility="gone" />
 
+    <!-- Android 15+ 强制 edge-to-edge 后状态栏保持透明，用这一层和页内遮罩同步变暗。 -->
+    <View
+        android:id="@+id/status_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_alignParentTop="true"
+        android:alpha="0"
+        android:background="@color/black"
+        android:clickable="false"
+        android:importantForAccessibility="no" />
+
 </RelativeLayout>

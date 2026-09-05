@@ -45,6 +45,12 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
 
     @Override
     protected void initView(Bundle savedInstanceState) {
+        mBinding.back.setBackdropView(mBinding.toolbar);
+        mBinding.setting.setBackdropView(mBinding.toolbar);
+        mBinding.delete.setBackdropView(mBinding.toolbar);
+        mBinding.back.setRenderingEnabled(true);
+        mBinding.setting.setRenderingEnabled(true);
+        mBinding.delete.setRenderingEnabled(true);
         mBinding.recycler.setHasFixedSize(false);
         mBinding.recycler.getItemAnimator().setChangeDuration(0);
         mBinding.recycler.setLayoutManager(new LinearLayoutManager(this));

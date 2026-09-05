@@ -38,7 +38,6 @@ import com.fongmi.android.tv.ui.activity.SettingPlayerActivity;
 import com.fongmi.android.tv.ui.base.BaseFragment;
 import com.fongmi.android.tv.ui.custom.SettingsGlassContentView;
 import com.fongmi.android.tv.ui.custom.LiquidGlassNavigationView;
-import com.fongmi.android.tv.ui.dialog.AboutDialog;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
@@ -100,6 +99,8 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
 
     @Override
     protected void initView() {
+        mBinding.settingsHeader.setBackdropView(mBinding.settingsContent);
+        mBinding.settingsHeader.setRenderingEnabled(true);
         setSourceText();
         mBinding.settingsContent.setVersion(getString(R.string.setting_version) + " " + BuildConfig.VERSION_NAME);
         setOtherText();
@@ -190,7 +191,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
                 com.fongmi.android.tv.ui.activity.SettingLaboratoryActivity.start(requireActivity());
                 break;
             case SettingsGlassContentView.ACTION_VERSION: onVersion(null); break;
-            case SettingsGlassContentView.ACTION_ABOUT: onAbout(null); break;
         }
     }
 
@@ -465,10 +465,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         Updater.create().force().release().start(getActivity());
     }
     
-    private void onAbout(View view) {
-        AboutDialog.show(this);
-    }
-
     private boolean onVersionDev(View view) {
         Updater.create().force().dev().start(getActivity());
         return true;
