@@ -219,7 +219,7 @@ class SettingsGlassHeaderView @JvmOverloads constructor(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 HeaderMainArea(
-                    modifier = Modifier.weight(1f).height(52.dp),
+                    modifier = Modifier.weight(1f).height(36.dp),
                     active = searchActiveState,
                     query = queryState,
                     onQueryChanged = ::updateQuery,
@@ -239,7 +239,7 @@ class SettingsGlassHeaderView @JvmOverloads constructor(
                     frameNanos = frameNanos,
                     surfaceColor = glass,
                     dragResponse = 0.42f,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Crossfade(
                         targetState = searchActiveState,
@@ -332,7 +332,7 @@ class SettingsGlassHeaderView @JvmOverloads constructor(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 HeaderMainArea(
-                    modifier = Modifier.weight(1f).height(52.dp),
+                    modifier = Modifier.weight(1f).height(36.dp),
                     active = searchActiveState,
                     query = queryState,
                     onQueryChanged = ::updateQuery,
@@ -346,10 +346,10 @@ class SettingsGlassHeaderView @JvmOverloads constructor(
 
                 Box(Modifier.size(8.dp))
 
-                // 与展示台“圆形按钮”示例完全相同：共享 backdrop、52dp 正方形、Capsule。
+                // 与玻璃模式保持同一尺寸，避免切换材质后顶部控件跳变。
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(glass)
                         .combinedClickable(

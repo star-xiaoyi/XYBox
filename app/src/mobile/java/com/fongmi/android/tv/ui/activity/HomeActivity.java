@@ -121,8 +121,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     /**
-     * 底栏在时由底栏自己垫手势条；底栏隐藏时（比如搜索结果页）由内容区垫，
-     * 垫出来的那块是页面背景色，所以看不到系统那条白色矩形。
+     * 传统底栏隐藏时由内容区避让手势条；玻璃底栏模式始终让页面铺到屏幕底部，
+     * 即使搜索时暂时隐藏底栏，小白条区域也继续保持沉浸。
      */
     private void applyContainerPadding() {
         if (mBinding == null) return;
@@ -130,7 +130,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         // 设置页自己的顶部组件会读取状态栏安全区域，让背景真正延伸到系统栏下方。
         // 其他首页页面仍由容器统一避让，避免改变现有布局。
         int top = currentPosition == 1 ? 0 : mTopInset;
-        mBinding.container.setPadding(0, top, 0, navVisible ? 0 : mBottomInset);
+        // 玻璃底栏模式本来就是让内容铺到系统手势条后面；搜索时隐藏底栏也继续保持这种沉浸，
+        // 不再额外垫一整条导航栏保护区。传统底栏模式仍保留原来的安全内边距。
+        int bottom = navVisible || glassNavigationEnabled ? 0 : mBottomInset;
+        mBinding.container.setPadding(0, top, 0, bottom);
     }
 
     @Override
