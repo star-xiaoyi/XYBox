@@ -43,21 +43,19 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        mBinding.back.setBackdropView(mBinding.toolbar);
-        mBinding.sync.setBackdropView(mBinding.toolbar);
-        mBinding.delete.setBackdropView(mBinding.toolbar);
-        mBinding.back.setRenderingEnabled(true);
-        mBinding.sync.setRenderingEnabled(true);
-        mBinding.delete.setRenderingEnabled(true);
+        mBinding.toolbar.setTitle(R.string.app_keep);
+        mBinding.toolbar.setPrimaryActionIcon(R.drawable.ic_action_sync);
+        mBinding.toolbar.setSecondaryActionIcon(R.drawable.ic_action_delete);
+        mBinding.toolbar.attachContent(mBinding.content, mBinding.recycler);
         setRecyclerView();
         getKeep();
     }
 
     @Override
     protected void initEvent() {
-        mBinding.back.setOnClickListener(v -> finish());
-        mBinding.sync.setOnClickListener(this::onSync);
-        mBinding.delete.setOnClickListener(this::onDelete);
+        mBinding.toolbar.setBackClickListener(v -> finish());
+        mBinding.toolbar.setPrimaryActionClickListener(this::onSync);
+        mBinding.toolbar.setSecondaryActionClickListener(this::onDelete);
     }
 
     private void setRecyclerView() {
@@ -70,7 +68,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
 
     private void getKeep() {
         mAdapter.addAll(Keep.getVod());
-        mBinding.delete.setVisibility(mAdapter.getItemCount() > 0 ? View.VISIBLE : View.GONE);
+        mBinding.toolbar.setSecondaryActionVisible(mAdapter.getItemCount() > 0);
         updateEmptyState();
     }
 
@@ -98,11 +96,11 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
             Notify.tip("请先在设置中配置 WebDAV");
             return;
         }
-        view.setEnabled(false);
+        mBinding.toolbar.setPrimaryActionEnabled(false);
         App.execute(() -> {
             WebDAVSyncManager.SyncResult result = manager.syncNow();
             App.post(() -> {
-                view.setEnabled(true);
+                mBinding.toolbar.setPrimaryActionEnabled(true);
                 getKeep();
                 Notify.tip(result.message);
             });
@@ -118,7 +116,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         } else if (mAdapter.getItemCount() > 0) {
             mAdapter.setDelete(true);
         } else {
-            mBinding.delete.setVisibility(View.GONE);
+            mBinding.toolbar.setSecondaryActionVisible(false);
         }
     }
 
@@ -155,7 +153,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     public void onItemDelete(Keep item) {
         mAdapter.remove(item.delete());
         if (mAdapter.getItemCount() > 0) return;
-        mBinding.delete.setVisibility(View.GONE);
+        mBinding.toolbar.setSecondaryActionVisible(false);
         mAdapter.setDelete(false);
         updateEmptyState();
     }

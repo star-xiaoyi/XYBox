@@ -147,7 +147,7 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
                     frameNanos = frameNanos,
                     surfaceColor = glass,
                     dragResponse = 0.42f,
-                    modifier = Modifier.size(42.dp)
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Image(
                         painter = painterResource(R.drawable.ic_back),
@@ -162,7 +162,7 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
                     modifier = Modifier.padding(start = 12.dp),
                     style = TextStyle(
                         color = text,
-                        fontSize = 28.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -235,13 +235,13 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
                     frameNanos = frameNanos,
                     surfaceColor = glass,
                     dragResponse = 0.42f,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Image(
                         painter = painterResource(R.drawable.ic_back),
                         contentDescription = stringResource(R.string.back),
                         colorFilter = ColorFilter.tint(text),
-                        modifier = Modifier.size(19.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -250,7 +250,7 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
                     modifier = Modifier.padding(start = 12.dp),
                     style = TextStyle(
                         color = text,
-                        fontSize = 28.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )

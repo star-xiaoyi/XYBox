@@ -1,66 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/screen_background"
-    android:fitsSystemWindows="true"
-    android:orientation="vertical">
-
-    <LinearLayout
-        android:id="@+id/toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <com.fongmi.android.tv.ui.custom.LiquidGlassIconButtonView
-            android:id="@+id/back"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_marginEnd="4dp"
-            android:contentDescription="@string/back"
-            app:glassIcon="@drawable/ic_back"
-            app:glassIconSize="20dp"
-            app:glassIconTint="@color/text_primary" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/download_tasks"
-            android:textColor="@color/text_primary"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-        <com.fongmi.android.tv.ui.custom.LiquidGlassIconButtonView
-            android:id="@+id/setting"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_marginStart="4dp"
-            android:contentDescription="@string/download_setting"
-            app:glassIcon="@drawable/ic_control_setting"
-            app:glassIconSize="20dp"
-            app:glassIconTint="@color/text_primary" />
-
-        <com.fongmi.android.tv.ui.custom.LiquidGlassIconButtonView
-            android:id="@+id/delete"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_marginStart="4dp"
-            app:glassIcon="@drawable/ic_action_delete"
-            app:glassIconSize="20dp"
-            app:glassIconTint="@color/text_primary"
-            android:visibility="gone"
-            tools:visibility="visible" />
-
-    </LinearLayout>
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
     <FrameLayout
+        android:id="@+id/content"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:background="@color/screen_background">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler"
@@ -68,7 +20,7 @@
             android:layout_height="match_parent"
             android:clipChildren="false"
             android:clipToPadding="false"
-            android:paddingBottom="8dp" />
+            android:paddingBottom="28dp" />
 
         <include
             android:id="@+id/emptyLayout"
@@ -80,4 +32,12 @@
             android:visibility="gone" />
 
     </FrameLayout>
-</LinearLayout>
+
+    <com.fongmi.android.tv.ui.custom.SecondaryGlassToolbarView
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:elevation="0dp"
+        android:outlineProvider="none" />
+
+</FrameLayout>

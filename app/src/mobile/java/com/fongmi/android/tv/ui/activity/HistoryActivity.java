@@ -40,21 +40,19 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        mBinding.back.setBackdropView(mBinding.toolbar);
-        mBinding.sync.setBackdropView(mBinding.toolbar);
-        mBinding.delete.setBackdropView(mBinding.toolbar);
-        mBinding.back.setRenderingEnabled(true);
-        mBinding.sync.setRenderingEnabled(true);
-        mBinding.delete.setRenderingEnabled(true);
+        mBinding.toolbar.setTitle(R.string.app_history);
+        mBinding.toolbar.setPrimaryActionIcon(R.drawable.ic_action_sync);
+        mBinding.toolbar.setSecondaryActionIcon(R.drawable.ic_action_delete);
+        mBinding.toolbar.attachContent(mBinding.content, mBinding.recycler);
         setRecyclerView();
         getHistory();
     }
 
     @Override
     protected void initEvent() {
-        mBinding.back.setOnClickListener(v -> finish());
-        mBinding.sync.setOnClickListener(this::onSync);
-        mBinding.delete.setOnClickListener(this::onDelete);
+        mBinding.toolbar.setBackClickListener(v -> finish());
+        mBinding.toolbar.setPrimaryActionClickListener(this::onSync);
+        mBinding.toolbar.setSecondaryActionClickListener(this::onDelete);
     }
 
     private void setRecyclerView() {
@@ -67,7 +65,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
 
     private void getHistory() {
         mAdapter.addAll(History.getAll()); // 显示所有视频源的观看记录
-        mBinding.delete.setVisibility(mAdapter.getItemCount() > 0 ? View.VISIBLE : View.GONE);
+        mBinding.toolbar.setSecondaryActionVisible(mAdapter.getItemCount() > 0);
         updateEmptyState();
     }
 
@@ -95,11 +93,11 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
             Notify.tip("请先在设置中配置 WebDAV");
             return;
         }
-        view.setEnabled(false);
+        mBinding.toolbar.setPrimaryActionEnabled(false);
         App.execute(() -> {
             WebDAVSyncManager.SyncResult result = manager.syncNow();
             App.post(() -> {
-                view.setEnabled(true);
+                mBinding.toolbar.setPrimaryActionEnabled(true);
                 getHistory();
                 Notify.tip(result.message);
             });
@@ -115,7 +113,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         } else if (mAdapter.getItemCount() > 0) {
             mAdapter.setDelete(true);
         } else {
-            mBinding.delete.setVisibility(View.GONE);
+            mBinding.toolbar.setSecondaryActionVisible(false);
         }
     }
 
@@ -133,7 +131,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
     public void onItemDelete(History item) {
         mAdapter.remove(item.delete());
         if (mAdapter.getItemCount() > 0) return;
-        mBinding.delete.setVisibility(View.GONE);
+        mBinding.toolbar.setSecondaryActionVisible(false);
         mAdapter.setDelete(false);
         updateEmptyState();
     }

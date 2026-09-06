@@ -22,6 +22,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@color/screen_background"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 android:elevation="0dp"
                 app:elevation="0dp"
                 app:liftOnScrollColor="@color/screen_background">
@@ -31,102 +33,17 @@
                     android:id="@+id/home_header_content"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
                     android:orientation="vertical"
                     app:layout_scrollFlags="scroll">
 
-                    <LinearLayout
+                    <com.fongmi.android.tv.ui.custom.HomeGlassHeaderView
                         android:id="@+id/header_bar"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:paddingStart="16dp"
-                        android:paddingTop="16dp"
-                        android:paddingEnd="16dp"
-                        android:paddingBottom="4dp">
-
-                        <ImageView
-                            android:id="@+id/logo"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:background="@drawable/shape_action_background"
-                            android:src="@drawable/ic_logo" />
-
-                        <ImageView
-                            android:id="@+id/search_back"
-                            android:layout_width="36dp"
-                            android:layout_height="36dp"
-                            android:background="@drawable/shape_search_action"
-                            android:contentDescription="@string/back"
-                            android:padding="8dp"
-                            android:src="@drawable/ic_back"
-                            android:tint="@color/text_primary"
-                            android:visibility="gone" />
-
-                        <LinearLayout
-                            android:id="@+id/search_box"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="12dp"
-                            android:layout_marginEnd="12dp"
-                            android:layout_weight="1"
-                            android:background="@drawable/selector_item_round"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal">
-
-                            <EditText
-                                android:id="@+id/hot"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:background="@null"
-                                android:cursorVisible="false"
-                                android:hint="@string/search_keyword"
-                                android:imeOptions="actionSearch"
-                                android:inputType="text"
-                                android:maxLength="255"
-                                android:padding="0dp"
-                                android:singleLine="true"
-                                android:textColor="@color/text_primary"
-                                android:textColorHint="@color/text_secondary"
-                                android:textCursorDrawable="@drawable/shape_cursor"
-                                android:textSize="14sp"
-                                tools:ignore="NestedWeights"
-                                tools:text="狂飆" />
-
-                        </LinearLayout>
-
-                        <ImageView
-                            android:id="@+id/search"
-                            android:layout_width="36dp"
-                            android:layout_height="36dp"
-                            android:layout_marginEnd="12dp"
-                            android:background="@drawable/shape_search_action"
-                            android:contentDescription="@string/search_keyword"
-                            android:padding="8dp"
-                            android:src="@drawable/ic_action_search"
-                            android:tint="@color/text_primary" />
-
-                        <ImageView
-                            android:id="@+id/keep"
-                            android:layout_width="36dp"
-                            android:layout_height="36dp"
-                            android:layout_marginEnd="12dp"
-                            android:background="@drawable/shape_search_action"
-                            android:padding="8dp"
-                            android:src="@drawable/ic_action_keep"
-                            android:tint="@color/text_primary" />
-
-                        <ImageView
-                            android:id="@+id/history"
-                            android:layout_width="36dp"
-                            android:layout_height="36dp"
-                            android:background="@drawable/shape_search_action"
-                            android:padding="8dp"
-                            android:src="@drawable/ic_action_history"
-                            android:tint="@color/text_primary" />
-
-                    </LinearLayout>
+                        android:elevation="0dp"
+                        android:outlineProvider="none" />
 
                     <LinearLayout
                         android:id="@+id/history_section"
@@ -401,20 +318,16 @@
         app:tint="?attr/colorOnPrimary"
         tools:visibility="visible" />
 
-    <LinearLayout
+    <com.fongmi.android.tv.ui.custom.LiquidGlassSuggestionPanelView
         android:id="@+id/search_suggestion_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
-        android:layout_marginStart="64dp"
+        android:layout_marginStart="0dp"
         android:layout_marginTop="60dp"
-        android:layout_marginEnd="76dp"
-        android:background="@drawable/shape_search_suggestion_panel"
-        android:clipToOutline="true"
+        android:layout_marginEnd="0dp"
         android:elevation="12dp"
-        android:orientation="vertical"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
+        android:outlineProvider="none"
         android:visibility="gone">
 
         <com.fongmi.android.tv.ui.custom.CustomRecyclerView
@@ -423,12 +336,14 @@
             android:layout_height="wrap_content"
             android:nestedScrollingEnabled="true"
             android:overScrollMode="never"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
             app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-            app:maxHeight="264dp"
+            app:maxHeight="272dp"
             tools:itemCount="6"
             tools:listitem="@layout/adapter_search_suggestion" />
 
-    </LinearLayout>
+    </com.fongmi.android.tv.ui.custom.LiquidGlassSuggestionPanelView>
 
     <com.fongmi.android.tv.ui.custom.LiquidGlassFilterView
         android:id="@+id/filter_panel"

@@ -41,12 +41,10 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        mBinding.back.setBackdropView(mBinding.toolbar);
-        mBinding.task.setBackdropView(mBinding.toolbar);
-        mBinding.delete.setBackdropView(mBinding.toolbar);
-        mBinding.back.setRenderingEnabled(true);
-        mBinding.task.setRenderingEnabled(true);
-        mBinding.delete.setRenderingEnabled(true);
+        mBinding.toolbar.setTitle(R.string.app_download);
+        mBinding.toolbar.setPrimaryAction(R.drawable.ic_action_download_list, R.string.download_tasks);
+        mBinding.toolbar.setSecondaryActionIcon(R.drawable.ic_action_delete);
+        mBinding.toolbar.attachContent(mBinding.content, mBinding.recycler);
         mBinding.recycler.setHasFixedSize(false);
         mBinding.recycler.getItemAnimator().setChangeDuration(0);
         mBinding.recycler.setLayoutManager(new GridLayoutManager(this, Product.getColumn(this)));
@@ -57,9 +55,9 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
 
     @Override
     protected void initEvent() {
-        mBinding.back.setOnClickListener(v -> finish());
-        mBinding.task.setOnClickListener(v -> DownloadTaskActivity.start(this));
-        mBinding.delete.setOnClickListener(this::onDelete);
+        mBinding.toolbar.setBackClickListener(v -> finish());
+        mBinding.toolbar.setPrimaryActionClickListener(v -> DownloadTaskActivity.start(this));
+        mBinding.toolbar.setSecondaryActionClickListener(this::onDelete);
     }
 
     private void refresh() {
@@ -68,7 +66,7 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
         boolean empty = groups.isEmpty();
         mBinding.emptyLayout.getRoot().setVisibility(empty ? View.VISIBLE : View.GONE);
         mBinding.recycler.setVisibility(empty ? View.GONE : View.VISIBLE);
-        mBinding.delete.setVisibility(empty ? View.GONE : View.VISIBLE);
+        mBinding.toolbar.setSecondaryActionVisible(!empty);
         if (empty) mAdapter.setDelete(false);
         if (!empty) return;
         mBinding.emptyLayout.text.setText(R.string.download_empty);

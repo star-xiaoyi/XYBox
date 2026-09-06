@@ -1189,7 +1189,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
             backdrop = backdrop,
             frameNanos = frameNanos,
             surfaceColor = palette.glass,
-            modifier = Modifier.size(42.dp)
+            modifier = Modifier.size(36.dp)
         ) {
             Image(
                 painterResource(icon),

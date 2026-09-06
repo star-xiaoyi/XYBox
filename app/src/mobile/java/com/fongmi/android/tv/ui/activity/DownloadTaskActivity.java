@@ -45,12 +45,10 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        mBinding.back.setBackdropView(mBinding.toolbar);
-        mBinding.setting.setBackdropView(mBinding.toolbar);
-        mBinding.delete.setBackdropView(mBinding.toolbar);
-        mBinding.back.setRenderingEnabled(true);
-        mBinding.setting.setRenderingEnabled(true);
-        mBinding.delete.setRenderingEnabled(true);
+        mBinding.toolbar.setTitle(R.string.download_tasks);
+        mBinding.toolbar.setPrimaryAction(R.drawable.ic_control_setting, R.string.download_setting);
+        mBinding.toolbar.setSecondaryActionIcon(R.drawable.ic_action_delete);
+        mBinding.toolbar.attachContent(mBinding.content, mBinding.recycler);
         mBinding.recycler.setHasFixedSize(false);
         mBinding.recycler.getItemAnimator().setChangeDuration(0);
         mBinding.recycler.setLayoutManager(new LinearLayoutManager(this));
@@ -60,9 +58,9 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
 
     @Override
     protected void initEvent() {
-        mBinding.back.setOnClickListener(v -> finish());
-        mBinding.delete.setOnClickListener(this::onDelete);
-        mBinding.setting.setOnClickListener(v -> DownloadSettingDialog.create(this).show());
+        mBinding.toolbar.setBackClickListener(v -> finish());
+        mBinding.toolbar.setSecondaryActionClickListener(this::onDelete);
+        mBinding.toolbar.setPrimaryActionClickListener(v -> DownloadSettingDialog.create(this).show());
     }
 
     private void refresh() {
@@ -71,7 +69,7 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
         boolean empty = items.isEmpty();
         mBinding.emptyLayout.getRoot().setVisibility(empty ? View.VISIBLE : View.GONE);
         mBinding.recycler.setVisibility(empty ? View.GONE : View.VISIBLE);
-        mBinding.delete.setVisibility(empty ? View.GONE : View.VISIBLE);
+        mBinding.toolbar.setSecondaryActionVisible(!empty);
         if (!empty) return;
         mBinding.emptyLayout.text.setText(R.string.download_task_empty);
         LottieAnimationView lottie = mBinding.emptyLayout.getRoot().findViewById(R.id.lottieAnimation);

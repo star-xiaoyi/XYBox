@@ -5,14 +5,10 @@ import android.app.Activity;
 import android.content.Intent;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
-import android.text.Editable;
 import android.text.TextUtils;
-import android.transition.AutoTransition;
-import android.transition.TransitionManager;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.inputmethod.EditorInfo;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -67,7 +63,6 @@ import com.fongmi.android.tv.ui.dialog.LastWatchToast;
 import com.fongmi.android.tv.ui.dialog.LinkDialog;
 import com.fongmi.android.tv.ui.dialog.ReceiveDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
-import com.fongmi.android.tv.ui.custom.CustomTextListener;
 import com.fongmi.android.tv.ui.custom.LiquidGlassNavigationView;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.Notify;
@@ -115,7 +110,6 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private boolean mFabEnabled;
     private int mContextAction = LiquidGlassNavigationView.ACTION_NONE;
     private boolean mSearchHeaderExpanded;
-    private boolean mHeaderAnimationReady;
     private int mSuggestionGeneration;
 
     public static VodFragment newInstance() {
@@ -185,33 +179,26 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     @Override
     protected void initEvent() {
-        mBinding.hot.setOnFocusChangeListener((view, hasFocus) -> {
-            mBinding.hot.setCursorVisible(hasFocus);
+        mBinding.headerBar.setOnSearchFocusChangedListener(hasFocus -> {
             if (hasFocus) enterSearchEditing();
         });
-        mBinding.hot.setOnEditorActionListener((textView, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_DONE) {
-                submitHomeSearch();
-                return true;
-            }
-            return false;
-        });
-        mBinding.hot.addTextChangedListener(new CustomTextListener() {
-            @Override
-            public void afterTextChanged(Editable editable) {
-                if (!mSearchEditing || !mBinding.hot.hasFocus()) return;
-                scheduleSearchSuggestions(editable.toString().trim());
-            }
+        mBinding.headerBar.setOnSearchSubmittedListener(this::submitHomeSearch);
+        mBinding.headerBar.setOnQueryChangedListener(query -> {
+            if (!mSearchEditing || !mBinding.headerBar.hasSearchFocus()) return;
+            scheduleSearchSuggestions(query.trim());
         });
         mBinding.top.setOnClickListener(this::onTop);
         mBinding.link.setOnClickListener(this::onLink);
-        mBinding.logo.setOnClickListener(this::onLogo);
-        mBinding.keep.setOnClickListener(this::onKeep);
+        mBinding.headerBar.setLogoClickListener(this::onLogo);
+        mBinding.headerBar.setKeepClickListener(this::onKeep);
         mBinding.retry.setOnClickListener(this::onRetry);
         mBinding.filter.setOnClickListener(this::onFilter);
-        mBinding.search.setOnClickListener(this::onSearchAction);
-        mBinding.searchBack.setOnClickListener(this::onSearchBack);
-        mBinding.history.setOnClickListener(view -> HistoryActivity.start(getActivity()));
+        mBinding.headerBar.setSearchClickListener(this::onSearchAction);
+        mBinding.headerBar.setSearchBackClickListener(this::onSearchBack);
+        mBinding.headerBar.setHistoryClickListener(view -> HistoryActivity.start(getActivity()));
+        mBinding.headerBar.setOnSearchBoundsChangedListener(this::alignSearchSuggestionPanel);
+        mBinding.searchSuggestionPanel.setBackdropView(mBinding.appBar);
+        mBinding.swipeLayout.setRefreshGestureExclusionView(mBinding.headerBar);
         mBinding.historyMore.setOnClickListener(this::onHistory);
         mBinding.tabHistory.setOnClickListener(view -> setTab(false));
         mBinding.tabDownload.setOnClickListener(view -> setTab(true));
@@ -238,10 +225,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
             }
         });
         mBinding.getRoot().requestFocus();
-        mBinding.hot.clearFocus();
-        mBinding.hot.setCursorVisible(false);
+        mBinding.headerBar.clearSearchFocus();
         setSearchHeaderExpanded(false);
-        mHeaderAnimationReady = true;
     }
 
     private void setRecyclerView() {
@@ -277,7 +262,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         App.post(mRunnable, TimeUnit.SECONDS.toMillis(10));
         if (mBinding == null || mHots.isEmpty()) return;
         mSuggestedKeyword = mHots.get(new Random().nextInt(mHots.size()));
-        if (!mSearchEditing && !mSearchResultsVisible) mBinding.hot.setHint(mSuggestedKeyword);
+        if (!mSearchEditing && !mSearchResultsVisible) mBinding.headerBar.setHint(mSuggestedKeyword);
     }
 
     private Result handle(Result result) {
@@ -654,9 +639,9 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         setSearchHeaderExpanded(true);
         setBottomNavigationVisible(false);
         hideFabButtons();
-        mBinding.search.setImageResource(R.drawable.ic_action_search);
+        mBinding.headerBar.setSearchIcon(R.drawable.ic_action_search);
         mBinding.appBar.setExpanded(true, true);
-        scheduleSearchSuggestions(mBinding.hot.getText().toString().trim());
+        scheduleSearchSuggestions(mBinding.headerBar.getQuery().trim());
     }
 
     private void onSearchBack(View view) {
@@ -676,22 +661,19 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     private void submitHomeSearch() {
         if (mBinding == null) return;
-        String keyword = mBinding.hot.getText().toString().trim();
+        String keyword = mBinding.headerBar.getQuery().trim();
         if (TextUtils.isEmpty(keyword)) {
             keyword = mSuggestedKeyword == null ? "" : mSuggestedKeyword.trim();
             if (TextUtils.isEmpty(keyword)) return;
-            mBinding.hot.setText(keyword);
-            mBinding.hot.setSelection(keyword.length());
+            mBinding.headerBar.setQuery(keyword);
         }
         mSearchEditing = false;
         mSearchViewReady = false;
         hideSearchSuggestions();
-        mBinding.hot.setCursorVisible(false);
-        Util.hideKeyboard(mBinding.hot);
-        mBinding.hot.clearFocus();
+        mBinding.headerBar.clearSearchFocus();
         setSearchHeaderExpanded(true);
         showSearchContent();
-        mBinding.search.setImageResource(R.drawable.ic_action_search);
+        mBinding.headerBar.setSearchIcon(R.drawable.ic_action_search);
         HomeSearchFragment fragment = getHomeSearchFragment();
         if (fragment == null) {
             fragment = HomeSearchFragment.newInstance(keyword);
@@ -705,8 +687,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     public void searchFromHome(String keyword) {
         if (mBinding == null || TextUtils.isEmpty(keyword)) return;
-        mBinding.hot.setText(keyword);
-        mBinding.hot.setSelection(keyword.length());
+        mBinding.headerBar.setQuery(keyword);
         submitHomeSearch();
     }
 
@@ -733,10 +714,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mSearchResultsVisible = false;
         mSearchViewReady = false;
         hideSearchSuggestions();
-        Util.hideKeyboard(mBinding.hot);
-        mBinding.hot.clearFocus();
-        mBinding.hot.setCursorVisible(false);
-        mBinding.search.setImageResource(R.drawable.ic_action_search);
+        mBinding.headerBar.clearSearchFocus();
+        mBinding.headerBar.setSearchIcon(R.drawable.ic_action_search);
         mBinding.searchContent.setVisibility(View.GONE);
         mBinding.type.setVisibility(View.VISIBLE);
         mBinding.pager.setVisibility(View.VISIBLE);
@@ -755,9 +734,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         if (mBinding == null) return;
         mSearchEditing = false;
         hideSearchSuggestions();
-        Util.hideKeyboard(mBinding.hot);
-        mBinding.hot.clearFocus();
-        mBinding.hot.setCursorVisible(false);
+        mBinding.headerBar.clearSearchFocus();
         if (mSearchResultsVisible) {
             HomeSearchFragment fragment = getHomeSearchFragment();
             if (mSearchViewReady && fragment != null) updateSearchActionIcon(fragment);
@@ -771,20 +748,13 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     private void restoreSuggestedHint() {
         if (mBinding == null) return;
-        mBinding.hot.setText("");
-        mBinding.hot.setHint(TextUtils.isEmpty(mSuggestedKeyword) ? getString(R.string.search_keyword) : mSuggestedKeyword);
+        mBinding.headerBar.setQuery("");
+        mBinding.headerBar.setHint(TextUtils.isEmpty(mSuggestedKeyword) ? getString(R.string.search_keyword) : mSuggestedKeyword);
     }
 
     private void setSearchHeaderExpanded(boolean expanded) {
-        if (mHeaderAnimationReady && mSearchHeaderExpanded != expanded) {
-            TransitionManager.beginDelayedTransition(mBinding.headerBar, new AutoTransition().setDuration(180));
-        }
         mSearchHeaderExpanded = expanded;
-        int visibility = expanded ? View.GONE : View.VISIBLE;
-        mBinding.logo.setVisibility(visibility);
-        mBinding.keep.setVisibility(visibility);
-        mBinding.history.setVisibility(visibility);
-        mBinding.searchBack.setVisibility(expanded ? View.VISIBLE : View.GONE);
+        mBinding.headerBar.setExpanded(expanded);
     }
 
     private void scheduleSearchSuggestions(String keyword) {
@@ -793,6 +763,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         int generation = ++mSuggestionGeneration;
         if (TextUtils.isEmpty(keyword)) {
             mSuggestionAdapter.clear();
+            mBinding.searchSuggestionPanel.setRenderingEnabled(false);
             mBinding.searchSuggestionPanel.setVisibility(View.GONE);
             return;
         }
@@ -813,10 +784,12 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
 
     private void showSearchSuggestions(String keyword, int generation, List<String> suggestions) {
         if (mBinding == null || generation != mSuggestionGeneration) return;
-        if (!mSearchEditing || !mBinding.hot.hasFocus()) return;
-        if (!keyword.equals(mBinding.hot.getText().toString().trim())) return;
+        if (!mSearchEditing || !mBinding.headerBar.hasSearchFocus()) return;
+        if (!keyword.equals(mBinding.headerBar.getQuery().trim())) return;
         mSuggestionAdapter.setItems(suggestions);
-        mBinding.searchSuggestionPanel.setVisibility(suggestions.isEmpty() ? View.GONE : View.VISIBLE);
+        boolean visible = !suggestions.isEmpty();
+        mBinding.searchSuggestionPanel.setRenderingEnabled(visible);
+        mBinding.searchSuggestionPanel.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
     private void hideSearchSuggestions() {
@@ -824,13 +797,32 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         if (mSuggestRunnable != null) App.removeCallbacks(mSuggestRunnable);
         if (mBinding == null || mSuggestionAdapter == null) return;
         mSuggestionAdapter.clear();
+        mBinding.searchSuggestionPanel.setRenderingEnabled(false);
         mBinding.searchSuggestionPanel.setVisibility(View.GONE);
+    }
+
+    private void alignSearchSuggestionPanel(int left, int top, int right, int bottom) {
+        if (mBinding == null || mBinding.getRoot().getWidth() == 0) return;
+        int[] rootLocation = new int[2];
+        mBinding.getRoot().getLocationInWindow(rootLocation);
+        ViewGroup.LayoutParams layoutParams = mBinding.searchSuggestionPanel.getLayoutParams();
+        if (!(layoutParams instanceof ViewGroup.MarginLayoutParams)) return;
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) layoutParams;
+        int leftMargin = Math.max(0, left - rootLocation[0]);
+        int rightMargin = Math.max(0, mBinding.getRoot().getWidth() - (right - rootLocation[0]));
+        int topMargin = Math.max(0, bottom - rootLocation[1] + ResUtil.dp2px(4));
+        if (params.getMarginStart() == leftMargin && params.getMarginEnd() == rightMargin && params.topMargin == topMargin) return;
+        params.leftMargin = leftMargin;
+        params.rightMargin = rightMargin;
+        params.setMarginStart(leftMargin);
+        params.setMarginEnd(rightMargin);
+        params.topMargin = topMargin;
+        mBinding.searchSuggestionPanel.setLayoutParams(params);
     }
 
     private void onSuggestionClick(String text) {
         if (mBinding == null) return;
-        mBinding.hot.setText(text);
-        mBinding.hot.setSelection(text.length());
+        mBinding.headerBar.setQuery(text);
         hideSearchSuggestions();
         submitHomeSearch();
     }
@@ -861,7 +853,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void updateSearchActionIcon(HomeSearchFragment fragment) {
-        mBinding.search.setImageResource(fragment.isGrid() ? R.drawable.ic_action_list : R.drawable.ic_action_grid);
+        mBinding.headerBar.setSearchIcon(fragment.isGrid() ? R.drawable.ic_action_list : R.drawable.ic_action_grid);
     }
 
     private void onHistory(View view) {
@@ -1029,7 +1021,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private void setLogo() {
         Config config = VodConfig.get().getConfig();
         String logo = config == null ? "" : config.getLogo();
-        Glide.with(this).load(UrlUtil.convert(logo)).circleCrop().override(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL).error(R.drawable.ic_logo).listener(getLogoListener()).into(mBinding.logo);
+        Glide.with(this).load(UrlUtil.convert(logo)).circleCrop().override(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL).error(R.drawable.ic_logo).listener(getLogoListener()).into(mBinding.headerBar.getLogoView());
     }
 
     private RequestListener<Drawable> getLogoListener() {
@@ -1037,16 +1029,14 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
             @Override
             public boolean onLoadFailed(@Nullable GlideException e, Object model, @NonNull Target<Drawable> target, boolean isFirstResource) {
                 if (mBinding == null) return false;
-                mBinding.logo.getLayoutParams().width = ResUtil.dp2px(24);
-                mBinding.logo.getLayoutParams().height = ResUtil.dp2px(24);
+                mBinding.headerBar.setLogoSize(24);
                 return false;
             }
 
             @Override
             public boolean onResourceReady(@NonNull Drawable resource, @NonNull Object model, Target<Drawable> target, @NonNull DataSource dataSource, boolean isFirstResource) {
                 if (mBinding == null) return false;
-                mBinding.logo.getLayoutParams().width = ResUtil.dp2px(36);
-                mBinding.logo.getLayoutParams().height = ResUtil.dp2px(36);
+                mBinding.headerBar.setLogoSize(36);
                 return false;
             }
         };
@@ -1128,7 +1118,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
             hideSearchContent();
             return false;
         }
-        if (mSearchEditing || mBinding.hot.hasFocus()) {
+        if (mSearchEditing || mBinding.headerBar.hasSearchFocus()) {
             cancelSearchEditing();
             return false;
         }
@@ -1148,6 +1138,8 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         onFilterPanelVisibilityChanged(false);
         setBottomNavigationVisible(true);
         hideSearchSuggestions();
+        mBinding.swipeLayout.setRefreshGestureExclusionView(null);
+        mBinding.searchSuggestionPanel.setBackdropView(null);
         super.onDestroyView();
         App.removeCallbacks(mRunnable);
         if (mSuggestRunnable != null) App.removeCallbacks(mSuggestRunnable);

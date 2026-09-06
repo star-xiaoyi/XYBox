@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.custom;
 import android.content.Context;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewConfiguration;
 
 import androidx.annotation.NonNull;
@@ -23,6 +24,10 @@ public class CustomSwipeRefreshLayout extends SwipeRefreshLayout {
     private float mStartX;
     private float mStartY;
     private boolean mHorizontalDrag;
+    private boolean mRefreshGestureBlocked;
+    private View mRefreshGestureExclusionView;
+    private final int[] mRefreshLocation = new int[2];
+    private final int[] mExclusionLocation = new int[2];
 
     public CustomSwipeRefreshLayout(@NonNull Context context) {
         super(context);
@@ -34,8 +39,26 @@ public class CustomSwipeRefreshLayout extends SwipeRefreshLayout {
         mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
     }
 
+    /** 从这个 View 内开始的整段手势只交给子 View，不允许转成下拉刷新。 */
+    public void setRefreshGestureExclusionView(@Nullable View view) {
+        mRefreshGestureExclusionView = view;
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            mRefreshGestureBlocked = isInsideRefreshGestureExclusion(event);
+        }
+        boolean handled = super.dispatchTouchEvent(event);
+        if (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+            mRefreshGestureBlocked = false;
+        }
+        return handled;
+    }
+
     @Override
     public boolean onInterceptTouchEvent(MotionEvent event) {
+        if (mRefreshGestureBlocked) return false;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 mStartX = event.getX();
@@ -55,5 +78,25 @@ public class CustomSwipeRefreshLayout extends SwipeRefreshLayout {
                 break;
         }
         return super.onInterceptTouchEvent(event);
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (mRefreshGestureBlocked) return false;
+        return super.onTouchEvent(event);
+    }
+
+    private boolean isInsideRefreshGestureExclusion(MotionEvent event) {
+        View exclusion = mRefreshGestureExclusionView;
+        if (exclusion == null || !exclusion.isShown() || exclusion.getWidth() == 0 || exclusion.getHeight() == 0) return false;
+        // MotionEvent 是刷新容器坐标，统一换成窗口坐标后再与目标 View 比较。
+        getLocationInWindow(mRefreshLocation);
+        exclusion.getLocationInWindow(mExclusionLocation);
+        float windowX = mRefreshLocation[0] + event.getX();
+        float windowY = mRefreshLocation[1] + event.getY();
+        return windowX >= mExclusionLocation[0]
+                && windowX < mExclusionLocation[0] + exclusion.getWidth()
+                && windowY >= mExclusionLocation[1]
+                && windowY < mExclusionLocation[1] + exclusion.getHeight();
     }
 }
