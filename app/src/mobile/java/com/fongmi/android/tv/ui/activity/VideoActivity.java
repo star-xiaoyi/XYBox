@@ -62,6 +62,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewbinding.ViewBinding;
@@ -100,6 +101,7 @@ import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.player.Players;
 import com.fongmi.android.tv.player.PreviewPlayer;
 import com.fongmi.android.tv.player.exo.ExoUtil;
+import com.fongmi.android.tv.player.exo.PlaybackCache;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.ui.adapter.EpisodeAdapter;
@@ -177,6 +179,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private ParseAdapter mParseAdapter;
     private CustomKeyDownVod mKeyDown;
     private PreviewPlayer mPreview;
+    private PlaybackCache mPlaybackCache;
+    private Runnable mCacheWarmup;
     private Runnable mSpeedTick;
     private boolean mScrubPlaying;
     private float mSpeedProgress;
@@ -404,6 +408,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mObservePlayer = this::setPlayer;
         mObserveSearch = this::setSearch;
         mPlayers = Players.create(this);
+        mPlaybackCache = new PlaybackCache(percent -> mBinding.control.seek.setSessionCachedPercent(percent));
+        mCacheWarmup = this::startPlaybackCache;
         mDialogs = new ArrayList<>();
         mBroken = new ArrayList<>();
         mClock = Clock.create();
@@ -928,6 +934,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         setUseParse(VodConfig.hasParse() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags().contains(result.getFlag())) || result.getJx() == 1));
         if (mControlDialog != null && mControlDialog.isVisible()) mControlDialog.setParseVisible(isUseParse());
         mBinding.control.parse.setVisibility(isFullscreen() && isUseParse() ? View.VISIBLE : View.GONE);
+        stopPlaybackCache();
         mPlayers.start(result, isUseParse(), getPlayerTimeout());
         setQualityVisible(result.getUrl().isMulti());
         mBinding.swipeLayout.setRefreshing(false);
@@ -963,6 +970,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onItemClick(Result result) {
         try {
+            stopPlaybackCache();
             mPlayers.start(result, isUseParse(), getPlayerTimeout());
         } catch (Exception e) {
             ErrorEvent.extract(tag, e.getMessage());
@@ -1233,6 +1241,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     };
 
     private void enterCastMode() {
+        stopPlaybackCache();
         onPaused();
         castEpisode = getEpisode();
         castUrl = mPlayers.getUrl();
@@ -1262,8 +1271,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         }
         // 投屏结束就接着在手机上播下去，不该再让用户手动点一次。
         // 界面不在前台时不开播，否则会在后台闷声拉流。
-        if (!isStop() && !mPlayers.isEmpty()) onPlay();
-        else checkPlayImg();
+        if (!isStop() && !mPlayers.isEmpty()) {
+            onPlay();
+            schedulePlaybackCache();
+        } else {
+            checkPlayImg();
+        }
     }
 
     private void onCastExit() {
@@ -2147,6 +2160,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 else setPosition();
                 break;
             case Player.STATE_BUFFERING:
+                App.removeCallbacks(mCacheWarmup);
+                mPlaybackCache.pause();
                 mPreview.suspend();
                 showProgress();
                 break;
@@ -2157,7 +2172,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 // READY 时恢复采样，确保当前集和进度持续写入观看记录。
                 mClock.setCallback(this);
                 // 先登记片源；预热由 showControl 根据主播放器的缓冲余量决定。
-                if (!isCasting()) mPreview.setSource(mPlayers.getUrl(), mPlayers.getPreviewItem());
+                if (!isCasting()) mPreview.setSource(mPlayers.getUrl(), mPlayers.getPreviewItem(), mPlayers.getPlaybackCacheTrackParameters());
+                schedulePlaybackCache();
                 hideProgress();
                 checkControl();
                 checkPlayImg();
@@ -2178,6 +2194,39 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 mBinding.control.size.setText(mPlayers.getSizeText());
                 break;
         }
+    }
+
+    private void schedulePlaybackCache() {
+        App.removeCallbacks(mCacheWarmup);
+        if (isCasting() || !mPlayers.isVod() || mPlayers.hasDrm()) {
+            stopPlaybackCache();
+            return;
+        }
+        // seek 后短暂 BUFFERING 只是主播放器正在切分片，不能在这里 stop：stop 会清掉
+        // 本集已经落盘的全部临时缓存，并让淡黄色进度从头刷新。等 READY 事件再续传即可。
+        if (!mPlayers.isReady()) return;
+        // 先留给主播放器一秒起播；若前向余量还不足 15 秒则继续等，避免后台预取
+        // 和正在首缓冲的画面抢连接与带宽。
+        App.post(mCacheWarmup, 1000);
+    }
+
+    private void startPlaybackCache() {
+        if (isCasting() || !mPlayers.isReady() || !mPlayers.isVod() || mPlayers.hasDrm()) return;
+        long duration = mPlayers.getDuration();
+        long buffered = mPlayers.getBuffered();
+        MediaItem item = mPlayers.getPreviewItem();
+        if (duration <= 0) return;
+        if (!PlaybackCache.isFullyLocal(item) && buffered < duration && buffered - mPlayers.getPosition() < 15000) {
+            App.post(mCacheWarmup, 1000);
+            return;
+        }
+        mPlaybackCache.start(item, mPlayers.getPlaybackCacheTrackParameters(), mPlayers.getPosition(), duration);
+    }
+
+    private void stopPlaybackCache() {
+        if (mCacheWarmup != null) App.removeCallbacks(mCacheWarmup);
+        if (mPlaybackCache != null) mPlaybackCache.stop();
+        if (mBinding != null) mBinding.control.seek.setSessionCachedPercent(-1f);
     }
 
     /** 只有真正可播放且拿到有效总时长后，才创建顶部播放通知。 */
@@ -2621,6 +2670,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onCasted() {
         castEnded = false;
+        stopPlaybackCache();
         // 投给另一台装了本 App 的设备（fm 通道）走的是 HTTP 接力，这边没有可控的 DLNA 会话，
         // 维持原来的行为：本地停掉就完事
         if (isCasting()) enterCastMode();
@@ -2857,6 +2907,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         // 才出得来。带宽和解码全让给预览，松手再接着放。
         mScrubPlaying = mPlayers.isPlaying();
         if (mScrubPlaying) mPlayers.pause();
+        mPlaybackCache.pause();
         mBinding.control.previewFrame.setAlpha(1f);
         onScrubMove(position);
     }
@@ -2874,8 +2925,17 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onScrubStop(long position, boolean canceled) {
         mBinding.control.previewFrame.setAlpha(0f);
-        mPreview.idle();
-        // CustomSeekView 紧接着会 seek 并自己 play()，这里只负责把暂停前的状态还原
+        if (canceled) mPreview.idle();
+        else mPreview.finish(position);
+        if (!isCasting()) {
+            // CustomSeekView 已先把主播放器 seek 到同一个毫秒目标。保留此前落盘的所有
+            // 分片，只让后台任务从新位置向结尾重排；若主画面进入 BUFFERING 会先暂停。
+            if (!canceled) mPlaybackCache.focus(position, currentDuration());
+            schedulePlaybackCache();
+            if (!canceled) Logger.i("Seek: scrub-stop targetMs=" + position + " playerMs=" + mPlayers.getPosition()
+                    + " bufferedMs=" + mPlayers.getBuffered());
+        }
+        // CustomSeekView 已经 seek，这里只负责把暂停前的状态还原
         if (mScrubPlaying) mPlayers.play();
         mScrubPlaying = false;
         // 松手了才重新开始计时隐藏
@@ -2902,11 +2962,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onPreviewLoading() {
-        // 未命中缓存时继续盖着最后一张有效画面，等新帧真正渲染后再无缝替换。
-        // TextureView 在播放器闲置释放或首次 prepare 未完成时可能是黑的，不能主动露出来。
-        if (mBinding.control.previewImage.getDrawable() != null) {
-            mBinding.control.previewImage.setVisibility(View.VISIBLE);
-        }
+        // 新目标没有现成 Bitmap 时必须露出下层 TextureView。beta2 一直用旧图片盖住它，
+        // 实际播放器在背后已经换帧，用户看到的却只能隔很久跳一张静态图。
+        mBinding.control.previewImage.setVisibility(View.GONE);
     }
 
     @Override
@@ -3260,12 +3318,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         CastManager.get().removeListener(this);
         mPlayers.release();
         mPreview.release();
+        mPlaybackCache.release();
         mClock.release();
         Timer.get().reset();
         RefreshEvent.history();
         PlaybackService.stop();
         mHandler.removeCallbacksAndMessages(null);
-        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5);
+        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5, mCacheWarmup);
         EventBus.getDefault().unregister(this);
         mViewModel.result.removeObserver(mObserveDetail);
         mViewModel.player.removeObserver(mObservePlayer);

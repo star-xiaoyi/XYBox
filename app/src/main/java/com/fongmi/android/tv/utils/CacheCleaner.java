@@ -5,6 +5,7 @@ import android.os.StatFs;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.player.exo.PlaybackCache;
 import com.github.catvod.utils.Path;
 
 /**
@@ -48,8 +49,11 @@ public class CacheCleaner {
      * 检查缓存，如果超过阈值则清理
      */
     public void checkAndClean() {
+        // 播放页持有打开的 SimpleCache，自动清理既不能删除其目录，也不能淘汰当前集。
+        if (PlaybackCache.isPlaybackActive()) return;
         App.execute(() -> {
             try {
+                if (PlaybackCache.isPlaybackActive()) return;
                 // 获取当前缓存大小
                 long cacheSize = FileUtil.getDirectorySize(Path.cache());
                 // 获取剩余存储空间

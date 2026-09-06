@@ -15,6 +15,7 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.Util;
+import androidx.media3.datasource.cache.CacheDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.LoadControl;
@@ -45,9 +46,9 @@ public class ExoUtil {
     }
 
     public static LoadControl buildLoadControl() {
-        // 原实现把默认 50 秒直接乘 1~10，最高档意图达到 500 秒。若真正按时间执行，
-        // 高码率片源可能吃掉数百 MB 内存。这里保留档位含义，但收敛到 50~95 秒。
-        int bufferMs = DefaultLoadControl.DEFAULT_MIN_BUFFER_MS + (Setting.getBuffer() - 1) * 5000;
+        // 前向播放缓冲固定为 Media3 默认的 50 秒。整集缓存由 PlaybackCache 写磁盘，
+        // 不再让一个含义不清的设置项改变播放器内存占用。
+        int bufferMs = DefaultLoadControl.DEFAULT_MIN_BUFFER_MS;
         return new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
                         bufferMs,
@@ -76,6 +77,10 @@ public class ExoUtil {
 
     public static MediaSource.Factory buildMediaSourceFactory() {
         return new MediaSourceFactory();
+    }
+
+    public static MediaSource.Factory buildMediaSourceFactory(CacheDataSource.EventListener cacheEventListener) {
+        return new MediaSourceFactory(cacheEventListener);
     }
 
     public static CaptionStyleCompat getCaptionStyle() {
