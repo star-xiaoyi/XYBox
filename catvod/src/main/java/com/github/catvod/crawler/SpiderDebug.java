@@ -13,6 +13,6 @@ public class SpiderDebug {
     }
 
     public static void log(String msg) {
-        if (!TextUtils.isEmpty(msg)) Logger.d(msg);
+        if (!TextUtils.isEmpty(msg)) Logger.d(TAG, msg);
     }
 }

@@ -1,9 +1,9 @@
 package com.fongmi.android.tv.api;
 
 import android.text.TextUtils;
-import android.util.Log;
 
 import com.fongmi.android.tv.Setting;
+import com.github.catvod.utils.Logger;
 
 import java.net.URL;
 import java.util.Arrays;
@@ -137,7 +137,7 @@ public class AIAdDetector {
                 totalBlocked++;
                 // 记录被拦截的域名用于学习
                 learnDomain(host, confidence);
-                Log.d(TAG, "AI检测到广告: " + urlString + " (置信度: " + confidence + "%)");
+                Logger.d(TAG, "AI检测到广告: " + urlString + " (置信度: " + confidence + "%)");
                 return true;
             }
             
@@ -158,7 +158,7 @@ public class AIAdDetector {
             return false;
             
         } catch (Exception e) {
-            Log.e(TAG, "检测URL时出错: " + urlString, e);
+            Logger.e(TAG, "检测URL时出错: " + urlString, e);
             return false;
         }
     }

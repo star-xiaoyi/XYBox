@@ -327,7 +327,6 @@
         android:layout_marginTop="60dp"
         android:layout_marginEnd="0dp"
         android:elevation="12dp"
-        android:outlineProvider="none"
         android:visibility="gone">
 
         <com.fongmi.android.tv.ui.custom.CustomRecyclerView

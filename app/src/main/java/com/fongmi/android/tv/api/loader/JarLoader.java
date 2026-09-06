@@ -53,7 +53,7 @@ public class JarLoader {
             invokeInit(key);
             putProxy(key);
         } catch (Throwable e) {
-            android.util.Log.e("JarLoader", "Failed to load jar for key: " + key, e);
+            Logger.e("JarLoader", "Failed to load jar for key: " + key, e);
             Logger.e("Error", e);
         }
     }
@@ -107,7 +107,7 @@ public class JarLoader {
                 parseJar(key, UrlUtil.convert(jar));
             }
         } catch (Throwable e) {
-            android.util.Log.e("JarLoader", "Failed to parse jar for key: " + key + ", jar: " + jar, e);
+            Logger.e("JarLoader", "Failed to parse jar for key: " + key + ", jar: " + jar, e);
             Logger.e("Error", e);
         }
     }

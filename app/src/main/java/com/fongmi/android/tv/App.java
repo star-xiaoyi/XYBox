@@ -19,6 +19,7 @@ import com.fongmi.android.tv.Setting;
 // import com.fongmi.android.tv.event.EventIndex; // 暂时注释，如果不存在则删除
 import com.fongmi.android.tv.ui.activity.CrashActivity;
 import com.fongmi.android.tv.utils.CacheCleaner;
+import com.fongmi.android.tv.utils.AppLog;
 import com.fongmi.android.tv.utils.UpdateInstaller;
 import com.fongmi.android.tv.utils.AutoSyncManager;
 import com.fongmi.android.tv.utils.Notify;
@@ -143,6 +144,7 @@ public class App extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        AppLog.install(this);
         // 必须在任何 Activity 创建之前应用日夜模式，否则冷启动时系统栏/导航栏颜色与内容区不一致
         ThemeUtil.applyNightMode();
         // 动态源可能绕过 Notify 直接调用 Toast；先安装进程内过滤器，再初始化其它组件。
@@ -271,7 +273,6 @@ public class App extends Application {
         AutoSyncManager manager = AutoSyncManager.get();
         
         if (!manager.isAutoSyncEnabled()) {
-            Logger.d("App: 局域网自动同步未启用");
             return;
         }
         

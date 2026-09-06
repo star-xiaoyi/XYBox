@@ -318,20 +318,20 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     // 实现ConfigCallback接口
     @Override
     public void setConfig(Config config) {
-        android.util.Log.d("VodFragment", "setConfig called with: " + (config != null ? config.toString() : "null"));
+        Logger.d("VodFragment", "setConfig called with: " + (config != null ? config.toString() : "null"));
         
         if (config == null || config.isEmpty()) {
-            android.util.Log.d("VodFragment", "Config is null or empty, returning");
+            Logger.d("VodFragment", "Config is null or empty, returning");
             return;
         }
         
         // 检查Fragment是否还在活动状态，增强检查
         if (!isValidFragmentState()) {
-            android.util.Log.d("VodFragment", "Fragment state invalid, returning");
+            Logger.d("VodFragment", "Fragment state invalid, returning");
             return;
         }
         
-        android.util.Log.d("VodFragment", "Fragment state valid, proceeding with config load");
+        Logger.d("VodFragment", "Fragment state valid, proceeding with config load");
         
         // 安全地隐藏空源提示
         try {
@@ -343,35 +343,35 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         }
         
         Notify.progress(getActivity());
-        android.util.Log.d("VodFragment", "Calling VodConfig.load");
+        Logger.d("VodFragment", "Calling VodConfig.load");
         VodConfig.load(config, new Callback() {
             @Override
             public void success() {
-                android.util.Log.d("VodFragment", "VodConfig.load success callback");
+                Logger.d("VodFragment", "VodConfig.load success callback");
                 // 双重检查Fragment是否还在活动状态
                 if (!isValidFragmentState()) {
-                    android.util.Log.d("VodFragment", "Fragment state invalid in success callback");
+                    Logger.d("VodFragment", "Fragment state invalid in success callback");
                     return;
                 }
                 
                 try {
-                    android.util.Log.d("VodFragment", "Success: dismissing notify and refreshing");
+                    Logger.d("VodFragment", "Success: dismissing notify and refreshing");
                     Notify.dismiss();
                     RefreshEvent.config();
                     RefreshEvent.video();
                     homeContent();
                 } catch (Exception e) {
-                    android.util.Log.e("VodFragment", "Error in success callback", e);
+                    Logger.e("VodFragment", "Error in success callback", e);
                     Logger.e("Error", e);
                 }
             }
             
             @Override
             public void error(String msg) {
-                android.util.Log.e("VodFragment", "VodConfig.load error: " + msg);
+                Logger.e("VodFragment", "VodConfig.load error: " + msg);
                 // 双重检查Fragment是否还在活动状态
                 if (!isValidFragmentState()) {
-                    android.util.Log.d("VodFragment", "Fragment state invalid in error callback");
+                    Logger.d("VodFragment", "Fragment state invalid in error callback");
                     return;
                 }
                 
@@ -381,7 +381,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
                     // 加载失败时重新显示空源提示
                     checkEmptySource();
                 } catch (Exception e) {
-                    android.util.Log.e("VodFragment", "Error in error callback", e);
+                    Logger.e("VodFragment", "Error in error callback", e);
                     Logger.e("Error", e);
                 }
             }

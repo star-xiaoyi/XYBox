@@ -116,6 +116,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.settingsContent.setIncognitoChecked(Setting.isIncognito());
         mBinding.settingsContent.setLiveTabVisibleChecked(Setting.isLiveTabVisible());
         mBinding.settingsContent.setHistoryVisibleChecked(Setting.isHistoryVisible());
+        mBinding.settingsContent.setLiquidGlassNavigationChecked(Setting.isLiquidGlassNavigation());
         size = ResUtil.getStringArray(R.array.select_size);
         mBinding.settingsContent.setSizeOptions(size, Setting.getSize());
         mBinding.settingsContent.setThemeOptions(getThemeNames(), Setting.getThemeMode());
@@ -185,6 +186,9 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
             case SettingsGlassContentView.ACTION_OPERATION: onOperation(null); break;
             case SettingsGlassContentView.ACTION_SYNC: onSyncSettings(null); break;
             case SettingsGlassContentView.ACTION_CACHE: onCache(null); break;
+            case SettingsGlassContentView.ACTION_LOG:
+                com.fongmi.android.tv.ui.activity.LogActivity.start(requireActivity());
+                break;
             case SettingsGlassContentView.ACTION_BACKUP: onBackup(null); break;
             case SettingsGlassContentView.ACTION_RESTORE: onRestore(null); break;
             case SettingsGlassContentView.ACTION_LABORATORY:
@@ -205,7 +209,13 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
             case SettingsGlassContentView.ACTION_INCOGNITO: setIncognito(checked); break;
             case SettingsGlassContentView.ACTION_LIVE_TAB_VISIBLE: setLiveTabVisible(checked); break;
             case SettingsGlassContentView.ACTION_HISTORY_VISIBLE: setHistoryVisible(checked); break;
+            case SettingsGlassContentView.ACTION_GLASS_NAVIGATION: setLiquidGlassNavigation(checked); break;
         }
+    }
+
+    private void setLiquidGlassNavigation(boolean checked) {
+        Setting.putLiquidGlassNavigation(checked);
+        getRoot().refreshNavigationMode();
     }
 
     private void onSettingOption(int action, int index) {

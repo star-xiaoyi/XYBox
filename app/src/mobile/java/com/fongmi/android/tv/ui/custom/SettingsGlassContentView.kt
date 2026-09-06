@@ -130,6 +130,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
         @ColorInt val accentColor: Int = 0xFFFFCC00.toInt(),
         val historyVisible: Boolean = true,
         val liveTabVisible: Boolean = false,
+        val liquidGlassNavigation: Boolean = false,
         val incognito: Boolean = false,
         val doh: String = "",
         val proxy: String = "",
@@ -229,6 +230,10 @@ class SettingsGlassContentView @JvmOverloads constructor(
         state = state.copy(liveTabVisible = checked)
     }
 
+    fun setLiquidGlassNavigationChecked(checked: Boolean) {
+        state = state.copy(liquidGlassNavigation = checked)
+    }
+
     fun setIncognitoChecked(checked: Boolean) {
         state = state.copy(incognito = checked)
     }
@@ -297,6 +302,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
         state = when (action) {
             ACTION_HISTORY_VISIBLE -> state.copy(historyVisible = checked)
             ACTION_LIVE_TAB_VISIBLE -> state.copy(liveTabVisible = checked)
+            ACTION_GLASS_NAVIGATION -> state.copy(liquidGlassNavigation = checked)
             ACTION_INCOGNITO -> state.copy(incognito = checked)
             else -> state
         }
@@ -450,11 +456,11 @@ class SettingsGlassContentView @JvmOverloads constructor(
     ) {
         val groups = listOf(
             listOf(ACTION_VOD, ACTION_LIVE, ACTION_WEBDAV),
-            listOf(ACTION_THEME, ACTION_ACCENT, ACTION_SIZE, ACTION_HISTORY_VISIBLE, ACTION_LIVE_TAB_VISIBLE),
+            listOf(ACTION_THEME, ACTION_ACCENT, ACTION_SIZE, ACTION_GLASS_NAVIGATION, ACTION_HISTORY_VISIBLE, ACTION_LIVE_TAB_VISIBLE),
             listOf(ACTION_PLAYER, ACTION_OPERATION),
             listOf(ACTION_INCOGNITO, ACTION_CACHE, ACTION_BACKUP, ACTION_RESTORE),
             listOf(ACTION_LABORATORY),
-            listOf(ACTION_VERSION, ACTION_ABOUT)
+            listOf(ACTION_VERSION, ACTION_LOG, ACTION_ABOUT)
         )
         var resultCount = 0
 
@@ -502,6 +508,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
             ACTION_THEME -> stringResource(R.string.setting_theme) + " " + current.themeOptions.joinToString(" ")
             ACTION_ACCENT -> stringResource(R.string.setting_accent) + " " + current.accentOptions.joinToString(" ")
             ACTION_SIZE -> stringResource(R.string.setting_size) + " " + current.sizeOptions.joinToString(" ")
+            ACTION_GLASS_NAVIGATION -> stringResource(R.string.laboratory_liquid_glass_navigation) + " " + stringResource(R.string.laboratory_liquid_glass_navigation_summary)
             ACTION_HISTORY_VISIBLE -> stringResource(R.string.setting_history_visible)
             ACTION_LIVE_TAB_VISIBLE -> stringResource(R.string.setting_live_tab_visible)
             ACTION_PLAYER -> stringResource(R.string.setting_player) + " " + stringResource(R.string.setting_player_summary)
@@ -512,6 +519,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
             ACTION_PROXY -> stringResource(R.string.setting_proxy) + " " + current.proxy
             ACTION_INCOGNITO -> stringResource(R.string.setting_incognito)
             ACTION_CACHE -> stringResource(R.string.setting_cache) + " " + current.cache
+            ACTION_LOG -> stringResource(R.string.setting_log) + " " + stringResource(R.string.setting_log_summary)
             ACTION_BACKUP -> stringResource(R.string.setting_backup)
             ACTION_RESTORE -> stringResource(R.string.setting_restore)
             ACTION_LABORATORY -> stringResource(R.string.setting_laboratory) + " " + stringResource(R.string.setting_laboratory_summary)
@@ -548,6 +556,10 @@ class SettingsGlassContentView @JvmOverloads constructor(
                 id, R.drawable.ic_setting_size, R.string.setting_size,
                 current.sizeOptions, current.sizeIndex, backdrop, frameNanos, palette
             )
+            ACTION_GLASS_NAVIGATION -> ToggleRow(
+                id, R.drawable.ic_settings_showcase, R.string.laboratory_liquid_glass_navigation,
+                current.liquidGlassNavigation, backdrop, palette
+            )
             ACTION_HISTORY_VISIBLE -> ToggleRow(
                 id, R.drawable.ic_nav_history, R.string.setting_history_visible,
                 current.historyVisible, backdrop, palette
@@ -567,6 +579,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
             ACTION_PROXY -> ProxyEditorRow(backdrop, frameNanos, palette, current)
             ACTION_INCOGNITO -> ToggleRow(id, R.drawable.ic_setting_incognito, R.string.setting_incognito, current.incognito, backdrop, palette)
             ACTION_CACHE -> ActionRow(id, R.drawable.ic_settings_clean, R.string.setting_cache, R.string.setting_cache_summary, palette, current.cache)
+            ACTION_LOG -> ActionRow(id, R.drawable.ic_setting_log, R.string.setting_log, null, palette)
             ACTION_BACKUP -> ActionRow(id, R.drawable.ic_settings_backup, R.string.setting_backup, null, palette)
             ACTION_RESTORE -> ActionRow(id, R.drawable.ic_settings_restore, R.string.setting_restore, null, palette)
             ACTION_LABORATORY -> ActionRow(id, R.drawable.ic_setting_laboratory, R.string.setting_laboratory, R.string.setting_laboratory_summary, palette)
@@ -1306,6 +1319,8 @@ class SettingsGlassContentView @JvmOverloads constructor(
         const val ACTION_ABOUT = 24
         const val WEBDAV_TEST = 25
         const val WEBDAV_SAVE = 26
+        const val ACTION_LOG = 27
+        const val ACTION_GLASS_NAVIGATION = 28
         private const val PROJECT_URL = "https://github.com/star-xiaoyi/XYBox"
         private const val JIANGUOYUN_URL = "https://dav.jianguoyun.com/dav/XYBox/"
     }

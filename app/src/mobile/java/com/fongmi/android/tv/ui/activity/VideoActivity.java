@@ -13,9 +13,11 @@ import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.BatteryManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -33,6 +35,7 @@ import android.text.style.ClickableSpan;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -41,6 +44,7 @@ import android.view.Gravity;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.media.AudioManager;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -54,6 +58,9 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.media3.common.C;
 import androidx.media3.common.Player;
 import androidx.recyclerview.widget.RecyclerView;
@@ -154,6 +161,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 长按倍速那对箭头走完一个来回的毫秒数，也就是没锁定时的最快速度。 */
     private static final int SPEED_CYCLE = 700;
+    /** 竖屏全屏时，将画面中心固定在人眼更自然的、比屏幕几何中心高 28dp 的位置。 */
+    private static final int PORTRAIT_VIEWING_CENTER_OFFSET_DP = 28;
     private static final long MIN_AUTO_SWITCH_TIMEOUT = TimeUnit.SECONDS.toMillis(8);
 
     private ActivityVideoBinding mBinding;
@@ -208,6 +217,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean mPortraitLock;
     private int mCachedSize = -1;
     private int mVideoBase;
+    private int mStatusBarInset;
     private ValueAnimator mWidthAnimator;
     private boolean stop;
     private boolean lock;
@@ -383,6 +393,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     protected void initView(Bundle savedInstanceState) {
+        showDetailSystemUI();
+        applyDetailWindowInsets();
         mKeyDown = CustomKeyDownVod.create(this, mBinding.exo);
         mPreview = new PreviewPlayer();
         mFrameParams = mBinding.video.getLayoutParams();
@@ -1410,6 +1422,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 mDragging = true;
                 mVideoBase = mBinding.video.getWidth();
                 mHandleDown = land ? event.getRawX() : event.getRawY();
+                logVideoLayout("drag-down", 0f);
                 return true;
             case MotionEvent.ACTION_MOVE:
                 // 被 DragSheetLayout 拦截进来时不会有 DOWN，第一帧就地取基准点
@@ -1417,6 +1430,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                     mDragging = true;
                     mVideoBase = mBinding.video.getWidth();
                     mHandleDown = land ? event.getRawX() : event.getRawY();
+                    logVideoLayout("drag-intercepted", 0f);
                     return true;
                 }
                 dragSheet(land, Math.max(0, (land ? event.getRawX() : event.getRawY()) - mHandleDown));
@@ -1426,7 +1440,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 if (!mDragging) return false;
                 mDragging = false;
                 float distance = Math.max(0, (land ? event.getRawX() : event.getRawY()) - mHandleDown);
-                if (distance > getSheetTravel(land) * 0.2f) slideOutSheet(land);
+                int travel = getSheetTravel(land);
+                Logger.i("VideoLayout: drag-release distance=" + Math.round(distance)
+                        + " travel=" + travel + " threshold=" + Math.round(travel * 0.2f)
+                        + " result=" + (distance > travel * 0.2f ? "fullscreen" : "reset"));
+                logVideoLayout("drag-release", distance);
+                if (distance > travel * 0.2f) slideOutSheet(land);
                 else resetSheet(land);
                 return true;
         }
@@ -1434,7 +1453,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private int getSheetTravel(boolean land) {
-        return land ? mBinding.swipeLayout.getWidth() : mBinding.swipeLayout.getHeight();
+        if (land) return mBinding.swipeLayout.getWidth();
+        // 竖屏详情层既设置了 MATCH_PARENT，又通过 BELOW 放在视频下方；它的 measuredHeight
+        // 可能一直延伸到屏幕外，不能代表“滑到底”需要走的距离。用同一根布局坐标系计算，
+        // 让详情层顶部最终恰好落在屏幕底边，视频中心才会和全屏中心无缝衔接。
+        return Math.max(0, mBinding.getRoot().getHeight() - mBinding.swipeLayout.getTop());
     }
 
     /**
@@ -1481,15 +1504,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         clearDrag();
     }
 
-    /**
-     * 竖屏视频区高度按屏宽算 16:9，而不是写死 220dp——那个值是照手机屏宽定的，
-     * 放到平板上就成了顶部一条窄带，下面的详情卡片长得离谱。
-     * 再夹一个屏高上限，避免超长屏上视频把整页占满。
-     */
+    /** 竖屏详情页的视频区域固定占整块屏幕高度的三分之一，不跟随片源比例变化。 */
     private int getVideoHeight() {
-        int width = getResources().getDisplayMetrics().widthPixels;
-        int height = getResources().getDisplayMetrics().heightPixels;
-        return Math.min(width * 9 / 16, (int) (height * 0.55f));
+        return Math.max(1, ResUtil.getScreenHeight(this) / 3);
     }
 
     /**
@@ -1517,12 +1534,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (mWidthAnimator != null) mWidthAnimator.cancel();
         mBinding.swipeLayout.animate().cancel();
         mBinding.video.animate().cancel();
+        mBinding.playerSurface.animate().cancel();
         mBinding.handleLand.animate().cancel();
         mBinding.handleLand.setTranslationX(0);
         mBinding.swipeLayout.setTranslationX(0);
         mBinding.swipeLayout.setTranslationY(0);
         mBinding.video.setTranslationX(0);
         mBinding.video.setTranslationY(0);
+        mBinding.playerSurface.setTranslationY(0);
     }
 
     private void dragSheet(boolean land, float moved) {
@@ -1533,8 +1552,30 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             setVideoWidth(mVideoBase + (int) distance);
         } else {
             mBinding.swipeLayout.setTranslationY(distance);
-            mBinding.video.setTranslationY(distance / 2);
+            mBinding.video.setTranslationY(getPortraitVideoTranslation(distance));
+            mBinding.playerSurface.setTranslationY(0f);
         }
+    }
+
+    /**
+     * 拖动阶段直接把视频容器中心送到最终观看中心线。不能移动内部 SurfaceView：
+     * SurfaceView 使用独立渲染层，越过父容器时仍会被裁掉，普通 View 的 clipChildren
+     * 对它并不可靠。
+     */
+    private float getPortraitVideoTranslation(float sheetDistance) {
+        int travel = getSheetTravel(false);
+        if (travel <= 0) return 0f;
+        float progress = Math.max(0f, Math.min(1f, sheetDistance / travel));
+        // Before immersive mode the root starts below the status bar. Convert the physical
+        // target center back into the root's current coordinates so hiding system bars does
+        // not introduce a final one-frame jump.
+        float targetCenter = getRealScreenHeight() / 2f
+                - ResUtil.dp2px(PORTRAIT_VIEWING_CENTER_OFFSET_DP)
+                - getRootScreenTop();
+        float targetTranslation = targetCenter
+                - mBinding.video.getTop()
+                - mBinding.video.getHeight() / 2f;
+        return targetTranslation * progress;
     }
 
     /**
@@ -1554,11 +1595,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.swipeLayout.animate().translationX(0).translationY(0).setDuration(180).start();
         mBinding.handleLand.animate().translationX(0).setDuration(180).start();
         if (land) animateVideoWidth(mVideoBase, 180, this::applyOrientation);
-        else mBinding.video.animate().translationY(0).setDuration(180).start();
+        else {
+            mBinding.video.animate().translationY(0).setDuration(180).start();
+            mBinding.playerSurface.setTranslationY(0f);
+        }
     }
 
     private void slideOutSheet(boolean land) {
         int target = getSheetTravel(land);
+        Logger.i("VideoLayout: settle-start land=" + land + " target=" + target);
+        logVideoLayout("settle-start", target);
         if (land) {
             mBinding.swipeLayout.animate().translationX(target).setDuration(220).start();
             mBinding.handleLand.animate().translationX(target).setDuration(220).start();
@@ -1566,7 +1612,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         } else {
             mPortraitLock = true;
             mBinding.swipeLayout.animate().translationY(target).setDuration(220).start();
-            mBinding.video.animate().translationY(target / 2f).setDuration(220).withEndAction(() -> enterFullscreen(true)).start();
+            mBinding.playerSurface.setTranslationY(0f);
+            mBinding.video.animate().translationY(getPortraitVideoTranslation(target)).setDuration(220).withEndAction(() -> enterFullscreen(true)).start();
         }
     }
 
@@ -1738,6 +1785,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void enterFullscreen(boolean portrait) {
         if (isFullscreen()) return;
+        logVideoLayout("fullscreen-before-layout", -1f);
         clearDrag();
         mBinding.video.setLayoutParams(new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT));
         setRequestedOrientation(portrait ? ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
@@ -1752,10 +1800,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mKeyDown.resetScale();
         App.post(mR3, 2000);
         hideControl();
+        mBinding.video.post(() -> logVideoLayout("fullscreen-after-layout", -1f));
     }
 
     private void exitFullscreen() {
         if (!isFullscreen()) return;
+        logVideoLayout("fullscreen-exit", -1f);
         applyPortraitViewingOffset(false);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
         App.post(() -> mBinding.episode.scrollToPosition(mEpisodeAdapter.getPosition()), 50);
@@ -2334,22 +2384,117 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void setFullscreen(boolean fullscreen) {
-        Util.toggleFullscreen(this, this.fullscreen = fullscreen);
+        this.fullscreen = fullscreen;
+        applyDetailTopInset();
+        Util.toggleFullscreen(this, fullscreen);
+        if (!fullscreen) showDetailSystemUI();
+        ViewCompat.requestApplyInsets(mBinding.getRoot());
     }
 
     /**
-     * 竖屏全屏的几何中心在纵长屏幕上看起来略偏下。
-     * 画面和居中反馈使用同一偏移，横屏及退出全屏时恢复原位。
+     * Android 15+ 强制 edge-to-edge 后，详情页会铺到状态栏下面。只给非全屏详情内容补顶部
+     * inset，底部继续延伸到手势区，因此返回键和播放器顶栏不会被状态栏挡住，也不会重新
+     * 引入小白条保护长条。
+     */
+    private void applyDetailWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(mBinding.getRoot(), (view, insets) -> {
+            Insets statusBars = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars());
+            mStatusBarInset = statusBars.top;
+            applyDetailTopInset();
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(mBinding.getRoot());
+    }
+
+    private void applyDetailTopInset() {
+        if (mBinding == null) return;
+        int top = isFullscreen() ? 0 : mStatusBarInset;
+        View root = mBinding.getRoot();
+        if (root.getPaddingTop() != top) {
+            root.setPadding(root.getPaddingLeft(), top, root.getPaddingRight(), root.getPaddingBottom());
+        }
+    }
+
+    /**
+     * 详情页保留顶部状态栏，但让页面延伸到手势导航区，并关闭系统自动添加的
+     * 导航栏对比度保护长条。与全屏切换分开处理，避免改变视频拖动使用的顶部坐标系。
+     */
+    private void showDetailSystemUI() {
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+        boolean night = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        if (!night && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        }
+        getWindow().getDecorView().setSystemUiVisibility(flags);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
+    }
+
+    /**
+     * 竖屏全屏以固定的观看中心线定位，而不是按视频高度或屏幕高度分别计算顶边。
+     * 这样不同比例的画面都把垂直中心落在同一条视线上；左右侧操作和居中反馈也跟随画面中心。
      */
     private void applyPortraitViewingOffset(boolean portraitFull) {
-        int heightDp = getResources().getConfiguration().screenHeightDp;
-        int offsetDp = Math.max(16, Math.min(24, Math.round(heightDp * 0.02f)));
-        float offset = portraitFull ? -ResUtil.dp2px(offsetDp) : 0f;
-        mBinding.playerSurface.setTranslationY(offset);
+        float offset = portraitFull ? -ResUtil.dp2px(PORTRAIT_VIEWING_CENTER_OFFSET_DP) : 0f;
+        // Keep the SurfaceView inside its own bounds. A shorter top-aligned viewport puts its
+        // center 28dp above the real screen center without translating or cropping the surface.
+        FrameLayout.LayoutParams surface = (FrameLayout.LayoutParams) mBinding.playerSurface.getLayoutParams();
+        surface.width = FrameLayout.LayoutParams.MATCH_PARENT;
+        surface.height = portraitFull
+                ? Math.max(1, getRealScreenHeight() - ResUtil.dp2px(PORTRAIT_VIEWING_CENTER_OFFSET_DP) * 2)
+                : FrameLayout.LayoutParams.MATCH_PARENT;
+        surface.gravity = Gravity.TOP;
+        mBinding.playerSurface.setTranslationY(0f);
+        mBinding.playerSurface.setLayoutParams(surface);
         mBinding.widget.error.setTranslationY(offset);
         mBinding.widget.progress.setTranslationY(offset);
         mBinding.widget.seek.setTranslationY(offset);
         mBinding.widget.gestureFeedback.setTranslationY(offset);
+        // Move the whole left control group. Moving only the danmaku icon made it
+        // leave its wrap-content parent and the parent clipped most of the icon.
+        mBinding.control.danmaku.setTranslationY(0f);
+        mBinding.control.left.setTranslationY(offset);
+        mBinding.control.right.getRoot().setTranslationY(offset);
+        Logger.i("VideoLayout: viewing-offset portrait=" + portraitFull
+                + " controlsOffset=" + Math.round(offset)
+                + " surfaceHeight=" + surface.height
+                + " realScreenH=" + getRealScreenHeight());
+    }
+
+    private int getRealScreenHeight() {
+        DisplayMetrics metrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
+        return metrics.heightPixels;
+    }
+
+    private int getRootScreenTop() {
+        int[] location = new int[2];
+        mBinding.getRoot().getLocationOnScreen(location);
+        return location[1];
+    }
+
+    /** A compact geometry snapshot that can be shared from Settings -> Runtime logs. */
+    private void logVideoLayout(String stage, float distance) {
+        if (mBinding == null) return;
+        Logger.i("VideoLayout: " + stage
+                + " land=" + isLand()
+                + " fullscreen=" + isFullscreen()
+                + " distance=" + Math.round(distance)
+                + " rootH=" + mBinding.getRoot().getHeight()
+                + " rootScreenY=" + getRootScreenTop()
+                + " sheetTop=" + mBinding.swipeLayout.getTop()
+                + " sheetH=" + mBinding.swipeLayout.getHeight()
+                + " sheetTY=" + Math.round(mBinding.swipeLayout.getTranslationY())
+                + " videoTop=" + mBinding.video.getTop()
+                + " videoH=" + mBinding.video.getHeight()
+                + " videoTY=" + Math.round(mBinding.video.getTranslationY())
+                + " surfaceTop=" + mBinding.playerSurface.getTop()
+                + " surfaceH=" + mBinding.playerSurface.getHeight()
+                + " surfaceTY=" + Math.round(mBinding.playerSurface.getTranslationY())
+                + " travel=" + getSheetTravel(isLand()));
     }
 
     private boolean isInitAuto() {
@@ -2958,7 +3103,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (isFullscreen() && hasFocus) Util.hideSystemUI(this);
+        if (!hasFocus) return;
+        if (isFullscreen()) Util.hideSystemUI(this);
+        else showDetailSystemUI();
     }
 
     @Override

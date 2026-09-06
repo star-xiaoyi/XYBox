@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.TypedValue;
-import android.view.View;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -12,7 +11,6 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.databinding.ActivitySettingLaboratoryBinding;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 
@@ -41,18 +39,11 @@ public class SettingLaboratoryActivity extends BaseActivity {
         mBinding.header.setTitle(getString(R.string.setting_laboratory));
         mBinding.header.setBackdropView(mBinding.content);
         mBinding.header.setRenderingEnabled(true);
-        mBinding.liquidGlassNavigationSwitch.setChecked(Setting.isLiquidGlassNavigation());
     }
 
     @Override
     protected void initEvent() {
         mBinding.header.setOnClickListener(v -> finish());
         mBinding.glassShowcase.setOnClickListener(v -> LiquidGlassShowcaseActivity.start(this));
-        mBinding.liquidGlassNavigationSwitch.setOnClickListener(this::setLiquidGlassNavigation);
-        mBinding.liquidGlassNavigation.setOnClickListener(v -> mBinding.liquidGlassNavigationSwitch.performClick());
-    }
-
-    private void setLiquidGlassNavigation(View view) {
-        Setting.putLiquidGlassNavigation(mBinding.liquidGlassNavigationSwitch.isChecked());
     }
 }
