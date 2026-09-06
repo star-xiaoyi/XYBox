@@ -100,7 +100,6 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
         val render: Int = 0,
         val decode: Int = 0,
         val scale: Int = 0,
-        val buffer: Int = 1,
         val speed: Float = 3f,
         val tunnel: Boolean = false,
         val audioDecode: Boolean = false,
@@ -130,7 +129,6 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
             render = Setting.getRender(),
             decode = Setting.getDecode(),
             scale = Setting.getScale(),
-            buffer = Setting.getBuffer(),
             speed = Setting.getSpeed(),
             tunnel = Setting.isTunnel(),
             audioDecode = Setting.isAudioPrefer(),
@@ -207,21 +205,6 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
                 ChoiceSettingRow(SCALE, R.string.player_scale, scaleOptions, state.scale, backdrop, palette)
             }
             GlassGroup(palette) {
-                SliderSettingRow(
-                    action = BUFFER,
-                    title = R.string.player_buffer,
-                    valueText = state.buffer.toString(),
-                    value = state.buffer.toFloat(),
-                    range = 1f..10f,
-                    step = 1f,
-                    backdrop = backdrop,
-                    palette = palette
-                ) { value ->
-                    val snapped = value.toInt().coerceIn(1, 10)
-                    state = state.copy(buffer = snapped)
-                    Setting.putBuffer(snapped)
-                }
-                SecondaryDivider(palette)
                 SliderSettingRow(
                     action = SPEED,
                     title = R.string.player_speed,
@@ -445,7 +428,6 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
         private const val RENDER = 1
         private const val DECODE = 2
         private const val SCALE = 3
-        private const val BUFFER = 4
         private const val SPEED = 5
         private const val TUNNEL = 6
         private const val AUDIO = 7

@@ -11,6 +11,8 @@ import androidx.core.content.FileProvider;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.player.exo.CacheManager;
+import com.fongmi.android.tv.player.exo.PlaybackCache;
 import com.github.catvod.utils.Logger;
 import com.github.catvod.utils.Path;
 
@@ -100,7 +102,13 @@ public class FileUtil {
 
     public static void clearCache(Callback callback) {
         App.execute(() -> {
-            Path.clear(Path.cache());
+            // SimpleCache 打开后不能直接删除它的目录。播放页存在时还要保留当前集；
+            // 其余缓存仍逐项清理。离开播放页后临时集由 PlaybackCache 精确移除。
+            if (!PlaybackCache.isPlaybackActive()) CacheManager.get().clear();
+            File exo = Path.exo();
+            for (File file : Path.list(Path.cache())) {
+                if (!file.equals(exo)) Path.clear(file);
+            }
             App.post(callback::success);
         });
     }

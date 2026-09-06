@@ -22,8 +22,11 @@ import android.text.TextUtils;
 import androidx.annotation.NonNull;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
+import androidx.media3.common.Format;
+import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -263,6 +266,10 @@ public class Players implements Player.Listener, ParseCallback {
         return exoPlayer == null ? 0 : exoPlayer.getBufferedPosition();
     }
 
+    public boolean hasDrm() {
+        return drm != null;
+    }
+
     public boolean retried() {
         return ++retry > 2;
     }
@@ -399,9 +406,33 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     /** 给预览播放器用：同一路地址、同一套 header 和格式，但不带字幕。 */
-    public androidx.media3.common.MediaItem getPreviewItem() {
+    public MediaItem getPreviewItem() {
         if (TextUtils.isEmpty(url)) return null;
         return ExoUtil.getMediaItem(getHeaders(), UrlUtil.uri(url), format, drm, new ArrayList<>(), decode);
+    }
+
+    /** 临时预取只选当前实际播放的清晰度，避免自适应流把所有码率都下载一遍。 */
+    public TrackSelectionParameters getPlaybackCacheTrackParameters() {
+        if (exoPlayer == null) return TrackSelectionParameters.DEFAULT_WITHOUT_CONTEXT;
+        TrackSelectionParameters.Builder builder = exoPlayer.getTrackSelectionParameters()
+                .buildUpon()
+                .setForceLowestBitrate(false)
+                .setForceHighestSupportedBitrate(true);
+        Format current = exoPlayer.getVideoFormat();
+        if (current != null) {
+            // 预览和整集预取必须跟主播放器命中同一条自适应码流。之前预览强制最低
+            // 码率、预取只设上限，多码率 HLS 上三者可能各读一套分片，导致明明播过
+            // 的位置仍要重新访问网络。把当前实际格式同时设为上下限，确保共用缓存键。
+            if (current.width > 0 && current.height > 0) {
+                builder.setMinVideoSize(current.width, current.height);
+                builder.setMaxVideoSize(current.width, current.height);
+            }
+            if (current.bitrate > 0) {
+                builder.setMinVideoBitrate(current.bitrate);
+                builder.setMaxVideoBitrate(current.bitrate);
+            }
+        }
+        return builder.build();
     }
 
     public String getDurationTime() {

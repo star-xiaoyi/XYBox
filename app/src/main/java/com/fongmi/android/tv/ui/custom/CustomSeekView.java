@@ -1,10 +1,12 @@
 package com.fongmi.android.tv.ui.custom;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
+import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -38,6 +40,9 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
     private long currentDuration;
     private long currentPosition;
     private long currentBuffered;
+    private long displayedBuffered = Long.MIN_VALUE;
+    private float sessionCachedPercent = -1f;
+    private ValueAnimator bufferedAnimator;
     private boolean scrubbing;
     private boolean isPressed;
 
@@ -143,6 +148,13 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
     public void setDuration(long duration) {
         timeBar.setDuration(duration);
     }
+
+    /** 当前集后台预取进度；负数表示当前没有预取任务。 */
+    public void setSessionCachedPercent(float percent) {
+        sessionCachedPercent = percent < 0 ? -1f : Math.min(percent, 100f);
+        currentBuffered = Long.MIN_VALUE;
+        start();
+    }
     
     /**
      * 动态调整进度条高度
@@ -183,6 +195,9 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
         long duration = sourceDuration();
         long position = sourcePosition();
         long buffered = source != null ? position : player.getBuffered();
+        if (source == null && duration > 0 && sessionCachedPercent >= 0) {
+            buffered = Math.max(buffered, Math.round(duration * (sessionCachedPercent / 100f)));
+        }
         boolean positionChanged = position != currentPosition;
         boolean durationChanged = duration != currentDuration;
         boolean bufferedChanged = buffered != currentBuffered;
@@ -199,7 +214,7 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
             positionView.setText(player.stringToTime(position < 0 ? 0 : position));
         }
         if (bufferedChanged) {
-            timeBar.setBufferedPosition(buffered);
+            animateBufferedPosition(buffered);
         }
         removeCallbacks(refresh);
         if (sourceEmpty()) {
@@ -207,6 +222,7 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
             durationView.setText("00:00");
             timeBar.setPosition(currentPosition = 0);
             timeBar.setDuration(currentDuration = 0);
+            setBufferedPositionImmediately(0);
             postDelayed(refresh, MIN_UPDATE_INTERVAL_MS);
         } else if (sourcePlaying()) {
             postDelayed(refresh, delayMs(position));
@@ -236,30 +252,53 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
         return Util.constrainValue(delayMs, MIN_UPDATE_INTERVAL_MS, MAX_UPDATE_INTERVAL_MS);
     }
 
+    /**
+     * HLS/DASH 的真实缓存进度按分片回调，原始数值会一截一截跳。这里只在两个真实进度
+     * 之间做短线性过渡，不预测尚未下载的内容，也不会把动画值当作缓存状态。
+     */
+    private void animateBufferedPosition(long target) {
+        target = Math.max(0, target);
+        long start = displayedBuffered == Long.MIN_VALUE ? Math.max(0, currentPosition) : displayedBuffered;
+        if (bufferedAnimator != null) bufferedAnimator.cancel();
+        if (target <= start || currentDuration <= 0) {
+            setBufferedPositionImmediately(target);
+            return;
+        }
+        long delta = target - start;
+        long duration = Util.constrainValue(180 + delta / 80, 180, 650);
+        final long from = start;
+        final long to = target;
+        bufferedAnimator = ValueAnimator.ofFloat(0f, 1f);
+        bufferedAnimator.setDuration(duration);
+        bufferedAnimator.setInterpolator(new LinearInterpolator());
+        bufferedAnimator.addUpdateListener(animation -> {
+            float fraction = (float) animation.getAnimatedValue();
+            displayedBuffered = from + Math.round((to - from) * fraction);
+            timeBar.setBufferedPosition(displayedBuffered);
+        });
+        bufferedAnimator.start();
+    }
+
+    private void setBufferedPositionImmediately(long value) {
+        if (bufferedAnimator != null) bufferedAnimator.cancel();
+        displayedBuffered = value;
+        timeBar.setBufferedPosition(value);
+    }
+
     private void seekToTimeBarPosition(long positionMs) {
-        // 先设置播放位置
         if (source != null) source.seekTo(positionMs);
         else player.seekTo(positionMs);
-        // 延迟刷新进度条，确保播放器已经处理了跳转操作
+        // ExoPlayer 的 seekTo 会同步更新目标播放位置。立即刷新，不能再人为等 100ms，
+        // 否则即使目标分片已经落盘，滑块也会先停一下甚至短暂跳回旧位置。
         removeCallbacks(refresh);
-        postDelayed(() -> {
-            // 只有在非拖动状态下才刷新进度条位置
-            if (!scrubbing) {
-                refresh();
-                // 确保进度条位置与实际播放位置一致
-                long actualPosition = sourcePosition();
-                if (Math.abs(actualPosition - positionMs) > 100) { // 如果差异超过100ms，再次调整
-                    timeBar.setPosition(actualPosition);
-                    positionView.setText(player.stringToTime(actualPosition));
-                }
-            }
-        }, 100); // 增加延迟时间，确保拖拽状态完全结束
+        post(refresh);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         removeCallbacks(refresh);
+        if (bufferedAnimator != null) bufferedAnimator.cancel();
     }
 
     @Override
@@ -278,15 +317,18 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
     @Override
     public void onScrubStop(@NonNull TimeBar timeBar, long position, boolean canceled) {
         scrubbing = false;
-        if (scrubListener != null) scrubListener.onScrubStop(position, canceled);
-
         if (!canceled) {
             // 立即设置进度条位置到目标位置，避免圆球跳回原始位置
             timeBar.setPosition(position);
             positionView.setText(player.stringToTime(position));
-            
-            // 调整播放位置
+            // 先让主播放器接收和预览相同的毫秒目标，再通知页面收起预览、恢复播放。
+            // 原顺序会先露出旧的主画面，随后才 seek，看起来像预览和落点对不上。
             seekToTimeBarPosition(position);
+        }
+
+        if (scrubListener != null) scrubListener.onScrubStop(position, canceled);
+
+        if (!canceled) {
             // 确保播放状态正确
             if (source == null && !player.isPlaying()) {
                 player.play();

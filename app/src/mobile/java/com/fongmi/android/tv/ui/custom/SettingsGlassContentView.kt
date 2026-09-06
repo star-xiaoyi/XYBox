@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -511,8 +512,45 @@ class SettingsGlassContentView @JvmOverloads constructor(
             ACTION_GLASS_NAVIGATION -> stringResource(R.string.laboratory_liquid_glass_navigation) + " " + stringResource(R.string.laboratory_liquid_glass_navigation_summary)
             ACTION_HISTORY_VISIBLE -> stringResource(R.string.setting_history_visible)
             ACTION_LIVE_TAB_VISIBLE -> stringResource(R.string.setting_live_tab_visible)
-            ACTION_PLAYER -> stringResource(R.string.setting_player) + " " + stringResource(R.string.setting_player_summary)
-            ACTION_OPERATION -> stringResource(R.string.setting_operation) + " " + stringResource(R.string.setting_operation_summary)
+            ACTION_PLAYER -> listOf(
+                stringResource(R.string.setting_player),
+                stringResource(R.string.setting_player_summary),
+                stringResource(R.string.player_render),
+                stringResource(R.string.player_decode),
+                stringResource(R.string.player_scale),
+                stringResource(R.string.player_speed),
+                stringResource(R.string.player_tunnel),
+                stringResource(R.string.player_audio_decode),
+                stringResource(R.string.player_aac),
+                stringResource(R.string.player_caption),
+                stringResource(R.string.player_danmaku_load),
+                stringResource(R.string.player_background),
+                stringResource(R.string.player_ua),
+                stringResource(R.string.setting_doh),
+                stringResource(R.string.setting_proxy),
+                stringArrayResource(R.array.select_render).joinToString(" "),
+                stringArrayResource(R.array.select_decode).joinToString(" "),
+                stringArrayResource(R.array.select_scale).joinToString(" "),
+                stringArrayResource(R.array.select_caption).joinToString(" "),
+                current.dohOptions.joinToString(" ")
+            ).joinToString(" ")
+            ACTION_OPERATION -> listOf(
+                stringResource(R.string.setting_operation),
+                stringResource(R.string.setting_operation_summary),
+                stringResource(R.string.player_gesture_title),
+                stringResource(R.string.player_gesture_double_tap_play),
+                stringResource(R.string.player_gesture_double_tap_seek),
+                stringResource(R.string.player_gesture_seek_seconds),
+                stringResource(R.string.player_gesture_seek_seconds_value, 5),
+                stringResource(R.string.player_gesture_seek_seconds_value, 10),
+                stringResource(R.string.player_gesture_seek_seconds_value, 15),
+                stringResource(R.string.player_gesture_seek_seconds_value, 30),
+                stringResource(R.string.player_gesture_brightness),
+                stringResource(R.string.player_gesture_volume),
+                stringResource(R.string.player_gesture_progress),
+                stringResource(R.string.player_gesture_episode_port),
+                stringResource(R.string.player_gesture_episode_land)
+            ).joinToString(" ")
             ACTION_WEBDAV -> stringResource(R.string.setting_webdav) + " " + stringResource(R.string.setting_webdav_summary)
             ACTION_SYNC -> stringResource(R.string.setting_lan_sync) + " " + stringResource(R.string.setting_lan_sync_summary)
             ACTION_DOH -> stringResource(R.string.setting_doh) + " " + current.doh

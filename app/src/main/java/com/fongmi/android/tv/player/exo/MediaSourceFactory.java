@@ -30,11 +30,17 @@ import java.util.Map;
 public class MediaSourceFactory implements MediaSource.Factory {
 
     private final DefaultMediaSourceFactory defaultMediaSourceFactory;
+    private final CacheDataSource.EventListener cacheEventListener;
     private HttpDataSource.Factory httpDataSourceFactory;
     private DataSource.Factory dataSourceFactory;
     private ExtractorsFactory extractorsFactory;
 
     public MediaSourceFactory() {
+        this(null);
+    }
+
+    public MediaSourceFactory(CacheDataSource.EventListener cacheEventListener) {
+        this.cacheEventListener = cacheEventListener;
         defaultMediaSourceFactory = new DefaultMediaSourceFactory(getDataSourceFactory(), getExtractorsFactory());
     }
 
@@ -95,7 +101,12 @@ public class MediaSourceFactory implements MediaSource.Factory {
     private CacheDataSource.Factory buildCacheDataSource(DataSource.Factory upstreamFactory) {
         // CacheDataSource 默认使用 CacheDataSink 写入。之前显式传 null 把缓存变成了只读，
         // 主播放和预览因此无法复用刚刚下载过的分片。
-        return new CacheDataSource.Factory().setCache(CacheManager.get().getCache()).setUpstreamDataSourceFactory(upstreamFactory).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);
+        CacheDataSource.Factory factory = new CacheDataSource.Factory()
+                .setCache(CacheManager.get().getCache())
+                .setUpstreamDataSourceFactory(upstreamFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);
+        if (cacheEventListener != null) factory.setEventListener(cacheEventListener);
+        return factory;
     }
 
     private HttpDataSource.Factory getHttpDataSourceFactory() {
