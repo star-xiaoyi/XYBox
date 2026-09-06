@@ -16,6 +16,7 @@ import androidx.media3.ui.TimeBar;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.player.Players;
+import com.github.catvod.utils.Logger;
 
 import java.util.concurrent.TimeUnit;
 
@@ -165,7 +166,7 @@ public class CustomSeekView extends FrameLayout implements TimeBar.OnScrubListen
             timeBar.requestLayout();
         } catch (Exception e) {
             // 如果反射失败，尝试调整布局参数
-            android.util.Log.w("CustomSeekView", "Failed to set bar height via reflection: " + e.getMessage());
+            Logger.w("CustomSeekView", "Failed to set bar height via reflection: " + e.getMessage());
             if (timeBar.getLayoutParams() != null) {
                 timeBar.getLayoutParams().height = barHeightPx;
                 timeBar.requestLayout();

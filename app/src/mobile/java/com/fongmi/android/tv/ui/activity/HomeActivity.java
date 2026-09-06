@@ -288,6 +288,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         if (changed && fragment != null) fragment.onNavigationModeChanged();
     }
 
+    public void refreshNavigationMode() {
+        applyNavigationMode();
+    }
+
     public boolean isGlassNavigationEnabled() {
         return glassNavigationEnabled;
     }

@@ -32,50 +32,6 @@
             <LinearLayout style="@style/SettingsCard">
 
                 <LinearLayout
-                    android:id="@+id/liquidGlassNavigation"
-                    style="@style/SettingsRow">
-
-                    <ImageView
-                        style="@style/SettingsRowIcon"
-                        android:src="@drawable/ic_setting_laboratory" />
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="12dp"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            style="@style/SettingsTitle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/laboratory_liquid_glass_navigation" />
-
-                        <TextView
-                            style="@style/SettingsSummary"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="3dp"
-                            android:text="@string/laboratory_liquid_glass_navigation_summary" />
-
-                    </LinearLayout>
-
-                    <com.fongmi.android.tv.ui.custom.LiquidGlassSwitch
-                        android:id="@+id/liquidGlassNavigationSwitch"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" />
-
-                </LinearLayout>
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginStart="56dp"
-                    android:layout_marginEnd="16dp"
-                    android:background="@color/separator" />
-
-                <LinearLayout
                     android:id="@+id/glassShowcase"
                     style="@style/SettingsRow">
 

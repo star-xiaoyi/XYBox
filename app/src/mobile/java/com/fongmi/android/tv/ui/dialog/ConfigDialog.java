@@ -23,6 +23,7 @@ import com.fongmi.android.tv.impl.ConfigCallback;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.ui.custom.CustomTextListener;
 import com.fongmi.android.tv.utils.FileChooser;
+import com.github.catvod.utils.Logger;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 public class ConfigDialog {
@@ -159,7 +160,7 @@ public class ConfigDialog {
         String url = binding.url.getText().toString().trim();
         String name = binding.name.getText().toString().trim();
         
-        android.util.Log.d("ConfigDialog", "onPositive: type=" + type + ", url=" + url + ", name=" + name);
+        Logger.d("ConfigDialog", "onPositive: type=" + type + ", url=" + url + ", name=" + name);
         
         // 如果是编辑模式，更新现有配置；URL 变化时同步删除旧地址。
         if (edit && !url.isEmpty()) {
@@ -173,7 +174,7 @@ public class ConfigDialog {
         
         // 如果URL为空，删除配置
         if (url.isEmpty()) {
-            android.util.Log.d("ConfigDialog", "URL is empty, deleting config");
+            Logger.d("ConfigDialog", "URL is empty, deleting config");
             Config.delete(ori, type);
             dialog.dismiss();
             return;
@@ -182,18 +183,18 @@ public class ConfigDialog {
         // 只有URL不为空时，才设置配置
         // 保存原始URL，以便在添加失败时恢复
         String originalUrl = ori;
-        android.util.Log.d("ConfigDialog", "Calling Config.find with url=" + url + ", type=" + type);
+        Logger.d("ConfigDialog", "Calling Config.find with url=" + url + ", type=" + type);
         
         Config config = Config.find(url, type);
-        android.util.Log.d("ConfigDialog", "Config.find returned: " + (config != null ? config.toString() : "null"));
+        Logger.d("ConfigDialog", "Config.find returned: " + (config != null ? config.toString() : "null"));
         
-        android.util.Log.d("ConfigDialog", "Checking callback: " + (callback != null ? callback.getClass().getName() : "null"));
-        android.util.Log.d("ConfigDialog", "Checking fragment: " + (fragment != null ? fragment.getClass().getName() : "null"));
+        Logger.d("ConfigDialog", "Checking callback: " + (callback != null ? callback.getClass().getName() : "null"));
+        Logger.d("ConfigDialog", "Checking fragment: " + (fragment != null ? fragment.getClass().getName() : "null"));
         
-        android.util.Log.d("ConfigDialog", "Calling callback.setConfig");
+        Logger.d("ConfigDialog", "Calling callback.setConfig");
         callback.setConfig(config);
         
-        android.util.Log.d("ConfigDialog", "setConfig completed");
+        Logger.d("ConfigDialog", "setConfig completed");
         
         // 添加一个延迟检查，如果配置没有成功加载，则恢复原始URL
         new android.os.Handler().postDelayed(() -> {

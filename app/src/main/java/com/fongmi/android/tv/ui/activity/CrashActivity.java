@@ -13,6 +13,7 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.databinding.ActivityCrashBinding;
 import com.fongmi.android.tv.ui.base.BaseActivity;
+import com.fongmi.android.tv.utils.AppLog;
 import com.github.catvod.utils.Prefers;
 
 import java.io.File;
@@ -66,6 +67,7 @@ public class CrashActivity extends BaseActivity {
         String trace = Objects.toString(CustomActivityOnCrash.getStackTraceFromIntent(getIntent()), "");
         details = buildDetails(trace);
         full = CustomActivityOnCrash.getAllErrorDetailsFromIntent(this, getIntent());
+        AppLog.recordCrash(Objects.toString(full, trace));
         mBinding.summary.setText(getSummary(trace));
         mBinding.env.setText(getEnv());
         mBinding.trace.setText(trace);

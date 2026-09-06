@@ -3,6 +3,8 @@ package com.fongmi.android.tv.ui.custom
 import android.content.Context
 import android.util.AttributeSet
 import android.view.View
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
@@ -58,6 +61,10 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
     private var titleState by mutableStateOf("")
     private var backdropViewState by mutableStateOf<View?>(null)
     private var renderingEnabledState by mutableStateOf(false)
+    private var actionIconState by mutableIntStateOf(0)
+    private var actionDescriptionState by mutableStateOf("")
+    private var actionVisibleState by mutableStateOf(false)
+    private var actionClickListener: View.OnClickListener? = null
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -74,6 +81,16 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
 
     fun setRenderingEnabled(enabled: Boolean) {
         renderingEnabledState = enabled
+    }
+
+    fun setAction(@DrawableRes icon: Int, @StringRes description: Int) {
+        actionIconState = icon
+        actionDescriptionState = context.getString(description)
+        actionVisibleState = true
+    }
+
+    fun setActionClickListener(listener: View.OnClickListener?) {
+        actionClickListener = listener
     }
 
     @Composable
@@ -159,13 +176,32 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
 
                 BasicText(
                     text = titleState,
-                    modifier = Modifier.padding(start = 12.dp),
+                    modifier = Modifier.weight(1f).padding(start = 12.dp),
                     style = TextStyle(
                         color = text,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
-                    )
+                    ),
+                    maxLines = 1
                 )
+
+                if (actionVisibleState) {
+                    LiquidButton(
+                        onClick = { actionClickListener?.onClick(this@SettingsGlassBackHeaderView) },
+                        backdrop = backdrop,
+                        frameNanos = frameNanos,
+                        surfaceColor = glass,
+                        dragResponse = 0.42f,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(actionIconState),
+                            contentDescription = actionDescriptionState,
+                            colorFilter = ColorFilter.tint(text),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
         }
     }

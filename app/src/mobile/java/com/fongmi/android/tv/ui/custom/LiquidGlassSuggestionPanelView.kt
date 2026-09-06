@@ -1,9 +1,11 @@
 package com.fongmi.android.tv.ui.custom
 
 import android.content.Context
+import android.graphics.Outline
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -40,16 +42,32 @@ class LiquidGlassSuggestionPanelView @JvmOverloads constructor(
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
     private val glassBackground = SuggestionGlassBackgroundView(context)
+    private val cornerRadius = 16f * resources.displayMetrics.density
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        clipChildren = false
-        clipToPadding = false
+        // 背景采样层本身是矩形画布，必须连同列表内容一起裁成面板轮廓；
+        // 只给玻璃效果传圆角不会裁掉它下面露出的黑色直角。
+        outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                if (view.width > 0 && view.height > 0) {
+                    outline.setRoundRect(0, 0, view.width, view.height, cornerRadius)
+                }
+            }
+        }
+        clipToOutline = true
+        clipChildren = true
+        clipToPadding = true
         addView(
             glassBackground,
             0,
             LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
+    }
+
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        invalidateOutline()
     }
 
     fun setBackdropView(view: View?) {
