@@ -10,9 +10,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -131,6 +134,10 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
             Color(0xFF161618).copy(alpha = 0.82f)
         }
         val selectedIndex = items.indexOfFirst { it.id == selectedIdState }.coerceAtLeast(0)
+        // 宽屏下动作键靠右单独摆放：它的底部距离是“导航栏 + 7dp”，
+        // 右侧却只有 12dp。补上两者的差值，让含小白条安全区的两边视觉距离一致。
+        val navigationBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val wideActionEndPadding = (navigationBarBottomPadding + 7.dp - 12.dp).coerceAtLeast(0.dp)
 
         Box(
             modifier = Modifier
@@ -239,7 +246,13 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                 } else {
                     // 600dp 及以上的平板/横向长屏：胶囊居中，功能键固定在右手侧。
                     tabs(Modifier.align(Alignment.Center).width(228.dp).height(52.dp))
-                    action(Modifier.align(Alignment.CenterEnd).size(52.dp))
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = wideActionEndPadding)
+                    ) {
+                        action(Modifier.size(52.dp))
+                    }
                 }
             }
         }

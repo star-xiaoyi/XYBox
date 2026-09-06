@@ -1504,9 +1504,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         clearDrag();
     }
 
-    /** 竖屏详情页的视频区域固定占整块屏幕高度的三分之一，不跟随片源比例变化。 */
+    /** 竖屏详情页的视频区域固定占整块屏幕高度的四分之一，不跟随片源比例变化。 */
     private int getVideoHeight() {
-        return Math.max(1, ResUtil.getScreenHeight(this) / 3);
+        return Math.max(1, ResUtil.getScreenHeight(this) / 4);
     }
 
     /**
@@ -2456,7 +2456,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         // Move the whole left control group. Moving only the danmaku icon made it
         // leave its wrap-content parent and the parent clipped most of the icon.
         mBinding.control.danmaku.setTranslationY(0f);
-        mBinding.control.left.setTranslationY(offset);
+        // 平板常从横屏布局进入，旋转后 Activity 不会重建。即使某个资源
+        // 变体遗漏 left 容器，也要回退到弹幕按钮本身，不能因布局差异崩溃。
+        View leftControls = mBinding.control.left != null ? mBinding.control.left : mBinding.control.danmaku;
+        leftControls.setTranslationY(offset);
         mBinding.control.right.getRoot().setTranslationY(offset);
         Logger.i("VideoLayout: viewing-offset portrait=" + portraitFull
                 + " controlsOffset=" + Math.round(offset)
