@@ -258,11 +258,9 @@ public class HlsFetcher {
                         doneBytes.addAndGet(bytes);
                         window.addAndGet(bytes);
                         mark[1] += bytes;
-                        // 智能模式真正让速时不能把主动限速误判为源站龟速；恢复全速后重新计时。
-                        if (DownloadGovernor.isThrottling()) {
-                            mark[0] = System.currentTimeMillis();
-                            mark[1] = 0;
-                        } else if (watch && stalling(mark)) {
+                        // 只在收尾阶段检查单条连接；即使正在智能让速，也不能放任真正的慢分片
+                        // 以几百 KB/s 拖住整集。6 MiB/s 的最低总额度足够区分主动限速与龟速连接。
+                        if (watch && stalling(mark)) {
                             stalled[0] = true;
                             return false;
                         }
