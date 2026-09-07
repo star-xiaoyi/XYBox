@@ -11,7 +11,12 @@
     <color name="surface_secondary">#FF2C2C2E</color>
     <color name="settings_card_background">#C71C1C1E</color>
     <color name="glass_surface">#B31C1C1E</color>
+    <color name="glass_surface_highlight">#D12A2A2E</color>
     <color name="glass_outline">#33FFFFFF</color>
+    <color name="glass_tag_surface">#662C2C30</color>
+    <color name="download_error_surface">#26FF453A</color>
+    <color name="download_error_outline">#52FF6961</color>
+    <color name="download_error_text">#FFFF6961</color>
     <color name="text_primary">#FFFFFFFF</color>
     <color name="text_secondary">#FF98989D</color>
     <color name="separator">#40545458</color>

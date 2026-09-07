@@ -4,83 +4,131 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginStart="8dp"
-    android:layout_marginTop="4dp"
-    android:layout_marginEnd="8dp"
-    android:layout_marginBottom="4dp"
-    android:background="@drawable/shape_settings_row"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:padding="10dp">
-
-    <com.google.android.material.imageview.ShapeableImageView
-        android:id="@+id/image"
-        android:layout_width="54dp"
-        android:layout_height="76dp"
-        android:background="@color/black_20"
-        android:scaleType="centerCrop"
-        app:shapeAppearanceOverlay="@style/Vod.Grid"
-        tools:src="@drawable/ic_img_loading" />
+    android:layout_marginStart="10dp"
+    android:layout_marginTop="6dp"
+    android:layout_marginEnd="10dp"
+    android:layout_marginBottom="6dp"
+    android:background="@drawable/shape_glass_task_card"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:orientation="vertical"
+    android:padding="14dp">
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/name"
-            android:layout_width="match_parent"
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/image"
+            android:layout_width="58dp"
+            android:layout_height="82dp"
+            android:background="@color/black_20"
+            android:scaleType="centerCrop"
+            app:shapeAppearanceOverlay="@style/Vod.Grid"
+            tools:src="@drawable/ic_img_loading" />
+
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:singleLine="true"
-            android:textColor="@color/text_primary"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            tools:text="狂飙 第3集" />
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/state"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:ellipsize="end"
-            android:singleLine="true"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp"
-            tools:text="缓存中 · 62% · 1.2 MB/s" />
+            <TextView
+                android:id="@+id/name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                tools:text="狂飙" />
 
-        <ProgressBar
-            android:id="@+id/progress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="3dp"
-            android:layout_marginTop="8dp"
-            android:max="100"
-            android:progressDrawable="@drawable/progress_history"
-            tools:progress="62" />
+            <TextView
+                android:id="@+id/episode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:background="@drawable/shape_glass_tag"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:paddingStart="9dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="9dp"
+                android:paddingBottom="3dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                tools:text="第 3 集" />
+
+            <TextView
+                android:id="@+id/state"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                tools:text="缓存中 · 62% · 28.4 MB/s" />
+
+            <ProgressBar
+                android:id="@+id/progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="4dp"
+                android:layout_marginTop="8dp"
+                android:max="100"
+                android:progressDrawable="@drawable/progress_history"
+                tools:progress="62" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
-    <ImageView
-        android:id="@+id/action"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:layout_marginStart="8dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:padding="7dp"
-        android:src="@drawable/ic_notify_pause"
-        android:tint="@color/text_secondary" />
+    <TextView
+        android:id="@+id/error"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/shape_download_error"
+        android:breakStrategy="simple"
+        android:lineSpacingExtra="3dp"
+        android:padding="10dp"
+        android:textColor="@color/download_error_text"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:text="失败原因：下载地址返回 403，已保留现有进度，可稍后重试。"
+        tools:visibility="visible" />
 
-    <ImageView
-        android:id="@+id/delete"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:layout_marginStart="2dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:padding="7dp"
-        android:src="@drawable/ic_action_delete"
-        android:tint="@color/text_secondary" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginTop="8dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:gravity="end|center_vertical"
+        android:orientation="horizontal">
+
+        <com.fongmi.android.tv.ui.custom.LiquidGlassIconButtonView
+            android:id="@+id/action"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:contentDescription="@string/download_action_pause"
+            app:glassIcon="@drawable/ic_notify_pause"
+            app:glassIconSize="18dp"
+            app:glassIconTint="@color/text_primary" />
+
+        <com.fongmi.android.tv.ui.custom.LiquidGlassIconButtonView
+            android:id="@+id/delete"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="6dp"
+            android:contentDescription="@string/download_action_delete"
+            app:glassIcon="@drawable/ic_action_delete"
+            app:glassIconSize="18dp"
+            app:glassIconTint="@color/download_error_text" />
+
+    </LinearLayout>
 
 </LinearLayout>

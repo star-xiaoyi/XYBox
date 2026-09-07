@@ -23,6 +23,7 @@
     <string name="download_entry_progress">快取中 <xliff:g name="percent">%s</xliff:g>%%</string>
     <string name="download_select">選集快取</string>
     <string name="download_select_all">全選</string>
+    <string name="download_deselect_all">取消全選</string>
     <string name="download_start">快取選中（<xliff:g name="count">%s</xliff:g>）</string>
     <string name="download_added">已加入快取佇列 <xliff:g name="count">%s</xliff:g> 集</string>
     <string name="download_none">請先勾選要快取的劇集</string>
@@ -45,11 +46,24 @@
     <string name="download_state_paused">已暫停</string>
     <string name="download_state_error">快取失敗</string>
     <string name="download_state_done">已快取</string>
+    <string name="download_error_detail">失敗原因：<xliff:g name="message">%s</xliff:g></string>
+    <string name="download_error_unknown">下載器沒有回傳具體錯誤資訊</string>
+    <string name="download_action_pause">暫停快取</string>
+    <string name="download_action_resume">繼續快取</string>
+    <string name="download_action_retry">重試快取</string>
+    <string name="download_action_delete">刪除快取</string>
     <string name="download_seg"><xliff:g name="done">%1$s</xliff:g>/<xliff:g name="total">%2$s</xliff:g> 片</string>
     <string name="download_missing">快取檔案已遺失，請重新快取</string>
-    <string name="dialog_delete_download">快取內容將會全部刪除。</string>
-    <string name="dialog_delete_download_task">未完成的快取任務將會全部刪除。</string>
-    <string name="dialog_delete_download_item">刪除《<xliff:g name="name">%s</xliff:g>》的快取？</string>
+    <string name="download_delete_selected">刪除選中（<xliff:g name="count">%d</xliff:g>）</string>
+    <string name="download_delete_none">請先選擇要刪除的快取劇集</string>
+    <string name="download_delete_done">已刪除 <xliff:g name="count">%d</xliff:g> 集快取</string>
+    <string name="download_delete_episode_done">該集快取已刪除</string>
+    <string name="download_delete_all_done">全部快取已刪除</string>
+    <string name="download_delete_task_done">未完成的快取任務已全部刪除</string>
+    <string name="dialog_delete_download">刪除全部快取內容？</string>
+    <string name="dialog_delete_download_task">刪除全部未完成的快取任務？</string>
+    <string name="dialog_delete_download_episode">刪除《<xliff:g name="name">%1$s</xliff:g>》「<xliff:g name="episode">%2$s</xliff:g>」的快取？</string>
+    <string name="dialog_delete_download_item">《<xliff:g name="name">%s</xliff:g>》· 選擇要刪除的快取</string>
 
     <!-- Detail -->
     <string name="detail_flag">播放線路</string>

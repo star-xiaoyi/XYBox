@@ -134,17 +134,37 @@ public class DownloadManager {
     /** 删除任务：停掉在跑的、清掉排队的、连带删除已经落盘的文件。 */
     public synchronized void remove(Download item) {
         if (item == null) return;
+        removeInternal(item);
+        notifyChanged(true);
+    }
+
+    private void removeInternal(Download item) {
         String id = item.getId();
         queue.remove(id);
         removed.add(id);
         Task task = running.get(id);
         if (task != null) task.cancel();
         item.delete();
-        notifyChanged(true);
     }
 
     public synchronized void removeGroup(String groupKey) {
-        for (Download item : Download.getByGroup(groupKey)) remove(item);
+        for (Download item : Download.getByGroup(groupKey)) removeInternal(item);
+        notifyChanged(true);
+    }
+
+    /**
+     * 只删除一部剧里勾选的集数。同一集如果曾从不同线路缓存过，会一起清掉，避免列表里留下
+     * 一个看起来相同、实际来自另一线路的重复缓存。
+     */
+    public synchronized void removeEpisodes(String groupKey, Set<String> episodeKeys) {
+        if (episodeKeys == null || episodeKeys.isEmpty()) return;
+        boolean changed = false;
+        for (Download item : Download.getByGroup(groupKey)) {
+            if (!episodeKeys.contains(Download.episodeKey(item.getEpisodeName()))) continue;
+            removeInternal(item);
+            changed = true;
+        }
+        if (changed) notifyChanged(true);
     }
 
     public synchronized void removeAll() {

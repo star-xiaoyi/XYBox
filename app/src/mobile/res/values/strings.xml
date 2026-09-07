@@ -25,6 +25,7 @@
     <string name="download_entry_progress">Caching <xliff:g name="percent">%s</xliff:g>%%</string>
     <string name="download_select">Select episodes</string>
     <string name="download_select_all">Select all</string>
+    <string name="download_deselect_all">Clear</string>
     <string name="download_start">Cache selected (<xliff:g name="count">%s</xliff:g>)</string>
     <string name="download_added">Added <xliff:g name="count">%s</xliff:g> to the queue</string>
     <string name="download_none">Pick at least one episode</string>
@@ -47,11 +48,24 @@
     <string name="download_state_paused">Paused</string>
     <string name="download_state_error">Failed</string>
     <string name="download_state_done">Cached</string>
+    <string name="download_error_detail">Reason: <xliff:g name="message">%s</xliff:g></string>
+    <string name="download_error_unknown">No error details were returned</string>
+    <string name="download_action_pause">Pause cache</string>
+    <string name="download_action_resume">Resume cache</string>
+    <string name="download_action_retry">Retry cache</string>
+    <string name="download_action_delete">Delete cache</string>
     <string name="download_seg"><xliff:g name="done">%1$s</xliff:g>/<xliff:g name="total">%2$s</xliff:g> segments</string>
     <string name="download_missing">Cached file is gone, please cache again</string>
-    <string name="dialog_delete_download">All cached content will be removed.</string>
-    <string name="dialog_delete_download_task">All unfinished cache tasks will be removed.</string>
-    <string name="dialog_delete_download_item">Delete the cache of <xliff:g name="name">%s</xliff:g>?</string>
+    <string name="download_delete_selected">Delete selected (<xliff:g name="count">%d</xliff:g>)</string>
+    <string name="download_delete_none">Select at least one cached episode</string>
+    <string name="download_delete_done">Deleted <xliff:g name="count">%d</xliff:g> cached episode(s)</string>
+    <string name="download_delete_episode_done">Cached episode deleted</string>
+    <string name="download_delete_all_done">All cached content deleted</string>
+    <string name="download_delete_task_done">All unfinished cache tasks deleted</string>
+    <string name="dialog_delete_download">Delete all cached content?</string>
+    <string name="dialog_delete_download_task">Delete all unfinished cache tasks?</string>
+    <string name="dialog_delete_download_episode">Delete the cached episode “<xliff:g name="episode">%2$s</xliff:g>” from <xliff:g name="name">%1$s</xliff:g>?</string>
+    <string name="dialog_delete_download_item"><xliff:g name="name">%s</xliff:g> · Select cached episodes to delete</string>
 
     <!-- Detail -->
     <string name="detail_flag">Source</string>

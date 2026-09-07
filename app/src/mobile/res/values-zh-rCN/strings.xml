@@ -25,6 +25,7 @@
     <string name="download_entry_progress">缓存中 <xliff:g name="percent">%s</xliff:g>%%</string>
     <string name="download_select">选集缓存</string>
     <string name="download_select_all">全选</string>
+    <string name="download_deselect_all">取消全选</string>
     <string name="download_start">缓存选中（<xliff:g name="count">%s</xliff:g>）</string>
     <string name="download_added">已加入缓存队列 <xliff:g name="count">%s</xliff:g> 集</string>
     <string name="download_none">请先勾选要缓存的剧集</string>
@@ -47,11 +48,24 @@
     <string name="download_state_paused">已暂停</string>
     <string name="download_state_error">缓存失败</string>
     <string name="download_state_done">已缓存</string>
+    <string name="download_error_detail">失败原因：<xliff:g name="message">%s</xliff:g></string>
+    <string name="download_error_unknown">下载器没有返回具体错误信息</string>
+    <string name="download_action_pause">暂停缓存</string>
+    <string name="download_action_resume">继续缓存</string>
+    <string name="download_action_retry">重试缓存</string>
+    <string name="download_action_delete">删除缓存</string>
     <string name="download_seg"><xliff:g name="done">%1$s</xliff:g>/<xliff:g name="total">%2$s</xliff:g> 片</string>
     <string name="download_missing">缓存文件已丢失，请重新缓存</string>
-    <string name="dialog_delete_download">缓存内容将会全部删除。</string>
-    <string name="dialog_delete_download_task">未完成的缓存任务将会全部删除。</string>
-    <string name="dialog_delete_download_item">删除《<xliff:g name="name">%s</xliff:g>》的缓存？</string>
+    <string name="download_delete_selected">删除选中（<xliff:g name="count">%d</xliff:g>）</string>
+    <string name="download_delete_none">请先选择要删除的缓存剧集</string>
+    <string name="download_delete_done">已删除 <xliff:g name="count">%d</xliff:g> 集缓存</string>
+    <string name="download_delete_episode_done">该集缓存已删除</string>
+    <string name="download_delete_all_done">全部缓存已删除</string>
+    <string name="download_delete_task_done">未完成的缓存任务已全部删除</string>
+    <string name="dialog_delete_download">删除全部缓存内容？</string>
+    <string name="dialog_delete_download_task">删除全部未完成的缓存任务？</string>
+    <string name="dialog_delete_download_episode">删除《<xliff:g name="name">%1$s</xliff:g>》“<xliff:g name="episode">%2$s</xliff:g>”的缓存？</string>
+    <string name="dialog_delete_download_item">《<xliff:g name="name">%s</xliff:g>》· 选择要删除的缓存</string>
 
     <!-- Detail -->
     <string name="detail_flag">播放线路</string>

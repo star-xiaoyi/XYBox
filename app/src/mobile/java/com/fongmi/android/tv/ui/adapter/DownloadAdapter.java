@@ -58,10 +58,17 @@ public class DownloadAdapter extends RecyclerView.Adapter<DownloadAdapter.ViewHo
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Download item = mItems.get(position);
-        holder.binding.name.setText(item.getVodName() + "  " + item.getEpisodeName());
+        holder.binding.name.setText(item.getVodName());
+        holder.binding.episode.setText(item.getEpisodeName());
         holder.binding.state.setText(state(item));
+        holder.binding.error.setVisibility(item.isError() ? View.VISIBLE : View.GONE);
+        holder.binding.error.setText(error(item));
         holder.binding.progress.setProgress(item.isDone() ? 100 : item.getProgress());
         holder.binding.action.setImageResource(item.isRunning() || item.isPending() ? R.drawable.ic_notify_pause : item.isError() ? R.drawable.ic_action_retry : R.drawable.ic_notify_play);
+        holder.binding.action.setContentDescription(ResUtil.getString(item.isRunning() || item.isPending()
+                ? R.string.download_action_pause
+                : item.isError() ? R.string.download_action_retry : R.string.download_action_resume));
+        holder.binding.delete.setContentDescription(ResUtil.getString(R.string.download_action_delete));
         holder.binding.action.setVisibility(item.isDone() ? View.GONE : View.VISIBLE);
         ImgUtil.loadVod(item.getVodName(), item.getVodPic(), holder.binding.image);
         holder.binding.action.setOnClickListener(v -> mListener.onItemToggle(item));
@@ -77,10 +84,16 @@ public class DownloadAdapter extends RecyclerView.Adapter<DownloadAdapter.ViewHo
             case Download.STATUS_PAUSED:
                 return join(ResUtil.getString(R.string.download_state_paused), item.getProgress() + "%");
             case Download.STATUS_ERROR:
-                return join(ResUtil.getString(R.string.download_state_error), item.getErrorMsg());
+                return join(ResUtil.getString(R.string.download_state_error), item.getProgress() + "%");
             default:
                 return ResUtil.getString(R.string.download_state_pending);
         }
+    }
+
+    private String error(Download item) {
+        String message = item.getErrorMsg();
+        if (message == null || message.trim().isEmpty()) message = ResUtil.getString(R.string.download_error_unknown);
+        return ResUtil.getString(R.string.download_error_detail, message);
     }
 
     private String join(String... parts) {
