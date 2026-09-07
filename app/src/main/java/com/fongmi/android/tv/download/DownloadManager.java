@@ -29,8 +29,12 @@ import java.util.concurrent.Executors;
 public class DownloadManager {
 
     private static final String TAG = "DownloadManager";
-    private static final int CONNECTION_BUDGET = 64;
-    private static final int CONNECTIONS_PER_TASK = 48;
+    private static final int HLS_CONNECTION_BUDGET = 64;
+    private static final int HLS_CONNECTIONS_PER_TASK = 48;
+    private static final int FILE_CONNECTION_BUDGET = 24;
+    private static final int FILE_CONNECTIONS_PER_TASK = 8;
+    private static final long AUTO_RETRY_BASE_MS = 10000L;
+    private static final long AUTO_RETRY_MAX_MS = 60000L;
     /**
      * 进度落库的最小间隔。跑满带宽时进度回调每秒能来上百次，
      * 而 SQLite 一次写盘就是几毫秒——全写下去光等磁盘就把速度吃掉了。
@@ -52,13 +56,17 @@ public class DownloadManager {
         return Loader.INSTANCE;
     }
 
-    /** 进程重启后把上次没跑完的任务重新排上，暂停和失败的保持原状等用户点。 */
+    /** 进程重启后把上次没跑完的任务重新排上；暂停和真正失败的任务保持原状。 */
     public synchronized void restore() {
         // 早期版本离线播放会写伪站源的观看记录，把同名的在线记录挤掉，顺手清一次
         AppDatabase.get().getHistoryDao().deleteOffline();
         for (Download item : Download.getActive()) {
-            if (item.isPaused() || item.isError()) continue;
+            if (item.isPaused()) continue;
+            // beta6 把直链自愈次数用完后错误地落成了永久失败。升级后只自动接回这种
+            // 明确可续传的旧任务，其他真正的解析/文件错误仍留给用户决定是否重试。
+            if (item.isError() && !item.getErrorMsg().startsWith("下载地址多次失效")) continue;
             item.setStatus(Download.STATUS_PENDING);
+            item.setErrorMsg("");
             item.setSpeed(0);
             item.save();
             enqueue(item.getId());
@@ -193,12 +201,11 @@ public class DownloadManager {
         notifyChanged(true);
     }
 
-    /**
-     * 两种模式使用相同的连接池，因此没有其他 App 抢网时智能模式能达到极速模式的吞吐。
-     * 智能模式只在确认存在持续竞争后，由 {@link DownloadGovernor} 统一限制总带宽。
-     */
-    private int threads() {
-        return Math.max(1, Math.min(CONNECTIONS_PER_TASK, CONNECTION_BUDGET / Math.max(1, running.size())));
+    /** HLS 小分片适合高并发；直链大文件并发过高会被源站当成攻击并批量返回 403。 */
+    private int threads(boolean hls) {
+        int perTask = hls ? HLS_CONNECTIONS_PER_TASK : FILE_CONNECTIONS_PER_TASK;
+        int budget = hls ? HLS_CONNECTION_BUDGET : FILE_CONNECTION_BUDGET;
+        return Math.max(1, Math.min(perTask, budget / Math.max(1, running.size())));
     }
 
     private String mode() {
@@ -352,25 +359,55 @@ public class DownloadManager {
 
         private void download() throws Exception {
             long began = System.currentTimeMillis();
-            Resolver.Address address = Resolver.resolve(item);
-            DownloadLog.d("任务 %s 解析用时=%dms 在跑=%d", item.getEpisodeName(), System.currentTimeMillis() - began, running.size());
-            if (isCancelled()) throw new Http.CancelException();
             File dir = item.dir();
-            File output;
-            long duration;
-            int threads = threads();
-            boolean addressHls = address.isHls();
-            boolean hls = addressHls || Http.isPlaylist(address.getUrl(), address.getHeaders());
-            DownloadLog.d("任务 %s 类型=%s 识别=%s 模式=%s 线程=%d 设置(同时任务=%d)",
-                    item.getEpisodeName(), hls ? "HLS" : "直链", addressHls ? "地址" : "探测",
-                    mode(), threads, Setting.getDownloadTask());
-            if (hls) {
-                HlsFetcher fetcher = new HlsFetcher(address.getHeaders(), dir, threads, this);
-                output = fetcher.download(address.getUrl());
-                duration = fetcher.getDuration();
-            } else {
-                output = new FileFetcher(address.getHeaders(), dir, threads, this).download(address.getUrl());
-                duration = duration(output);
+            File output = null;
+            long duration = 0;
+            int refreshes = 0;
+            int retryRound = 0;
+            while (true) {
+                long resolving = System.currentTimeMillis();
+                Resolver.Address address = Resolver.resolve(item);
+                DownloadLog.d("任务 %s 解析用时=%dms 次数=%d 在跑=%d", item.getEpisodeName(),
+                        System.currentTimeMillis() - resolving, refreshes + 1, running.size());
+                if (isCancelled()) throw new Http.CancelException();
+                boolean addressHls = address.isHls();
+                boolean hls = addressHls || Http.isPlaylist(address.getUrl(), address.getHeaders());
+                int threads = threads(hls);
+                DownloadLog.d("任务 %s 类型=%s 识别=%s 模式=%s 线程=%d 设置(同时任务=%d)",
+                        item.getEpisodeName(), hls ? "HLS" : "直链", addressHls ? "地址" : "探测",
+                        mode(), threads, Setting.getDownloadTask());
+                long beforeAttempt = item.getDoneBytes();
+                try {
+                    if (hls) {
+                        HlsFetcher fetcher = new HlsFetcher(address.getHeaders(), dir, threads, this);
+                        output = fetcher.download(address.getUrl());
+                        duration = fetcher.getDuration();
+                    } else {
+                        output = new FileFetcher(address.getHeaders(), dir, threads, this).download(address.getUrl());
+                        duration = duration(output);
+                    }
+                    break;
+                } catch (FileFetcher.RefreshAddressException e) {
+                    if (isCancelled()) throw new Http.CancelException();
+                    // 本轮确实又下到数据，说明地址并非永久失效，把长退避重新从十秒开始。
+                    if (item.getDoneBytes() > beforeAttempt) retryRound = 0;
+                    if (refreshes >= 2) {
+                        retryRound++;
+                        long wait = retryDelay(retryRound);
+                        refreshes = 0;
+                        item.setSpeed(0);
+                        persist(item);
+                        notifyChanged(true);
+                        DownloadLog.d("任务 %s 自动重试 第%d轮 等待=%dms 原因=%s 已保留=%s",
+                                item.getEpisodeName(), retryRound, wait, e.getMessage(), DownloadLog.size(item.getDoneBytes()));
+                        sleepCancelable(wait);
+                        continue;
+                    }
+                    refreshes++;
+                    DownloadLog.d("任务 %s 直链自愈 第%d次 原因=%s 保留断点并重新解析",
+                            item.getEpisodeName(), refreshes, e.getMessage());
+                    Http.sleep(500L * refreshes);
+                }
             }
             if (isCancelled()) throw new Http.CancelException();
             item.setLocalPath(output.getAbsolutePath());
@@ -381,6 +418,22 @@ public class DownloadManager {
             persist(item);
             DownloadLog.d("任务完成 剧集=%s 用时=%dms 下载=%s 时长=%ds", item.getEpisodeName(),
                     System.currentTimeMillis() - began, DownloadLog.size(item.getDoneBytes()), duration);
+        }
+
+        private long retryDelay(int round) {
+            int shift = Math.min(3, Math.max(0, round - 1));
+            return Math.min(AUTO_RETRY_MAX_MS, AUTO_RETRY_BASE_MS << shift);
+        }
+
+        /** 自动退避期间仍每 250ms 响应暂停、删除和切换下载设置。 */
+        private void sleepCancelable(long millis) throws Http.CancelException {
+            long until = System.currentTimeMillis() + millis;
+            while (true) {
+                if (isCancelled()) throw new Http.CancelException();
+                long remaining = until - System.currentTimeMillis();
+                if (remaining <= 0) return;
+                Http.sleep(Math.min(250L, remaining));
+            }
         }
     }
 

@@ -234,6 +234,10 @@ final class Http {
             this.code = code;
         }
 
+        int getCode() {
+            return code;
+        }
+
         /**
          * 限流类响应：再快也没用，只能等。403 也算进来是因为不少源站
          * 并发超标时直接返回 403 而不是 429，用 429 的退避方式重试反而更容易活。

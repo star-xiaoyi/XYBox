@@ -57,7 +57,7 @@ public class App extends Application {
     private final Runnable webdavSyncTask;
     private boolean appJustLaunched;
     private boolean webdavForegroundSyncPending;
-    private int foregroundActivityCount;
+    private volatile int foregroundActivityCount;
 
     public App() {
         instance = this;
@@ -96,6 +96,11 @@ public class App extends Application {
 
     public static Activity activity() {
         return get().activity;
+    }
+
+    /** 下载调度等后台线程用它区分“用户正在看 XYBox”与“已切到其他应用”。 */
+    public static boolean isForeground() {
+        return get().foregroundActivityCount > 0;
     }
     
     public static boolean isAppJustLaunched() {
