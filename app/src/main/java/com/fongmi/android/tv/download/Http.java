@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -48,7 +49,7 @@ final class Http {
                         .connectionPool(new ConnectionPool(64, 5, TimeUnit.MINUTES))
                         .protocols(Collections.singletonList(Protocol.HTTP_1_1))
                         .retryOnConnectionFailure(true);
-                if (DownloadLog.ENABLED) builder.eventListenerFactory(DownloadLog.Probe.FACTORY);
+                if (DownloadLog.PROBE_ENABLED) builder.eventListenerFactory(DownloadLog.Probe.FACTORY);
                 client = builder.build();
             }
         }
@@ -84,7 +85,18 @@ final class Http {
             if (!response.isSuccessful()) return false;
             String type = response.header("Content-Type");
             if (type != null && (type.contains("mpegurl") || type.contains("m3u"))) return true;
-            return response.body().string().contains("#EXTM3U");
+            // 有些直链服务器忽略 Range 并返回整部视频。这里只读前 1 KB 就关闭响应，
+            // 否则类型探测本身会悄悄把整集下完，既不受调速控制也没有任何进度。
+            byte[] prefix = new byte[1024];
+            int count = 0;
+            try (InputStream input = response.body().byteStream()) {
+                while (count < prefix.length) {
+                    int read = input.read(prefix, count, prefix.length - count);
+                    if (read == -1) break;
+                    count += read;
+                }
+            }
+            return new String(prefix, 0, count, StandardCharsets.UTF_8).contains("#EXTM3U");
         } catch (Exception e) {
             return false;
         }
@@ -132,6 +144,7 @@ final class Http {
                 byte[] buffer = new byte[BUFFER];
                 int read;
                 while ((read = in.read(buffer)) != -1) {
+                    DownloadGovernor.acquire(read);
                     if (counter != null && !counter.onRead(read)) throw new CancelException();
                     int offset = 0;
                     int count = read;

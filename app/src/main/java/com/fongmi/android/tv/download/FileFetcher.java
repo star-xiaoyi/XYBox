@@ -286,6 +286,7 @@ public class FileFetcher {
                 byte[] buffer = new byte[BUFFER];
                 int read;
                 while ((read = in.read(buffer)) != -1) {
+                    DownloadGovernor.acquire(read);
                     if (progress.isCancelled()) throw new Http.CancelException();
                     // 每轮都重算剩余量：这一段随时可能被别的线程抢走后半截
                     int count = (int) Math.min(read, chunk.remaining());

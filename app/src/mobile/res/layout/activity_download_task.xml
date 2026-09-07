@@ -40,4 +40,11 @@
         android:elevation="0dp"
         android:outlineProvider="none" />
 
+    <com.fongmi.android.tv.ui.custom.LiquidGlassDownloadSettingView
+        android:id="@+id/setting_panel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:elevation="20dp"
+        android:outlineProvider="none" />
+
 </FrameLayout>

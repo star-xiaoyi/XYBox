@@ -56,6 +56,9 @@ public class HlsFetcher {
     private final AtomicInteger throttled = new AtomicInteger();
     private final AtomicLong doneBytes = new AtomicLong();
     private final AtomicLong window = new AtomicLong();
+    private final AtomicLong firstByteAt = new AtomicLong();
+    private final AtomicLong firstDoneAt = new AtomicLong();
+    private final AtomicLong peakSpeed = new AtomicLong();
     /** 报进度用 tryLock 而不是 synchronized：抢不到就跳过这次，绝不让下载线程互相等。 */
     private final ReentrantLock reporting = new ReentrantLock();
     private long windowStart = System.currentTimeMillis();
@@ -208,17 +211,21 @@ public class HlsFetcher {
         report(true);
         if (todo.isEmpty()) return;
         int workers = Math.min(threads, todo.size());
-        DownloadLog.d("hls 开工 分片=%d 待下=%d 线程=%d", items.size(), todo.size(), workers);
+        List<Item> scheduled = spread(todo, workers);
+        DownloadLog.d("hls 开工 分片=%d 待下=%d 线程=%d 调度=交错", items.size(), todo.size(), workers);
         long began = System.currentTimeMillis();
         ExecutorService pool = Executors.newFixedThreadPool(workers);
         CountDownLatch latch = new CountDownLatch(todo.size());
         AtomicReference<Exception> error = new AtomicReference<>();
-        for (Item item : todo) pool.execute(() -> fetchItem(item, error, latch));
+        for (Item item : scheduled) pool.execute(() -> fetchItem(item, error, latch));
         latch.await();
         pool.shutdownNow();
-        DownloadLog.d("hls 收工 用时=%dms 下载=%s 均速=%s 重试=%d 限流=%d",
+        DownloadLog.d("hls 收工 用时=%dms 下载=%s 均速=%s 峰值=%s 首字节=%dms 首片=%dms 重试=%d 限流=%d",
                 System.currentTimeMillis() - began, DownloadLog.size(doneBytes.get()),
-                DownloadLog.rate(doneBytes.get(), System.currentTimeMillis() - began), retries.get(), throttled.get());
+                DownloadLog.rate(doneBytes.get(), System.currentTimeMillis() - began),
+                DownloadLog.size(peakSpeed.get()) + "/s",
+                elapsedSince(began, firstByteAt.get()), elapsedSince(began, firstDoneAt.get()),
+                retries.get(), throttled.get());
         if (progress.isCancelled()) throw new Http.CancelException();
         if (error.get() != null) throw error.get();
         // 逐个对账。只看"有没有人报错"是不够的：线程可能因为取消标记中途翻回来、
@@ -247,10 +254,15 @@ public class HlsFetcher {
                     inflight.incrementAndGet();
                     Http.download(item.url, headers, target, item.range, bytes -> {
                         if (progress.isCancelled() || error.get() != null) return false;
+                        firstByteAt.compareAndSet(0L, System.currentTimeMillis());
                         doneBytes.addAndGet(bytes);
                         window.addAndGet(bytes);
                         mark[1] += bytes;
-                        if (watch && stalling(mark)) {
+                        // 智能模式真正让速时不能把主动限速误判为源站龟速；恢复全速后重新计时。
+                        if (DownloadGovernor.isThrottling()) {
+                            mark[0] = System.currentTimeMillis();
+                            mark[1] = 0;
+                        } else if (watch && stalling(mark)) {
                             stalled[0] = true;
                             return false;
                         }
@@ -285,6 +297,7 @@ public class HlsFetcher {
             // 分片失败必须让整个任务失败，不能吞掉——否则会拼出一个缺片的残缺视频还报成功
             if (last != null) error.compareAndSet(null, new Exception("分片下载失败：" + last.getMessage()));
             else {
+                firstDoneAt.compareAndSet(0L, System.currentTimeMillis());
                 doneCount.incrementAndGet();
                 report(true);
             }
@@ -329,6 +342,7 @@ public class HlsFetcher {
             if (elapsed >= 1000) {
                 speed = window.getAndSet(0) * 1000 / elapsed;
                 windowStart = now;
+                updatePeak(speed);
                 DownloadLog.d("hls 秒报 已下=%d/%d 在飞=%d/%d 速度=%s 重试=%d 限流=%d",
                         doneCount.get(), items.size(), inflight.get(), threads,
                         DownloadLog.size(speed) + "/s", retries.get(), throttled.get());
@@ -346,6 +360,32 @@ public class HlsFetcher {
     /** 播放列表里所有 EXTINF 之和，秒。播本地 m3u8 时元数据读不出时长，靠它兜底。 */
     public long getDuration() {
         return (long) seconds;
+    }
+
+    /**
+     * 不让第一波请求全挤在播放列表开头。部分 CDN 会让某一小段文件落到同一组慢节点，
+     * 按整集交错后，每一波连接都能混合不同位置的分片，更快填满总带宽。
+     */
+    private static List<Item> spread(List<Item> source, int workers) {
+        if (source.size() <= workers) return source;
+        int stride = (source.size() + workers - 1) / workers;
+        List<Item> result = new ArrayList<>(source.size());
+        for (int offset = 0; offset < stride; offset++) {
+            for (int index = offset; index < source.size(); index += stride) result.add(source.get(index));
+        }
+        return result;
+    }
+
+    private static long elapsedSince(long began, long at) {
+        return at == 0L ? -1L : Math.max(0L, at - began);
+    }
+
+    private void updatePeak(long value) {
+        long current;
+        do {
+            current = peakSpeed.get();
+            if (value <= current) return;
+        } while (!peakSpeed.compareAndSet(current, value));
     }
 
     private static double duration(String line) {

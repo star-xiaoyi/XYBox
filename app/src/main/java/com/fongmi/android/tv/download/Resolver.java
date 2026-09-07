@@ -45,7 +45,10 @@ public class Resolver {
             String lower = url.toLowerCase();
             int query = lower.indexOf('?');
             String path = query == -1 ? lower : lower.substring(0, query);
-            return path.endsWith(".m3u8") || path.endsWith(".m3u");
+            // 本地代理常把真实 m3u8 放在 query 中：/proxy?do=m3u8&url=...index.m3u8。
+            // 旧逻辑只看外层 path，会先花数秒下载一次列表做类型探测，随后 HLS 下载器又下同一份。
+            return path.endsWith(".m3u8") || path.endsWith(".m3u")
+                    || lower.contains(".m3u8") || lower.contains("do=m3u8");
         }
     }
 

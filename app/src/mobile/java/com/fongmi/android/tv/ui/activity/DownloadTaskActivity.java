@@ -16,7 +16,6 @@ import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.ui.adapter.DownloadAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
-import com.fongmi.android.tv.ui.dialog.DownloadSettingDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.greenrobot.eventbus.Subscribe;
@@ -58,9 +57,20 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
 
     @Override
     protected void initEvent() {
-        mBinding.toolbar.setBackClickListener(v -> finish());
+        mBinding.toolbar.setBackClickListener(v -> onBackPress());
         mBinding.toolbar.setSecondaryActionClickListener(this::onDelete);
-        mBinding.toolbar.setPrimaryActionClickListener(v -> DownloadSettingDialog.create(this).show());
+        mBinding.toolbar.setPrimaryActionClickListener(v -> mBinding.settingPanel.show(mBinding.content));
+    }
+
+    @Override
+    protected boolean handleBack() {
+        return true;
+    }
+
+    @Override
+    protected void onBackPress() {
+        if (mBinding.settingPanel.isPanelVisible()) mBinding.settingPanel.dismiss();
+        else finish();
     }
 
     private void refresh() {

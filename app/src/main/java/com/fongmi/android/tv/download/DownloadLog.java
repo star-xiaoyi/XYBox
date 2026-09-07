@@ -1,8 +1,8 @@
 package com.fongmi.android.tv.download;
 
-import android.util.Log;
-
 import androidx.annotation.NonNull;
+
+import com.fongmi.android.tv.utils.AppLog;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -23,22 +23,20 @@ import okhttp3.Response;
  * 只看总速率永远分不清问题出在哪：一条请求的时间可能花在 DNS、TLS 握手、等首字节，
  * 也可能真的在传数据，这四种情况的解法完全不同。所以必须把各阶段拆开记。
  * <p>
- * 过滤日志：adb logcat -s XYDL:D
+ * 摘要同时进入 App 内「运行日志」和 logcat，用户直接导出日志即可复盘一次下载。
+ * 逐请求探针仍默认关闭，避免 HLS 每个小分片都占一行把日志淹没。
  */
 final class DownloadLog {
 
     static final String TAG = "XYDL";
-    /**
-     * 排查开关。设成 final false，R8 会把所有调用点连同字符串拼接一起消掉，正式包零开销。
-     * 下次再查下载速度时改成 true 重新打包即可：adb logcat -s XYDL:D
-     */
-    static final boolean ENABLED = false;
+    /** 深挖 DNS/TLS/首字节问题时才临时打开；常规速度、重试和调速摘要不受它影响。 */
+    static final boolean PROBE_ENABLED = false;
 
     private DownloadLog() {
     }
 
     static void d(String format, Object... args) {
-        if (ENABLED) Log.d(TAG, String.format(Locale.US, format, args));
+        AppLog.event(TAG, String.format(Locale.US, format, args));
     }
 
     static String size(long bytes) {
