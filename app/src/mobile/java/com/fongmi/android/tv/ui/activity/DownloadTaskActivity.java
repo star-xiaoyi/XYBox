@@ -16,7 +16,8 @@ import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.ui.adapter.DownloadAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.fongmi.android.tv.ui.dialog.GlassConfirmDialog;
+import com.fongmi.android.tv.utils.Notify;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
@@ -87,15 +88,11 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
     }
 
     private void onDelete(View view) {
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.dialog_delete_record)
-                .setMessage(R.string.dialog_delete_download_task)
-                .setNegativeButton(R.string.dialog_negative, null)
-                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
-                    for (Download item : new ArrayList<>(Download.getActive())) DownloadManager.get().remove(item);
-                    refresh();
-                })
-                .show();
+        GlassConfirmDialog.show(this, R.string.dialog_delete_download_task, () -> {
+            for (Download item : new ArrayList<>(Download.getActive())) DownloadManager.get().remove(item);
+            refresh();
+            Notify.show(R.string.download_delete_task_done);
+        });
     }
 
     @Override
@@ -106,8 +103,13 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
 
     @Override
     public void onItemDelete(Download item) {
-        DownloadManager.get().remove(item);
-        refresh();
+        GlassConfirmDialog.show(this,
+                getString(R.string.dialog_delete_download_episode, item.getVodName(), item.getEpisodeName()),
+                () -> {
+                    DownloadManager.get().remove(item);
+                    refresh();
+                    Notify.show(R.string.download_delete_episode_done);
+                });
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)

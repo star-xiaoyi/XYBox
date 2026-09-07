@@ -17,7 +17,9 @@ import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.ui.adapter.DownloadVodAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.fongmi.android.tv.ui.dialog.DownloadDeleteDialog;
+import com.fongmi.android.tv.ui.dialog.GlassConfirmDialog;
+import com.fongmi.android.tv.utils.Notify;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
@@ -76,16 +78,12 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
 
     private void onDelete(View view) {
         if (mAdapter.isDelete()) {
-            new MaterialAlertDialogBuilder(this)
-                    .setTitle(R.string.dialog_delete_record)
-                    .setMessage(R.string.dialog_delete_download)
-                    .setNegativeButton(R.string.dialog_negative, null)
-                    .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
-                        DownloadManager.get().removeAll();
-                        mAdapter.setDelete(false);
-                        refresh();
-                    })
-                    .show();
+            GlassConfirmDialog.show(this, R.string.dialog_delete_download, () -> {
+                DownloadManager.get().removeAll();
+                mAdapter.setDelete(false);
+                refresh();
+                Notify.show(R.string.download_delete_all_done);
+            });
         } else if (!mAdapter.isEmpty()) {
             mAdapter.setDelete(true);
         }
@@ -100,15 +98,7 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
 
     @Override
     public void onItemDelete(Download.Group item) {
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.dialog_delete_record)
-                .setMessage(getString(R.string.dialog_delete_download_item, item.getVodName()))
-                .setNegativeButton(R.string.dialog_negative, null)
-                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
-                    DownloadManager.get().removeGroup(item.getKey());
-                    refresh();
-                })
-                .show();
+        DownloadDeleteDialog.create().group(item).callback(this::refresh).show(this);
     }
 
     @Override
