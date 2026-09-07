@@ -28,9 +28,12 @@ import com.github.catvod.utils.Path;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -53,11 +56,14 @@ public final class PlaybackCache {
     private static final float PROGRESS_LOG_STEP = 5f;
     private static final long REFOCUS_THRESHOLD_MS = 10000;
     private static final AtomicInteger ACTIVE_INSTANCES = new AtomicInteger();
+    private static final Set<PlaybackCache> INSTANCES = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static volatile boolean OFFLINE_DOWNLOAD_ACTIVE;
 
     private final ExecutorService executor;
     private final Listener listener;
     private Session session;
     private boolean released;
+    private boolean pausedByOfflineDownload;
     private long stateVersion;
 
     public PlaybackCache(Listener listener) {
@@ -68,11 +74,24 @@ public final class PlaybackCache {
             return thread;
         });
         ACTIVE_INSTANCES.incrementAndGet();
+        INSTANCES.add(this);
     }
 
     /** 自动清理器据此避开正在使用的 SimpleCache。 */
     public static boolean isPlaybackActive() {
         return ACTIVE_INSTANCES.get() > 0;
+    }
+
+    /**
+     * 用户主动创建的离线任务优先于播放页的整集预取。播放器自己的前向缓冲不经过这里，
+     * 因此暂停预取不会打断正在观看的视频，只会把重复占用的下载带宽让出来。
+     */
+    public static void setOfflineDownloadActive(boolean active) {
+        synchronized (PlaybackCache.class) {
+            if (OFFLINE_DOWNLOAD_ACTIVE == active) return;
+            OFFLINE_DOWNLOAD_ACTIVE = active;
+        }
+        for (PlaybackCache cache : INSTANCES) cache.setPausedByOfflineDownload(active);
     }
 
     public void start(MediaItem item, TrackSelectionParameters parameters, long positionMs, long durationMs) {
@@ -104,13 +123,16 @@ public final class PlaybackCache {
                     session.cancelVersion++;
                     restart = session.downloader;
                 }
-                session.paused = false;
+                session.paused = OFFLINE_DOWNLOAD_ACTIVE;
+                pausedByOfflineDownload = OFFLINE_DOWNLOAD_ACTIVE;
                 queueDownloadLocked(session);
                 old = null;
                 current = null;
             } else {
                 old = session;
                 session = current = new Session(item, buildCacheDataSource(item), positionMs, durationMs);
+                current.paused = OFFLINE_DOWNLOAD_ACTIVE;
+                pausedByOfflineDownload = OFFLINE_DOWNLOAD_ACTIVE;
             }
         }
         if (matching != null) {
@@ -162,7 +184,12 @@ public final class PlaybackCache {
         Downloader downloader;
         synchronized (this) {
             if (session == null || released) return;
-            if (session.paused) return;
+            // 若本来是离线任务临时按住的，现在转交给前台播放逻辑持有，不能在离线任务结束时误恢复。
+            if (session.paused) {
+                pausedByOfflineDownload = false;
+                return;
+            }
+            pausedByOfflineDownload = false;
             session.paused = true;
             session.cancelVersion++;
             downloader = session.downloader;
@@ -174,6 +201,11 @@ public final class PlaybackCache {
     public synchronized void resume() {
         if (session == null || released || session.lowStorage || session.failed || session.complete) return;
         if (!session.paused) return;
+        if (OFFLINE_DOWNLOAD_ACTIVE) {
+            pausedByOfflineDownload = true;
+            return;
+        }
+        pausedByOfflineDownload = false;
         session.paused = false;
         Logger.i("PlaybackCache: resumed after foreground ready");
         queueDownloadLocked(session);
@@ -186,6 +218,7 @@ public final class PlaybackCache {
             stateVersion++;
             old = session;
             session = null;
+            pausedByOfflineDownload = false;
         }
         cancel(old);
         enqueueCleanup(old);
@@ -200,7 +233,9 @@ public final class PlaybackCache {
             stateVersion++;
             old = session;
             session = null;
+            pausedByOfflineDownload = false;
         }
+        INSTANCES.remove(this);
         cancel(old);
         Logger.i("PlaybackCache: release requested");
         try {
@@ -218,6 +253,32 @@ public final class PlaybackCache {
             ACTIVE_INSTANCES.decrementAndGet();
         }
         executor.shutdown();
+    }
+
+    private void setPausedByOfflineDownload(boolean paused) {
+        Downloader downloader = null;
+        boolean changed = false;
+        synchronized (this) {
+            if (released || session == null) return;
+            if (paused) {
+                if (session.paused) return;
+                pausedByOfflineDownload = true;
+                session.paused = true;
+                session.cancelVersion++;
+                downloader = session.downloader;
+                changed = true;
+            } else if (pausedByOfflineDownload) {
+                pausedByOfflineDownload = false;
+                if (!session.paused || session.lowStorage || session.failed || session.complete) return;
+                session.paused = false;
+                queueDownloadLocked(session);
+                changed = true;
+            }
+        }
+        if (downloader != null) downloader.cancel();
+        if (changed) Logger.i(paused
+                ? "PlaybackCache: paused while explicit offline download is active"
+                : "PlaybackCache: resumed after explicit offline download finished");
     }
 
     private void prepare(Session target, TrackSelectionParameters parameters) {

@@ -30,12 +30,14 @@
     <string name="download_empty">還沒有快取內容</string>
     <string name="download_task_empty">沒有進行中的快取任務</string>
     <string name="download_setting">快取速度</string>
+    <string name="download_mode">下載模式</string>
+    <string name="download_mode_smart">智慧模式</string>
+    <string name="download_mode_fast">極速模式</string>
+    <string name="download_mode_smart_hint">網路閒置時全速下載；偵測到其他應用程式持續占網後，動態讓出頻寬。</string>
+    <string name="download_mode_fast_hint">使用全部可用頻寬和最大連線數，其他應用程式的網路可能變慢。</string>
     <string name="download_concurrent_task">同時下載</string>
     <string name="download_concurrent_task_value"><xliff:g name="count" example="3">%d</xliff:g> 集</string>
-    <string name="download_concurrent_task_hint">同時下的越多，頻寬分得越散，單集反而更慢。</string>
-    <string name="download_connection">單集連線數</string>
-    <string name="download_connection_value"><xliff:g name="count" example="8">%d</xliff:g> 條</string>
-    <string name="download_connection_hint">連線越多越快，但部分來源站會限速甚至拒絕。對已經在下的集不生效，之後開始的集才按新值。</string>
+    <string name="download_concurrent_task_hint">只控制佇列並行；連線數和頻寬由所選模式自動管理。</string>
     <string name="download_count">已快取 <xliff:g name="count">%s</xliff:g> 集</string>
     <string name="download_running_count">快取中 <xliff:g name="count">%s</xliff:g> 集</string>
     <string name="download_state_pending">排隊中</string>

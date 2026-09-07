@@ -7,6 +7,7 @@ import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.bean.Download;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.player.exo.PlaybackCache;
 import com.fongmi.android.tv.service.DownloadService;
 import com.github.catvod.utils.Logger;
 
@@ -28,6 +29,8 @@ import java.util.concurrent.Executors;
 public class DownloadManager {
 
     private static final String TAG = "DownloadManager";
+    private static final int CONNECTION_BUDGET = 64;
+    private static final int CONNECTIONS_PER_TASK = 48;
     /**
      * 进度落库的最小间隔。跑满带宽时进度回调每秒能来上百次，
      * 而 SQLite 一次写盘就是几毫秒——全写下去光等磁盘就把速度吃掉了。
@@ -62,6 +65,7 @@ public class DownloadManager {
         }
         if (!queue.isEmpty()) DownloadService.ensure();
         schedule();
+        PlaybackCache.setOfflineDownloadActive(isBusy());
     }
 
     public synchronized void add(List<Download> items) {
@@ -169,26 +173,44 @@ public class DownloadManager {
         }
     }
 
-    /** 设置里改了同时下载数：调大就把排队的补上来；调小不动已经在跑的，等它们自己下完。 */
-    public synchronized void applyLimit() {
+    /**
+     * 下载模式或并发数变化后重排当前任务。HLS 已完成的分片和直链分段都会续传，
+     * 所以可以立即换连接策略而不用把已经下载的数据推倒重来。
+     */
+    public synchronized void applySettings() {
+        DownloadGovernor.reset();
+        DownloadLog.d("设置已应用 模式=%s 同时任务=%d", mode(), Setting.getDownloadTask());
+        for (Task task : new ArrayList<>(running.values())) {
+            Download item = Download.find(task.item.getId());
+            if (item == null || item.isDone()) continue;
+            task.cancel();
+            item.setStatus(Download.STATUS_PENDING);
+            item.setSpeed(0);
+            item.save();
+        }
         schedule();
         if (isBusy()) DownloadService.ensure();
         notifyChanged(true);
     }
 
     /**
-     * 单集能开几条连接。设置里那个值是上限，实际还要按当前在跑的集数摊薄：
-     * 5 集各开 16 条就是 80 个并发请求，手机扛得住但源站不会给好脸色，
-     * 总量压在预算内既保住了单集速度，也不至于被当成刷流量。
+     * 两种模式使用相同的连接池，因此没有其他 App 抢网时智能模式能达到极速模式的吞吐。
+     * 智能模式只在确认存在持续竞争后，由 {@link DownloadGovernor} 统一限制总带宽。
      */
     private int threads() {
-        return Math.max(1, Math.min(Setting.getDownloadThread(), Setting.DOWNLOAD_BUDGET / Math.max(1, running.size())));
+        return Math.max(1, Math.min(CONNECTIONS_PER_TASK, CONNECTION_BUDGET / Math.max(1, running.size())));
+    }
+
+    private String mode() {
+        return Setting.isDownloadSmartMode() ? "智能" : "极速";
     }
 
     private void notifyChanged(boolean force) {
         long now = System.currentTimeMillis();
         if (!force && now - lastNotify < 500) return;
         lastNotify = now;
+        // 正式离线缓存由用户主动发起，运行时暂停播放页的整集预取，避免同一 App 内两套下载器抢带宽。
+        PlaybackCache.setOfflineDownloadActive(isBusy());
         RefreshEvent.download();
         DownloadService.update();
     }
@@ -213,7 +235,10 @@ public class DownloadManager {
             schedule();
         }
         notifyChanged(true);
-        if (!isBusy()) DownloadService.done();
+        if (!isBusy()) {
+            DownloadGovernor.reset();
+            DownloadService.done();
+        }
     }
 
     /** 通知栏要展示的当前任务，没有在跑的就返回 null。 */
@@ -284,14 +309,17 @@ public class DownloadManager {
         @Override
         public void run() {
             try {
+                DownloadLog.d("任务开始 剧集=%s 模式=%s 在跑=%d", item.getEpisodeName(), mode(), running.size());
                 item.setStatus(Download.STATUS_RUNNING);
                 item.setErrorMsg("");
                 persist(item);
                 notifyChanged(true);
                 download();
             } catch (Http.CancelException e) {
+                DownloadLog.d("任务中止 剧集=%s", item.getEpisodeName());
                 Logger.d(TAG + " 已取消 " + item.getEpisodeName());
             } catch (Throwable e) {
+                DownloadLog.d("任务失败 剧集=%s 原因=%s", item.getEpisodeName(), message(e));
                 Logger.e(TAG, e);
                 if (!isCancelled()) {
                     item.setStatus(Download.STATUS_ERROR);
@@ -331,9 +359,11 @@ public class DownloadManager {
             File output;
             long duration;
             int threads = threads();
-            boolean hls = address.isHls() || Http.isPlaylist(address.getUrl(), address.getHeaders());
-            DownloadLog.d("任务 %s 类型=%s 线程=%d 设置(集=%d,连接=%d)", item.getEpisodeName(), hls ? "HLS" : "直链",
-                    threads, Setting.getDownloadTask(), Setting.getDownloadThread());
+            boolean addressHls = address.isHls();
+            boolean hls = addressHls || Http.isPlaylist(address.getUrl(), address.getHeaders());
+            DownloadLog.d("任务 %s 类型=%s 识别=%s 模式=%s 线程=%d 设置(同时任务=%d)",
+                    item.getEpisodeName(), hls ? "HLS" : "直链", addressHls ? "地址" : "探测",
+                    mode(), threads, Setting.getDownloadTask());
             if (hls) {
                 HlsFetcher fetcher = new HlsFetcher(address.getHeaders(), dir, threads, this);
                 output = fetcher.download(address.getUrl());
@@ -349,6 +379,8 @@ public class DownloadManager {
             item.setSpeed(0);
             item.setDuration(duration);
             persist(item);
+            DownloadLog.d("任务完成 剧集=%s 用时=%dms 下载=%s 时长=%ds", item.getEpisodeName(),
+                    System.currentTimeMillis() - began, DownloadLog.size(item.getDoneBytes()), duration);
         }
     }
 

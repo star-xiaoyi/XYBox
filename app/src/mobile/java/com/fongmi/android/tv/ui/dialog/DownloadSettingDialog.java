@@ -11,15 +11,15 @@ import com.fongmi.android.tv.download.DownloadManager;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 /**
- * 缓存并发设置：同时下载几集 + 单集开几条连接。
- * <p>
- * 两个值都不是越大越好，也没有一个放之四海皆准的最优解——不同源站的限流策略差很远，
- * 所以做成用户能当场调的旋钮，而不是写死在代码里的常量。
+ * 缓存策略设置：用户只选择智能/极速和同时任务数，连接数由模式内部管理。
  */
 public class DownloadSettingDialog {
 
     private final DialogDownloadSettingBinding binding;
     private final Activity activity;
+    private int initialMode;
+    private int initialTask;
+    private int mode;
 
     public static DownloadSettingDialog create(Activity activity) {
         return new DownloadSettingDialog(activity);
@@ -37,15 +37,25 @@ public class DownloadSettingDialog {
     }
 
     private void initView() {
+        mode = initialMode = Setting.getDownloadMode();
+        initialTask = Setting.getDownloadTask();
+        binding.modeSelector.setOptions(new String[]{
+                activity.getString(R.string.download_mode_smart),
+                activity.getString(R.string.download_mode_fast)
+        });
+        binding.modeSelector.setSelectedIndex(mode);
+        binding.taskSlider.setRange(1, Setting.DOWNLOAD_TASK_MAX, 1);
         binding.taskSlider.setValue(Setting.getDownloadTask());
-        binding.threadSlider.setValue(Setting.getDownloadThread());
+        setModeHint();
         setTaskValue(Setting.getDownloadTask());
-        setThreadValue(Setting.getDownloadThread());
     }
 
     private void initEvent() {
-        binding.taskSlider.addOnChangeListener((slider, value, fromUser) -> setTaskValue((int) value));
-        binding.threadSlider.addOnChangeListener((slider, value, fromUser) -> setThreadValue((int) value));
+        binding.modeSelector.setOnOptionSelectedListener(index -> {
+            mode = index;
+            setModeHint();
+        });
+        binding.taskSlider.setOnValueChangeListener(value -> setTaskValue(Math.round(value)));
     }
 
     private void initDialog() {
@@ -61,15 +71,17 @@ public class DownloadSettingDialog {
         binding.taskValue.setText(activity.getString(R.string.download_concurrent_task_value, value));
     }
 
-    private void setThreadValue(int value) {
-        binding.threadValue.setText(activity.getString(R.string.download_connection_value, value));
+    private void setModeHint() {
+        binding.modeHint.setText(mode == Setting.DOWNLOAD_MODE_FAST
+                ? R.string.download_mode_fast_hint
+                : R.string.download_mode_smart_hint);
     }
 
     private void onPositive(DialogInterface dialog, int which) {
-        Setting.putDownloadTask((int) binding.taskSlider.getValue());
-        Setting.putDownloadThread((int) binding.threadSlider.getValue());
-        // 调大了就把排队的补上去；单集连接数对已经在跑的那几集不生效，下一集才按新值开
-        DownloadManager.get().applyLimit();
+        int task = Math.round(binding.taskSlider.getValue());
+        Setting.putDownloadMode(mode);
+        Setting.putDownloadTask(task);
+        if (mode != initialMode || task != initialTask) DownloadManager.get().applySettings();
         dialog.dismiss();
     }
 }

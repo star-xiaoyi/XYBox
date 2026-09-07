@@ -17,14 +17,9 @@ public class Setting {
     public static final int ACCENT_BLUE = 1;
     public static final int ACCENT_GREEN = 2;
     public static final int ACCENT_PURPLE = 3;
+    public static final int DOWNLOAD_MODE_SMART = 0;
+    public static final int DOWNLOAD_MODE_FAST = 1;
     public static final int DOWNLOAD_TASK_MAX = 5;
-    public static final int DOWNLOAD_THREAD_MIN = 1;
-    public static final int DOWNLOAD_THREAD_MAX = 32;
-    /**
-     * 全局连接预算。5 集各开 32 条就是 160 个并发请求，手机扛得住但源站不一定，
-     * 单集的连接数会按当前在跑的集数摊到这个预算里。
-     */
-    public static final int DOWNLOAD_BUDGET = 48;
 
     public static int getThemeMode() {
         int mode = Prefers.getInt("theme_mode", THEME_DARK);
@@ -173,17 +168,18 @@ public class Setting {
         Prefers.put("download_task", count);
     }
 
-    /**
-     * 单集开几条连接。串行下载时每个分片都要重走 DNS/TLS/首字节等待，
-     * 光 RTT 就把带宽吃光了，并发是这里唯一有意义的提速手段；
-     * 但源站限流大多按连接数算，开太多会挨 403/429，所以封顶 16。
-     */
-    public static int getDownloadThread() {
-        return Math.min(Math.max(Prefers.getInt("download_thread", 16), DOWNLOAD_THREAD_MIN), DOWNLOAD_THREAD_MAX);
+    /** 缓存速度模式。升级后的默认值改成智能，避免离线任务无提示地抢满整条网络。 */
+    public static int getDownloadMode() {
+        int mode = Prefers.getInt("download_mode", DOWNLOAD_MODE_SMART);
+        return mode == DOWNLOAD_MODE_FAST ? DOWNLOAD_MODE_FAST : DOWNLOAD_MODE_SMART;
     }
 
-    public static void putDownloadThread(int thread) {
-        Prefers.put("download_thread", thread);
+    public static void putDownloadMode(int mode) {
+        Prefers.put("download_mode", mode == DOWNLOAD_MODE_FAST ? DOWNLOAD_MODE_FAST : DOWNLOAD_MODE_SMART);
+    }
+
+    public static boolean isDownloadSmartMode() {
+        return getDownloadMode() == DOWNLOAD_MODE_SMART;
     }
 
     public static int getBackground() {
