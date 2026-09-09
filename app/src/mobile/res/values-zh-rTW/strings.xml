@@ -46,6 +46,7 @@
     <string name="download_state_paused">已暫停</string>
     <string name="download_state_error">快取失敗</string>
     <string name="download_state_done">已快取</string>
+    <string name="download_current_episode">正在播放</string>
     <string name="download_error_detail">失敗原因：<xliff:g name="message">%s</xliff:g></string>
     <string name="download_error_unknown">下載器沒有回傳具體錯誤資訊</string>
     <string name="download_action_pause">暫停快取</string>
@@ -166,4 +167,30 @@
 
     <string name="update_connecting">正在連線…</string>
 
+    <string name="play_more">更多功能</string>
+    <string name="play_info">播放資訊</string>
+    <string name="play_pip">子母畫面</string>
+    <string name="play_enter_full">進入全螢幕</string>
+    <string name="danmaku_toggle">顯示或隱藏彈幕</string>
+    <string name="danmaku_settings">彈幕設定</string>
+    <string name="danmaku_size">字號</string>
+    <string name="danmaku_opacity">透明度</string>
+    <string name="danmaku_speed">速度</string>
+    <string name="danmaku_area">顯示區域</string>
+    <string name="danmaku_source">彈幕來源</string>
+    <string name="danmaku_source_file">選擇本機彈幕檔案</string>
+    <string name="option_small">小</string>
+    <string name="option_standard">標準</string>
+    <string name="option_large">大</string>
+    <string name="option_slow">慢</string>
+    <string name="option_fast">快</string>
+    <string name="option_quarter">1/4 螢幕</string>
+    <string name="option_half">1/2 螢幕</string>
+    <string name="option_full">全螢幕</string>
+    <string name="play_quality">清晰度</string>
+    <string name="play_quality_value">清晰度 · %1$s</string>
+    <string name="quality_auto">自動</string>
+    <string name="quality_smooth">流暢</string>
+    <string name="quality_hd">高清</string>
+    <string name="quality_full_hd">超清</string>
 </resources>

@@ -3,6 +3,7 @@ package com.fongmi.android.tv.player.danmaku;
 import androidx.media3.common.Player;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.player.Players;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -30,13 +31,8 @@ public class DanPlayer implements DrawHandler.Callback {
     public DanPlayer() {
         context = DanmakuContext.create();
         executor = Executors.newCachedThreadPool();
-        HashMap<Integer, Integer> maxLines = new HashMap<>();
-        maxLines.put(BaseDanmaku.TYPE_FIX_TOP, 2);
-        maxLines.put(BaseDanmaku.TYPE_SCROLL_RL, 2);
-        maxLines.put(BaseDanmaku.TYPE_SCROLL_LR, 2);
-        maxLines.put(BaseDanmaku.TYPE_FIX_BOTTOM, 2);
-        context.setMaximumLines(maxLines).setScrollSpeedFactor(1.2f).setDanmakuTransparency(0.8f);
-        context.setDanmakuStyle(IDisplayer.DANMAKU_STYLE_STROKEN, 3).setDanmakuMargin(ResUtil.dp2px(8)).setScaleTextSize(0.8f);
+        context.setDanmakuStyle(IDisplayer.DANMAKU_STYLE_STROKEN, 3).setDanmakuMargin(ResUtil.dp2px(8));
+        setStyle(Setting.getDanmakuSize(), Setting.getDanmakuOpacity(), Setting.getDanmakuSpeed(), Setting.getDanmakuArea());
     }
 
     public void setView(DanmakuView view) {
@@ -94,6 +90,19 @@ public class DanPlayer implements DrawHandler.Callback {
 
     public void setTextSize(float size) {
         context.setScaleTextSize(size);
+    }
+
+    public void setStyle(float size, float opacity, float speed, int area) {
+        int maxLines = area <= 25 ? 2 : area <= 50 ? 4 : 8;
+        HashMap<Integer, Integer> lines = new HashMap<>();
+        lines.put(BaseDanmaku.TYPE_FIX_TOP, maxLines);
+        lines.put(BaseDanmaku.TYPE_SCROLL_RL, maxLines);
+        lines.put(BaseDanmaku.TYPE_SCROLL_LR, maxLines);
+        lines.put(BaseDanmaku.TYPE_FIX_BOTTOM, maxLines);
+        context.setMaximumLines(lines)
+                .setScrollSpeedFactor(speed)
+                .setDanmakuTransparency(opacity)
+                .setScaleTextSize(size);
     }
 
     public void check(int state) {

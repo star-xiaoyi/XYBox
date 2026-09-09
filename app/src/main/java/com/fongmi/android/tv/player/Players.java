@@ -589,12 +589,20 @@ public class Players implements Player.Listener, ParseCallback {
         if (danmakus == null) danmakus = new ArrayList<>();
         if (!item.isEmpty() && !danmakus.contains(item)) danmakus.add(0, item);
         for (int i = 0; i < danmakus.size(); i++) danmakus.get(i).setSelected(danmakus.get(i).getUrl().equals(item.getUrl()));
-        // 应用弹幕大小设置
-        danPlayer.setTextSize(Setting.getDanmakuSize());
+        applyDanmakuSettings(1.0f);
     }
 
     public void setDanmakuSize(float size) {
         if (danPlayer != null) danPlayer.setTextSize(size);
+    }
+
+    public void applyDanmakuSettings(float displayScale) {
+        if (danPlayer == null) return;
+        danPlayer.setStyle(
+                Setting.getDanmakuSize() * displayScale,
+                Setting.getDanmakuOpacity(),
+                Setting.getDanmakuSpeed(),
+                Setting.getDanmakuArea());
     }
 
     public void resetTrack() {

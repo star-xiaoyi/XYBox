@@ -383,6 +383,30 @@ public class Setting {
         Prefers.put("danmaku_size", size);
     }
 
+    public static float getDanmakuOpacity() {
+        return Prefers.getFloat("danmaku_opacity", 0.8f);
+    }
+
+    public static void putDanmakuOpacity(float opacity) {
+        Prefers.put("danmaku_opacity", opacity);
+    }
+
+    public static float getDanmakuSpeed() {
+        return Prefers.getFloat("danmaku_speed", 1.2f);
+    }
+
+    public static void putDanmakuSpeed(float speed) {
+        Prefers.put("danmaku_speed", speed);
+    }
+
+    public static int getDanmakuArea() {
+        return Prefers.getInt("danmaku_area", 25);
+    }
+
+    public static void putDanmakuArea(int area) {
+        Prefers.put("danmaku_area", area);
+    }
+
     public static boolean isDanmakuShow() {
         return Prefers.getBoolean("danmaku_show");
     }

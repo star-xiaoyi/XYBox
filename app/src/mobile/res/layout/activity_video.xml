@@ -116,26 +116,19 @@
 
     </FrameLayout>
 
-    <!--
-        悬浮返回键放在根布局而不是 video 里：video 挂了 OnTouchListener 处理播放手势，
-        放在里面点击会被当成"单击播放区"。放到根布局同层且排在 video 之后，既在最上层
-        又不经过播放手势那条链路。竖屏常驻，控制层显示时由 VideoActivity 去掉圆形底。
-    -->
-    <ImageView
+    <!-- 控制栏隐藏时使用的静态玻璃返回键；控制栏出现后换成顶栏里的纯图标返回键。 -->
+    <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/detail_back"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
         android:layout_alignParentStart="true"
         android:layout_alignParentTop="true"
-        android:layout_marginStart="10dp"
-        android:layout_marginTop="10dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="12dp"
         android:background="@drawable/shape_detail_back"
-        android:clickable="true"
         android:contentDescription="@string/back"
-        android:focusable="true"
-        android:padding="10dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_back" />
+        android:padding="8dp"
+        android:src="@drawable/ic_control_back" />
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipeLayout"
@@ -550,5 +543,10 @@
             android:background="@drawable/shape_detail_handle" />
 
     </FrameLayout>
+
+    <com.fongmi.android.tv.ui.custom.PlaybackGlassPanelView
+        android:id="@+id/playbackPanel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
 </RelativeLayout>

@@ -108,6 +108,11 @@ public class CastDialog extends BaseCenterDialog implements DeviceAdapter.OnClic
     }
 
     @Override
+    protected int getDialogHeightDp() {
+        return 400;
+    }
+
+    @Override
     protected void initView() {
         binding.scan.setVisibility(fm ? View.VISIBLE : View.GONE);
         EventBus.getDefault().register(this);

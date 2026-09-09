@@ -24,6 +24,7 @@ public class DownloadEpisodeAdapter extends RecyclerView.Adapter<DownloadEpisode
     private final OnClickListener listener;
     private Map<String, Download> states;
     private Set<String> selected;
+    private Episode current;
 
     public interface OnClickListener {
         void onEpisodeClick(Episode item);
@@ -33,11 +34,12 @@ public class DownloadEpisodeAdapter extends RecyclerView.Adapter<DownloadEpisode
         this.listener = listener;
     }
 
-    public void setItems(List<Episode> items, Set<String> selected, Map<String, Download> states) {
+    public void setItems(List<Episode> items, Set<String> selected, Map<String, Download> states, Episode current) {
         this.items.clear();
         this.items.addAll(items);
         this.selected = selected;
         this.states = states;
+        this.current = current;
         notifyDataSetChanged();
     }
 
@@ -58,7 +60,12 @@ public class DownloadEpisodeAdapter extends RecyclerView.Adapter<DownloadEpisode
         Download state = states == null ? null : states.get(Download.episodeKey(item.getName()));
         holder.binding.text.setText(item.getName());
         holder.binding.getRoot().setActivated(selected != null && selected.contains(item.getName()));
+        holder.binding.getRoot().setSelected(item == current);
+        holder.binding.playing.setVisibility(item == current ? View.VISIBLE : View.GONE);
+        holder.binding.done.setVisibility(state != null && state.isDone() ? View.VISIBLE : View.GONE);
         if (state == null) {
+            holder.binding.state.setVisibility(View.GONE);
+        } else if (state.isDone()) {
             holder.binding.state.setVisibility(View.GONE);
         } else {
             holder.binding.state.setVisibility(View.VISIBLE);
