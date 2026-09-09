@@ -10,23 +10,21 @@
         android:id="@+id/top"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
         android:padding="8dp">
 
         <ImageView
             android:id="@+id/back"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            style="@style/Control.VodIcon.Borderless"
             android:contentDescription="@string/back"
-            android:padding="12dp"
             android:src="@drawable/ic_control_back"
             android:visibility="gone"
             tools:visibility="visible" />
 
         <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="36dp"
             android:layout_weight="1"
             android:gravity="center_vertical"
             android:orientation="vertical"
@@ -38,10 +36,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="marquee"
+                android:includeFontPadding="false"
                 android:marqueeRepeatLimit="marquee_forever"
                 android:singleLine="true"
                 android:textColor="@color/white"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 tools:text="慶餘年第一季：第一集" />
 
         </LinearLayout>
@@ -49,7 +48,7 @@
         <LinearLayout
             android:id="@+id/topRight"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="36dp"
             android:layout_gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -57,7 +56,7 @@
             <LinearLayout
                 android:id="@+id/timeGroup"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="36dp"
                 android:layout_gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -67,10 +66,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
+                android:includeFontPadding="false"
                 android:paddingStart="4dp"
                 android:paddingEnd="6dp"
                 android:textColor="@color/white"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 tools:text="21:30" />
 
             <ImageView
@@ -88,9 +88,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
+                android:includeFontPadding="false"
                 android:paddingEnd="4dp"
                 android:textColor="@color/white"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:visibility="gone"
                 tools:text="85%"
                 tools:visibility="visible" />
@@ -99,47 +100,33 @@
 
             <ImageView
                 android:id="@+id/cast"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                style="@style/Control.VodIcon.Top"
                 android:contentDescription="@string/cast_channel"
-                android:padding="8dp"
                 android:src="@drawable/ic_control_cast" />
 
             <ImageView
                 android:id="@+id/info"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                style="@style/Control.VodIcon.Top"
                 android:contentDescription="@string/play_info"
-                android:padding="8dp"
                 android:src="@drawable/ic_control_info" />
 
             <ImageView
                 android:id="@+id/keep"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                style="@style/Control.VodIcon.Top"
                 android:contentDescription="@string/keep"
-                android:padding="8dp"
                 android:src="@drawable/ic_control_keep_off" />
 
             <ImageView
                 android:id="@+id/player_more"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                style="@style/Control.VodIcon.Top"
                 android:contentDescription="@string/play_more"
-                android:padding="8dp"
                 android:src="@drawable/ic_control_more" />
 
             <ImageView
                 android:id="@+id/pip"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                style="@style/Control.VodIcon.Top"
+                android:layout_marginStart="-5dp"
                 android:contentDescription="@string/play_pip"
-                android:padding="8dp"
                 android:src="@drawable/ic_control_pip"
                 android:visibility="gone" />
 
@@ -251,12 +238,9 @@
 
             <ImageView
                 android:id="@+id/full"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                style="@style/Control.VodIcon.Borderless"
                 android:layout_marginStart="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/play_enter_full"
-                android:padding="8dp"
                 android:src="@drawable/ic_control_full" />
 
         </LinearLayout>
@@ -270,7 +254,7 @@
             <LinearLayout
                 android:id="@+id/center"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="36dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingStart="8dp"
@@ -278,32 +262,23 @@
 
                 <ImageView
                     android:id="@+id/prev"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/shape_action_background"
+                    style="@style/Control.VodIcon.Action"
                     android:contentDescription="@string/play_prev"
-                    android:padding="8dp"
-                    android:src="@drawable/exo_icon_previous"
+                    android:src="@drawable/ic_control_previous"
                     android:visibility="gone"
                     tools:visibility="visible" />
 
                 <ImageView
                     android:id="@+id/play"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/shape_action_background"
+                    style="@style/Control.VodIcon.Action"
                     android:contentDescription="@string/play"
-                    android:padding="4dp"
-                    android:src="@drawable/exo_icon_play" />
+                    android:src="@drawable/ic_control_play" />
 
                 <ImageView
                     android:id="@+id/next"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/shape_action_background"
+                    style="@style/Control.VodIcon.Action"
                     android:contentDescription="@string/play_next"
-                    android:padding="8dp"
-                    android:src="@drawable/exo_icon_next"
+                    android:src="@drawable/ic_control_next"
                     android:visibility="gone"
                     tools:visibility="visible" />
 
@@ -313,7 +288,7 @@
                 android:id="@+id/action"
                 layout="@layout/view_control_vod_action"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="36dp"
                 android:layout_weight="1" />
 
         </LinearLayout>

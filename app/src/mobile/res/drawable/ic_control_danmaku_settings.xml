@@ -4,7 +4,13 @@
     android:tint="#FFFFFF"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path
-        android:fillColor="@android:color/white"
-        android:pathData="M3,3h18v14H7l-4,4V3zM7,7v2h2V7H7zM11,7v2h6V7h-6zM7,11v2h6v-2H7zM15,11v2h2v-2h-2z" />
+    <group
+        android:pivotX="12"
+        android:pivotY="12"
+        android:scaleX="1.2"
+        android:scaleY="1.2">
+        <path
+            android:fillColor="@android:color/white"
+            android:pathData="M3,3h18v14H7l-4,4V3zM7,7v2h2V7H7zM11,7v2h6V7h-6zM7,11v2h6v-2H7zM15,11v2h2v-2h-2z" />
+    </group>
 </vector>

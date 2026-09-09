@@ -9,115 +9,161 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <LinearLayout
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="16dp">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginBottom="10dp"
-            android:text="@string/danmaku_settings"
-            android:textColor="@color/text_primary"
-            android:textSize="17sp"
-            android:textStyle="bold" />
+        android:clipToPadding="false"
+        android:fillViewport="false"
+        android:overScrollMode="never">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView style="@style/DanmakuSettingLabel" android:text="@string/danmaku_size" />
-            <TextView android:id="@+id/sizeSmall" style="@style/DanmakuSettingOption" android:text="@string/option_small" />
-            <TextView android:id="@+id/sizeNormal" style="@style/DanmakuSettingOption" android:text="@string/option_standard" />
-            <TextView android:id="@+id/sizeLarge" style="@style/DanmakuSettingOption" android:text="@string/option_large" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView style="@style/DanmakuSettingLabel" android:text="@string/danmaku_opacity" />
-            <TextView android:id="@+id/opacityLow" style="@style/DanmakuSettingOption" android:text="50%" />
-            <TextView android:id="@+id/opacityNormal" style="@style/DanmakuSettingOption" android:text="80%" />
-            <TextView android:id="@+id/opacityHigh" style="@style/DanmakuSettingOption" android:text="100%" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView style="@style/DanmakuSettingLabel" android:text="@string/danmaku_speed" />
-            <TextView android:id="@+id/speedSlow" style="@style/DanmakuSettingOption" android:text="@string/option_slow" />
-            <TextView android:id="@+id/speedNormal" style="@style/DanmakuSettingOption" android:text="@string/option_standard" />
-            <TextView android:id="@+id/speedFast" style="@style/DanmakuSettingOption" android:text="@string/option_fast" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView style="@style/DanmakuSettingLabel" android:text="@string/danmaku_area" />
-            <TextView android:id="@+id/areaQuarter" style="@style/DanmakuSettingOption" android:text="@string/option_quarter" />
-            <TextView android:id="@+id/areaHalf" style="@style/DanmakuSettingOption" android:text="@string/option_half" />
-            <TextView android:id="@+id/areaFull" style="@style/DanmakuSettingOption" android:text="@string/option_full" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="14dp">
 
             <TextView
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/danmaku_source"
+                android:layout_marginStart="4dp"
+                android:layout_marginBottom="8dp"
+                android:text="@string/danmaku_settings"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
 
-            <ImageView
-                android:id="@+id/choose"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/danmaku_source_file"
-                android:padding="8dp"
-                android:src="@drawable/ic_action_choose"
-                android:tint="@color/text_secondary" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="22dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/DanmakuSliderLabel"
+                    android:text="@string/danmaku_size" />
+
+                <TextView
+                    android:id="@+id/sizeValue"
+                    style="@style/DanmakuSliderValue"
+                    tools:text="100%" />
+            </LinearLayout>
+
+            <com.fongmi.android.tv.ui.custom.LiquidGlassSliderView
+                android:id="@+id/sizeSlider"
+                android:layout_width="match_parent"
+                android:layout_height="36dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/DanmakuSliderLabel"
+                    android:text="@string/danmaku_opacity" />
+
+                <TextView
+                    android:id="@+id/opacityValue"
+                    style="@style/DanmakuSliderValue"
+                    tools:text="80%" />
+            </LinearLayout>
+
+            <com.fongmi.android.tv.ui.custom.LiquidGlassSliderView
+                android:id="@+id/opacitySlider"
+                android:layout_width="match_parent"
+                android:layout_height="36dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/DanmakuSliderLabel"
+                    android:text="@string/danmaku_speed" />
+
+                <TextView
+                    android:id="@+id/speedValue"
+                    style="@style/DanmakuSliderValue"
+                    tools:text="1.00x" />
+            </LinearLayout>
+
+            <com.fongmi.android.tv.ui.custom.LiquidGlassSliderView
+                android:id="@+id/speedSlider"
+                android:layout_width="match_parent"
+                android:layout_height="36dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/DanmakuSliderLabel"
+                    android:text="@string/danmaku_area" />
+
+                <TextView
+                    android:id="@+id/areaValue"
+                    style="@style/DanmakuSliderValue"
+                    tools:text="25%" />
+            </LinearLayout>
+
+            <com.fongmi.android.tv.ui.custom.LiquidGlassSliderView
+                android:id="@+id/areaSlider"
+                android:layout_width="match_parent"
+                android:layout_height="36dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="6dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/danmaku_source"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/choose"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/danmaku_source_file"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_action_choose"
+                    android:tint="@color/text_secondary" />
+            </LinearLayout>
+
+            <com.fongmi.android.tv.ui.custom.CustomRecyclerView
+                android:id="@+id/recycler"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+                app:maxHeight="96dp"
+                tools:listitem="@layout/adapter_danmaku" />
+
         </LinearLayout>
-
-        <com.fongmi.android.tv.ui.custom.CustomRecyclerView
-            android:id="@+id/recycler"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:clipChildren="false"
-            android:clipToPadding="false"
-            android:overScrollMode="never"
-            android:paddingStart="4dp"
-            android:paddingEnd="4dp"
-            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-            app:maxHeight="112dp"
-            tools:listitem="@layout/adapter_danmaku" />
-
-    </LinearLayout>
-
+    </androidx.core.widget.NestedScrollView>
 </FrameLayout>

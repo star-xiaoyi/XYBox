@@ -336,7 +336,9 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     public String getSpeedText() {
-        return String.format(Locale.getDefault(), "%.2f", getSpeed());
+        return Math.abs(getSpeed() - 1.0f) < 0.001f
+                ? ResUtil.getString(R.string.control_speed)
+                : String.format(Locale.getDefault(), "%.2f", getSpeed());
     }
 
     public String getDecodeText() {

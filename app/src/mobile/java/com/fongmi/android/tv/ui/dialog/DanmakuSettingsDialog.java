@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -20,6 +19,8 @@ import com.fongmi.android.tv.player.Players;
 import com.fongmi.android.tv.ui.adapter.DanmakuAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.FileChooser;
+
+import java.util.Locale;
 
 /** 播放器内的固定尺寸玻璃弹幕设置窗，弹幕源选择也统一收在这里。 */
 public final class DanmakuSettingsDialog extends BaseCenterDialog implements DanmakuAdapter.OnClickListener {
@@ -58,7 +59,7 @@ public final class DanmakuSettingsDialog extends BaseCenterDialog implements Dan
 
     @Override
     protected int getDialogHeightDp() {
-        return 420;
+        return 360;
     }
 
     @Override
@@ -73,25 +74,25 @@ public final class DanmakuSettingsDialog extends BaseCenterDialog implements Dan
         binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 10));
         binding.recycler.post(() -> binding.recycler.scrollToPosition(adapter.getSelected()));
         binding.recycler.setVisibility(adapter.getItemCount() == 0 ? View.GONE : View.VISIBLE);
-        refreshSelection();
+        binding.sizeSlider.setRange(0.6f, 1.6f, 0.05f);
+        binding.sizeSlider.setValue(Setting.getDanmakuSize());
+        binding.opacitySlider.setRange(0.1f, 1.0f, 0.05f);
+        binding.opacitySlider.setValue(Setting.getDanmakuOpacity());
+        binding.speedSlider.setRange(0.5f, 2.0f, 0.05f);
+        binding.speedSlider.setValue(toDisplaySpeed(Setting.getDanmakuSpeed()));
+        binding.areaSlider.setRange(10, 100, 5);
+        binding.areaSlider.setValue(Setting.getDanmakuArea());
+        updateValues();
     }
 
     @Override
     protected void initEvent() {
         if (binding == null || player == null) return;
         binding.choose.setOnClickListener(this::showChooser);
-        binding.sizeSmall.setOnClickListener(v -> setSize(0.8f));
-        binding.sizeNormal.setOnClickListener(v -> setSize(1.0f));
-        binding.sizeLarge.setOnClickListener(v -> setSize(1.2f));
-        binding.opacityLow.setOnClickListener(v -> setOpacity(0.5f));
-        binding.opacityNormal.setOnClickListener(v -> setOpacity(0.8f));
-        binding.opacityHigh.setOnClickListener(v -> setOpacity(1.0f));
-        binding.speedSlow.setOnClickListener(v -> setSpeed(1.5f));
-        binding.speedNormal.setOnClickListener(v -> setSpeed(1.2f));
-        binding.speedFast.setOnClickListener(v -> setSpeed(0.8f));
-        binding.areaQuarter.setOnClickListener(v -> setArea(25));
-        binding.areaHalf.setOnClickListener(v -> setArea(50));
-        binding.areaFull.setOnClickListener(v -> setArea(100));
+        binding.sizeSlider.setOnValueChangeListener(this::setSize);
+        binding.opacitySlider.setOnValueChangeListener(this::setOpacity);
+        binding.speedSlider.setOnValueChangeListener(this::setSpeed);
+        binding.areaSlider.setOnValueChangeListener(value -> setArea(Math.round(value)));
     }
 
     private void setSize(float value) {
@@ -105,7 +106,7 @@ public final class DanmakuSettingsDialog extends BaseCenterDialog implements Dan
     }
 
     private void setSpeed(float value) {
-        Setting.putDanmakuSpeed(value);
+        Setting.putDanmakuSpeed(1.2f / value);
         applySettings();
     }
 
@@ -116,27 +117,18 @@ public final class DanmakuSettingsDialog extends BaseCenterDialog implements Dan
 
     private void applySettings() {
         player.applyDanmakuSettings(displayScale);
-        refreshSelection();
+        updateValues();
     }
 
-    private void refreshSelection() {
-        activate(new TextView[]{binding.sizeSmall, binding.sizeNormal, binding.sizeLarge}, closest(Setting.getDanmakuSize(), 0.8f, 1.0f, 1.2f));
-        activate(new TextView[]{binding.opacityLow, binding.opacityNormal, binding.opacityHigh}, closest(Setting.getDanmakuOpacity(), 0.5f, 0.8f, 1.0f));
-        activate(new TextView[]{binding.speedSlow, binding.speedNormal, binding.speedFast}, closest(Setting.getDanmakuSpeed(), 1.5f, 1.2f, 0.8f));
-        int area = Setting.getDanmakuArea();
-        activate(new TextView[]{binding.areaQuarter, binding.areaHalf, binding.areaFull}, area <= 25 ? 0 : area <= 50 ? 1 : 2);
+    private void updateValues() {
+        binding.sizeValue.setText(String.format(Locale.getDefault(), "%d%%", Math.round(binding.sizeSlider.getValue() * 100)));
+        binding.opacityValue.setText(String.format(Locale.getDefault(), "%d%%", Math.round(binding.opacitySlider.getValue() * 100)));
+        binding.speedValue.setText(String.format(Locale.getDefault(), "%.2fx", binding.speedSlider.getValue()));
+        binding.areaValue.setText(String.format(Locale.getDefault(), "%d%%", Math.round(binding.areaSlider.getValue())));
     }
 
-    private int closest(float value, float... options) {
-        int selected = 0;
-        for (int i = 1; i < options.length; i++) {
-            if (Math.abs(options[i] - value) < Math.abs(options[selected] - value)) selected = i;
-        }
-        return selected;
-    }
-
-    private void activate(TextView[] views, int selected) {
-        for (int i = 0; i < views.length; i++) views[i].setActivated(i == selected);
+    private float toDisplaySpeed(float factor) {
+        return 1.2f / Math.max(0.1f, factor);
     }
 
     private void showChooser(View view) {

@@ -2,7 +2,7 @@
 <HorizontalScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
+    android:layout_height="36dp"
     android:fillViewport="true"
     android:paddingStart="0dp"
     android:paddingEnd="8dp"
@@ -10,27 +10,28 @@
 
     <LinearLayout
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_height="36dp"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <TextView
             android:id="@+id/player"
-            style="@style/Control.Action"
+            style="@style/Control.VodAction"
             android:text="@string/play_exo" />
 
         <TextView
             android:id="@+id/scale"
-            style="@style/Control.Action"
-            tools:text="縮放" />
+            style="@style/Control.VodAction"
+            tools:text="缩放" />
 
         <TextView
             android:id="@+id/speed"
-            style="@style/Control.Action"
-            tools:text="速度" />
+            style="@style/Control.VodAction"
+            tools:text="倍速" />
 
         <TextView
             android:id="@+id/reset"
-            style="@style/Control.Action"
+            style="@style/Control.VodAction"
             android:textColor="@color/text"
             tools:text="刷新" />
 
@@ -41,23 +42,17 @@
 
         <ImageView
             android:id="@+id/text"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/shape_action_background"
+            style="@style/Control.VodIcon.Action"
             android:contentDescription="@string/play_track_text"
-            android:padding="8dp"
-            android:src="@drawable/ic_action_subtitle"
+            android:src="@drawable/ic_control_subtitle"
             android:tag="3"
             android:visibility="gone"
             tools:visibility="visible" />
 
         <ImageView
             android:id="@+id/audio"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/shape_action_background"
+            style="@style/Control.VodIcon.Action"
             android:contentDescription="@string/play_track_audio"
-            android:padding="8dp"
             android:src="@drawable/ic_control_audio"
             android:tag="1"
             android:visibility="gone"
@@ -65,7 +60,7 @@
 
         <TextView
             android:id="@+id/video"
-            style="@style/Control.Action"
+            style="@style/Control.VodAction"
             android:tag="2"
             android:text="@string/quality_auto"
             android:visibility="gone"
@@ -73,41 +68,33 @@
 
         <TextView
             android:id="@+id/opening"
-            style="@style/Control.Action"
-            tools:text="片頭" />
+            style="@style/Control.VodAction"
+            tools:text="片头" />
 
         <TextView
             android:id="@+id/ending"
-            style="@style/Control.Action"
+            style="@style/Control.VodAction"
             tools:text="片尾" />
 
         <ImageView
             android:id="@+id/danmaku"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/shape_action_background"
+            style="@style/Control.VodIcon.Action"
             android:contentDescription="@string/danmaku_settings"
-            android:padding="8dp"
             android:src="@drawable/ic_control_danmaku_settings"
             android:visibility="gone"
             tools:visibility="visible" />
 
         <ImageView
             android:id="@+id/episodes"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/shape_action_background"
+            style="@style/Control.VodIcon.Episode"
             android:contentDescription="@string/detail_episode"
-            android:padding="8dp"
             android:src="@drawable/ic_action_list" />
 
         <ImageView
             android:id="@+id/exit"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/shape_action_background"
+            style="@style/Control.VodIcon.Action"
+            android:layout_marginStart="-2dp"
             android:contentDescription="@string/play_exit_full"
-            android:padding="8dp"
             android:src="@drawable/ic_control_exit_full"
             android:visibility="gone"
             tools:visibility="visible" />
