@@ -1,13 +1,18 @@
 package com.fongmi.android.tv.ui.dialog;
 
 import android.app.Activity;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.os.Build;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.Window;
 
 import androidx.appcompat.app.AlertDialog;
 
 import com.fongmi.android.tv.databinding.DialogInfoBinding;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -56,8 +61,19 @@ public class InfoDialog {
 
     private void initDialog() {
         dialog = new MaterialAlertDialogBuilder(binding.getRoot().getContext()).setView(binding.getRoot()).create();
-        dialog.getWindow().setDimAmount(0);
         dialog.show();
+        Window window = dialog.getWindow();
+        if (window == null) return;
+        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        window.setDimAmount(0);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.setNavigationBarContrastEnforced(false);
+        int screenWidth = binding.getRoot().getResources().getDisplayMetrics().widthPixels;
+        int screenHeight = binding.getRoot().getResources().getDisplayMetrics().heightPixels;
+        int availableWidth = Math.min(screenWidth - ResUtil.dp2px(24), Math.round(screenWidth * 0.86f));
+        int availableHeight = Math.min(screenHeight - ResUtil.dp2px(24), Math.round(screenHeight * 0.75f));
+        window.setLayout(Math.min(ResUtil.dp2px(360), availableWidth), Math.min(ResUtil.dp2px(360), availableHeight));
+        Util.hideSystemUI(window);
     }
 
     private void initView() {

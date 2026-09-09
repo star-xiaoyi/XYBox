@@ -24,81 +24,25 @@
             android:visibility="gone"
             tools:visibility="visible" />
 
-        <!--
-          时间/充电/电量。位置由 VideoActivity.setTimeSlot 在运行时决定：
-          竖屏全屏搬到这里（返回键右边、左对齐），其余情况搬回 topRight。
-          不能靠 layout / layout-land 两份资源区分——VideoActivity 声明了
-          configChanges="orientation|screenSize"，旋转不重建、布局不重新 inflate，
-          横屏全屏用的仍是进入详情页时（竖屏）inflate 的这一份。
-        -->
-        <LinearLayout
-            android:id="@+id/timeGroup"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/time_battery"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:textColor="@color/white"
-                android:textSize="16sp"
-                tools:text="21:30" />
-
-            <ImageView
-                android:id="@+id/charging_indicator"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:layout_gravity="center_vertical"
-                android:layout_marginEnd="2dp"
-                android:src="@drawable/ic_charging_bolt"
-                android:visibility="gone"
-                tools:visibility="visible" />
-
-            <TextView
-                android:id="@+id/battery_icon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:paddingEnd="8dp"
-                android:textColor="@color/white"
-                android:textSize="16sp"
-                android:visibility="gone"
-                tools:text="85%"
-                tools:visibility="visible" />
-
-        </LinearLayout>
-
         <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_weight="1"
+            android:gravity="center_vertical"
             android:orientation="vertical"
             android:paddingStart="8dp"
-            android:paddingTop="8dp"
             android:paddingEnd="8dp">
 
             <TextView
                 android:id="@+id/title"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
                 android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="14sp"
                 tools:text="慶餘年第一季：第一集" />
-
-            <TextView
-                android:id="@+id/size"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/white"
-                android:textSize="12sp"
-                tools:text="1920 x 1080" />
 
         </LinearLayout>
 
@@ -109,11 +53,54 @@
             android:layout_gravity="center_vertical"
             android:orientation="horizontal">
 
+            <LinearLayout
+                android:id="@+id/timeGroup"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/time_battery"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="6dp"
+                    android:textColor="@color/white"
+                    android:textSize="14sp"
+                    tools:text="21:30" />
+
+                <ImageView
+                    android:id="@+id/charging_indicator"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="2dp"
+                    android:src="@drawable/ic_charging_bolt"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/battery_icon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:paddingEnd="4dp"
+                    android:textColor="@color/white"
+                    android:textSize="14sp"
+                    android:visibility="gone"
+                    tools:text="85%"
+                    tools:visibility="visible" />
+
+            </LinearLayout>
+
             <ImageView
                 android:id="@+id/cast"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/cast_channel"
                 android:padding="8dp"
                 android:src="@drawable/ic_control_cast" />
 
@@ -122,6 +109,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/play_info"
                 android:padding="8dp"
                 android:src="@drawable/ic_control_info" />
 
@@ -130,6 +118,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/keep"
                 android:padding="8dp"
                 android:src="@drawable/ic_control_keep_off" />
 
@@ -138,17 +127,19 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/play_pip"
                 android:padding="8dp"
                 android:src="@drawable/ic_control_pip"
                 android:visibility="gone" />
 
             <ImageView
-                android:id="@+id/setting"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:id="@+id/player_more"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/play_more"
                 android:padding="8dp"
-                android:src="@drawable/ic_control_setting" />
+                android:src="@drawable/ic_control_more" />
 
         </LinearLayout>
     </LinearLayout>
@@ -168,6 +159,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/danmaku_toggle"
             android:padding="8dp"
             android:src="@drawable/ic_control_danmaku_on" />
 
@@ -260,10 +252,12 @@
 
             <ImageView
                 android:id="@+id/full"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:layout_marginStart="8dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/play_enter_full"
+                android:padding="8dp"
                 android:src="@drawable/ic_control_full" />
 
         </LinearLayout>

@@ -48,6 +48,7 @@
     <string name="download_state_paused">Paused</string>
     <string name="download_state_error">Failed</string>
     <string name="download_state_done">Cached</string>
+    <string name="download_current_episode">Currently playing</string>
     <string name="download_error_detail">Reason: <xliff:g name="message">%s</xliff:g></string>
     <string name="download_error_unknown">No error details were returned</string>
     <string name="download_action_pause">Pause cache</string>
@@ -176,4 +177,30 @@ Make sure both are on the same Wi-Fi</string>
 
     <string name="update_connecting">Connecting…</string>
 
+    <string name="play_more">More controls</string>
+    <string name="play_info">Playback info</string>
+    <string name="play_pip">Picture-in-picture</string>
+    <string name="play_enter_full">Enter fullscreen</string>
+    <string name="danmaku_toggle">Show or hide danmaku</string>
+    <string name="danmaku_settings">Danmaku settings</string>
+    <string name="danmaku_size">Text size</string>
+    <string name="danmaku_opacity">Opacity</string>
+    <string name="danmaku_speed">Speed</string>
+    <string name="danmaku_area">Display area</string>
+    <string name="danmaku_source">Danmaku source</string>
+    <string name="danmaku_source_file">Choose local danmaku file</string>
+    <string name="option_small">Small</string>
+    <string name="option_standard">Standard</string>
+    <string name="option_large">Large</string>
+    <string name="option_slow">Slow</string>
+    <string name="option_fast">Fast</string>
+    <string name="option_quarter">1/4 screen</string>
+    <string name="option_half">1/2 screen</string>
+    <string name="option_full">Full screen</string>
+    <string name="play_quality">Quality</string>
+    <string name="play_quality_value">Quality · %1$s</string>
+    <string name="quality_auto">Auto</string>
+    <string name="quality_smooth">Smooth</string>
+    <string name="quality_hd">HD</string>
+    <string name="quality_full_hd">Full HD</string>
 </resources>

@@ -1,8 +1,10 @@
 package com.fongmi.android.tv.ui.dialog;
 
+import android.graphics.Paint;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -28,6 +30,7 @@ import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,6 +44,9 @@ import java.util.Set;
  */
 public class DownloadEpisodeDialog extends BaseDialog implements DownloadEpisodeAdapter.OnClickListener {
 
+    private static final int PAGE_SIZE = 30;
+    private static final int ITEM_HEIGHT_DP = 48;
+
     private DialogDownloadEpisodeBinding binding;
     private DownloadEpisodeAdapter adapter;
     private final Set<String> selected = new LinkedHashSet<>();
@@ -49,8 +55,8 @@ public class DownloadEpisodeDialog extends BaseDialog implements DownloadEpisode
     private List<Episode> episodes = new ArrayList<>();
     private Callback callback;
     private String groupKey = "";
-    private int spanCount = 5;
-    private int pageSize;
+    private int spanCount = 3;
+    private int currentIndex;
 
     public interface Callback {
         void onDownloadEpisodes(List<Episode> items);
@@ -67,6 +73,11 @@ public class DownloadEpisodeDialog extends BaseDialog implements DownloadEpisode
 
     public DownloadEpisodeDialog groupKey(String groupKey) {
         this.groupKey = groupKey;
+        return this;
+    }
+
+    public DownloadEpisodeDialog currentIndex(int currentIndex) {
+        this.currentIndex = Math.max(0, currentIndex);
         return this;
     }
 
@@ -127,30 +138,42 @@ public class DownloadEpisodeDialog extends BaseDialog implements DownloadEpisode
         return states.get(Download.episodeKey(item.getName()));
     }
 
-    /** 沿用剧集面板的算法：名字越长每行放得越少。 */
+    /**
+     * 典型手机以三列为基准；宽屏会增加列数，集名较长时则减少列数。
+     * 每页始终是 30 集，列数只决定剧集区域内部需要多少行、是否需要纵向滚动。
+     */
     private void setSpanCount() {
-        int total = 0;
-        for (Episode item : episodes) total += item.getName().length();
-        int offset = (int) Math.ceil((double) total / episodes.size());
-        if (offset >= 12) spanCount = 1;
-        else if (offset >= 8) spanCount = 2;
-        else if (offset >= 4) spanCount = 3;
-        else if (offset >= 2) spanCount = 4;
-        else spanCount = 5;
-        pageSize = spanCount * (ResUtil.isLand(getActivity()) ? 4 : 8);
+        float density = getResources().getDisplayMetrics().density;
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setTextSize(ResUtil.sp2px(14));
+        List<Float> widths = new ArrayList<>();
+        for (Episode item : episodes) widths.add(paint.measureText(item.getName()));
+        Collections.sort(widths);
+        float representative = widths.get((widths.size() - 1) * 3 / 4) / density;
+        int desiredCell = Math.max(104, Math.min(240, Math.round(representative + 36)));
+        int available = Math.max(104, ResUtil.getWindowWidthDp(requireContext()) - 20);
+        spanCount = Math.max(1, Math.min(6, available / desiredCell));
     }
 
     private void setRanges() {
         ranges.clear();
-        for (int i = 0; i < episodes.size(); i += pageSize) ranges.add(new int[]{i, Math.min(i + pageSize, episodes.size())});
+        for (int i = 0; i < episodes.size(); i += PAGE_SIZE) ranges.add(new int[]{i, Math.min(i + PAGE_SIZE, episodes.size())});
     }
 
     private void setRecycler() {
-        binding.recycler.setHasFixedSize(false);
+        binding.recycler.setHasFixedSize(true);
         binding.recycler.setItemAnimator(null);
         binding.recycler.setLayoutManager(new GridLayoutManager(getContext(), spanCount));
         binding.recycler.setAdapter(adapter = new DownloadEpisodeAdapter(this));
-        showPage(0);
+        binding.recycler.setNestedScrollingEnabled(true);
+        int screenHeight = Math.round(ResUtil.getScreenHeight(requireContext()) / getResources().getDisplayMetrics().density);
+        int desiredRows = (int) Math.ceil((double) PAGE_SIZE / Math.max(spanCount, 3));
+        int visibleRows = Math.max(3, Math.min(desiredRows, Math.max(3, (screenHeight - 190) / ITEM_HEIGHT_DP)));
+        LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) binding.recycler.getLayoutParams();
+        // recycler 自己还有上下各 10dp padding；一起计入，三列时正好完整露出十行。
+        params.height = ResUtil.dp2px(visibleRows * ITEM_HEIGHT_DP + 20);
+        binding.recycler.setLayoutParams(params);
+        showPage(initialPage());
     }
 
     private void setTabs() {
@@ -172,12 +195,18 @@ public class DownloadEpisodeDialog extends BaseDialog implements DownloadEpisode
             public void onTabReselected(TabLayout.Tab tab) {
             }
         });
+        binding.tabs.selectTab(binding.tabs.getTabAt(initialPage()));
     }
 
     private void showPage(int page) {
         if (page < 0 || page >= ranges.size()) return;
         int[] range = ranges.get(page);
-        adapter.setItems(episodes.subList(range[0], range[1]), selected, states);
+        Episode current = episodes.get(Math.min(currentIndex, episodes.size() - 1));
+        adapter.setItems(episodes.subList(range[0], range[1]), selected, states, current);
+    }
+
+    private int initialPage() {
+        return Math.min(currentIndex, episodes.size() - 1) / PAGE_SIZE;
     }
 
     private int currentPage() {

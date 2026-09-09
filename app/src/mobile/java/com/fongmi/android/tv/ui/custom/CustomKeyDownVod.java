@@ -76,8 +76,9 @@ public class CustomKeyDownVod extends GestureDetector.SimpleOnGestureListener im
         if (changeEpisode && (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)) onEpisodeEnd();
         if (changeTime && e.getAction() == MotionEvent.ACTION_UP) onSeekEnd();
         if (changeSpeed && e.getAction() == MotionEvent.ACTION_UP) onSpeedRelease();
-        if (changeBright && e.getAction() == MotionEvent.ACTION_UP) listener.onBrightEnd();
-        if (changeVolume && e.getAction() == MotionEvent.ACTION_UP) listener.onVolumeEnd();
+        boolean sideGestureEnded = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
+        if (changeBright && sideGestureEnded) listener.onBrightEnd();
+        if (changeVolume && sideGestureEnded) listener.onVolumeEnd();
         // 双指手势开始后，这一整组事件都只交给缩放识别器。POINTER_UP 之后虽然只剩
         // 一根手指，也不能再把残余事件送回单指识别器，否则会误触长按、切集或点击。
         return changeScale || e.getPointerCount() > 1 ? scaleDetector.onTouchEvent(e) : detector.onTouchEvent(e);

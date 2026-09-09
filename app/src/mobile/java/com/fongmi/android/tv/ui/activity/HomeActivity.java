@@ -305,7 +305,17 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     public void setGlassAction(int action, boolean visible) {
-        if (mBinding != null) mBinding.glassNavigation.setAction(action, visible && glassNavigationEnabled);
+        if (mBinding == null) return;
+        // 首页内容是异步加载的：切到设置页后，迟到的首页结果仍可能尝试把动作键
+        // 改成“筛选”。设置页激活期间只接受它自己的搜索状态，避免图标与点击功能错位。
+        if (currentPosition == 1) {
+            SettingFragment fragment = mManager == null ? null : (SettingFragment) mManager.getFragment(1);
+            action = fragment != null && fragment.isSearchActive()
+                    ? LiquidGlassNavigationView.ACTION_CLOSE
+                    : LiquidGlassNavigationView.ACTION_SEARCH;
+            visible = true;
+        }
+        mBinding.glassNavigation.setAction(action, visible && glassNavigationEnabled);
     }
 
     private void updateGlassActionForCurrentPage() {

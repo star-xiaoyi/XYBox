@@ -39,19 +39,27 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <TextView
+        <ImageView
             android:id="@+id/text"
-            style="@style/Control.Action"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/shape_action_background"
+            android:contentDescription="@string/play_track_text"
+            android:padding="8dp"
+            android:src="@drawable/ic_action_subtitle"
             android:tag="3"
-            android:text="@string/play_track_text"
             android:visibility="gone"
             tools:visibility="visible" />
 
-        <TextView
+        <ImageView
             android:id="@+id/audio"
-            style="@style/Control.Action"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/shape_action_background"
+            android:contentDescription="@string/play_track_audio"
+            android:padding="8dp"
+            android:src="@drawable/ic_control_audio"
             android:tag="1"
-            android:text="@string/play_track_audio"
             android:visibility="gone"
             tools:visibility="visible" />
 
@@ -59,7 +67,7 @@
             android:id="@+id/video"
             style="@style/Control.Action"
             android:tag="2"
-            android:text="@string/play_track_video"
+            android:text="@string/quality_auto"
             android:visibility="gone"
             tools:visibility="visible" />
 
@@ -73,22 +81,34 @@
             style="@style/Control.Action"
             tools:text="片尾" />
 
-        <TextView
+        <ImageView
             android:id="@+id/danmaku"
-            style="@style/Control.Action"
-            android:text="@string/danmaku"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/shape_action_background"
+            android:contentDescription="@string/danmaku_settings"
+            android:padding="8dp"
+            android:src="@drawable/ic_control_danmaku_settings"
             android:visibility="gone"
             tools:visibility="visible" />
 
-        <TextView
+        <ImageView
             android:id="@+id/episodes"
-            style="@style/Control.Action"
-            android:text="@string/detail_episode" />
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/shape_action_background"
+            android:contentDescription="@string/detail_episode"
+            android:padding="8dp"
+            android:src="@drawable/ic_action_list" />
 
-        <TextView
+        <ImageView
             android:id="@+id/exit"
-            style="@style/Control.Action"
-            android:text="@string/play_exit_full"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/shape_action_background"
+            android:contentDescription="@string/play_exit_full"
+            android:padding="8dp"
+            android:src="@drawable/ic_control_exit_full"
             android:visibility="gone"
             tools:visibility="visible" />
 
