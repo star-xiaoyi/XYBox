@@ -60,6 +60,45 @@
         <item name="android:textSize">14sp</item>
     </style>
 
+    <!-- 顶部和底部使用紧凑的 36dp 点按单元；具体图标再按视觉重量分别校准。 -->
+    <style name="Control.VodIcon">
+        <item name="android:layout_width">36dp</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:scaleType">fitCenter</item>
+    </style>
+
+    <style name="Control.VodIcon.Borderless" parent="Control.VodIcon">
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+    </style>
+
+    <!-- 顶栏线框图标视觉偏轻，略微减少内边距，但保留统一的 36dp 点击区域。 -->
+    <style name="Control.VodIcon.Top" parent="Control.VodIcon.Borderless">
+        <item name="android:padding">7dp</item>
+    </style>
+
+    <style name="Control.VodIcon.Action" parent="Control.VodIcon">
+        <item name="android:background">@drawable/shape_action_background</item>
+    </style>
+
+    <!-- 选集图标线条较细且原始画布留白较多，单独扩大可见尺寸。 -->
+    <style name="Control.VodIcon.Episode" parent="Control.VodIcon.Action">
+        <item name="android:padding">6dp</item>
+    </style>
+
+    <!-- 和图标按钮共用 36dp 行高，移除字体内置上下留白，避免文字与图标错位。 -->
+    <style name="Control.VodAction" parent="Control.Action">
+        <item name="android:layout_height">36dp</item>
+        <item name="android:minWidth">36dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:paddingStart">6dp</item>
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingEnd">6dp</item>
+        <item name="android:paddingBottom">0dp</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
     <style name="BottomSheetDialog" parent="Theme.Material3.DayNight.BottomSheetDialog">
         <!-- 不在这里写死强调色：写死会盖掉 Activity 上的 accent 叠加层，弹窗里的胶囊/按钮就变成
              和设置里选的主题色无关的颜色。真正的颜色由下面四个子样式给，BaseDialog 按当前强调色挑一个 -->
@@ -333,6 +372,22 @@
         <item name="android:maxLines">1</item>
         <item name="android:textColor">@color/chip_text</item>
         <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="DanmakuSliderLabel">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="DanmakuSliderValue">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/accent</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
     </style>
 
 </resources>
