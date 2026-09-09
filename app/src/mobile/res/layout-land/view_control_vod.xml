@@ -107,25 +107,28 @@
             <ImageView
                 android:id="@+id/info"
                 style="@style/Control.VodIcon.Top"
+                android:layout_marginStart="2dp"
                 android:contentDescription="@string/play_info"
                 android:src="@drawable/ic_control_info" />
 
             <ImageView
                 android:id="@+id/keep"
                 style="@style/Control.VodIcon.Top"
+                android:layout_marginStart="2dp"
                 android:contentDescription="@string/keep"
                 android:src="@drawable/ic_control_keep_off" />
 
             <ImageView
                 android:id="@+id/player_more"
                 style="@style/Control.VodIcon.Top"
+                android:layout_marginStart="2dp"
                 android:contentDescription="@string/play_more"
                 android:src="@drawable/ic_control_more" />
 
             <ImageView
                 android:id="@+id/pip"
                 style="@style/Control.VodIcon.Top"
-                android:layout_marginStart="-5dp"
+                android:layout_marginStart="-3dp"
                 android:contentDescription="@string/play_pip"
                 android:src="@drawable/ic_control_pip"
                 android:visibility="gone" />
