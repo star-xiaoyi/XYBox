@@ -130,6 +130,7 @@
                 style="@style/Control.VodIcon.Top"
                 android:layout_marginStart="-3dp"
                 android:contentDescription="@string/play_pip"
+                android:padding="6dp"
                 android:src="@drawable/ic_control_pip"
                 android:visibility="gone" />
 

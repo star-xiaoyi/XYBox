@@ -83,7 +83,7 @@
 
     <!-- 选集图标线条较细且原始画布留白较多，单独扩大可见尺寸。 -->
     <style name="Control.VodIcon.Episode" parent="Control.VodIcon.Action">
-        <item name="android:padding">6dp</item>
+        <item name="android:padding">5dp</item>
     </style>
 
     <!-- 和图标按钮共用 36dp 行高，移除字体内置上下留白，避免文字与图标错位。 -->
