@@ -43,14 +43,6 @@ public class DragSheetLayout extends FrameLayout {
         return getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
     }
 
-    private boolean atTop() {
-        for (int i = 0; i < getChildCount(); i++) {
-            View child = getChildAt(i);
-            if (child instanceof NestedScrollView) return child.getScrollY() == 0;
-        }
-        return true;
-    }
-
     /** 落点下面有没有能横向滚动的控件（横向 RecyclerView、HorizontalScrollView 等） */
     private boolean onScroller(View view, float x, float y) {
         if (!(view instanceof ViewGroup)) return false;
@@ -67,6 +59,26 @@ public class DragSheetLayout extends FrameLayout {
         return false;
     }
 
+    /**
+     * 落点所在的纵向滚动区能否继续向上滚。
+     * 详情头部和下方内容现在各有一个 NestedScrollView，不能再只检查唯一的直属子 View；
+     * 否则手指在演职人员资料区回滚时，会被误判成拖动整张详情卡。
+     */
+    private boolean canScrollUp(View view, float x, float y) {
+        if (!(view instanceof ViewGroup)) return false;
+        ViewGroup group = (ViewGroup) view;
+        for (int i = group.getChildCount() - 1; i >= 0; i--) {
+            View child = group.getChildAt(i);
+            if (child.getVisibility() != VISIBLE) continue;
+            float cx = x - child.getLeft() + group.getScrollX();
+            float cy = y - child.getTop() + group.getScrollY();
+            if (cx < 0 || cy < 0 || cx > child.getWidth() || cy > child.getHeight()) continue;
+            if (child instanceof NestedScrollView && child.canScrollVertically(-1)) return true;
+            if (canScrollUp(child, cx, cy)) return true;
+        }
+        return false;
+    }
+
     @Override
     public boolean onInterceptTouchEvent(@NonNull MotionEvent event) {
         switch (event.getActionMasked()) {
@@ -79,7 +91,7 @@ public class DragSheetLayout extends FrameLayout {
                 if (mBlocked) return false;
                 float dx = event.getX() - mDownX;
                 float dy = event.getY() - mDownY;
-                boolean hit = land() ? dx > mSlop && dx > Math.abs(dy) : atTop() && dy > mSlop && dy > Math.abs(dx);
+                boolean hit = land() ? dx > mSlop && dx > Math.abs(dy) : !canScrollUp(this, mDownX, mDownY) && dy > mSlop && dy > Math.abs(dx);
                 if (hit) {
                     getParent().requestDisallowInterceptTouchEvent(true);
                     return true;

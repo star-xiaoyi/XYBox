@@ -147,156 +147,192 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent">
 
-            <androidx.core.widget.NestedScrollView
-                android:id="@+id/scroll"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:fillViewport="true">
+                android:orientation="vertical">
 
+                <View
+                    android:id="@+id/handle_bar"
+                    android:layout_width="36dp"
+                    android:layout_height="4dp"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="10dp"
+                    android:background="@drawable/shape_detail_handle" />
+
+                <!-- 固定资料区：海报保持不动，右侧资料在海报高度内独立上下滚动。 -->
                 <LinearLayout
+                    android:id="@+id/detail_header"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    android:layout_height="144dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:baselineAligned="false"
+                    android:orientation="horizontal">
 
-                    <View
-                        android:id="@+id/handle_bar"
-                        android:layout_width="36dp"
-                        android:layout_height="4dp"
-                        android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="10dp"
-                        android:layout_marginBottom="12dp"
-                        android:background="@drawable/shape_detail_handle" />
+                    <com.google.android.material.imageview.ShapeableImageView
+                        android:id="@+id/poster"
+                        android:layout_width="88dp"
+                        android:layout_height="132dp"
+                        android:background="@color/black_20"
+                        android:scaleType="center"
+                        app:shapeAppearanceOverlay="@style/Vod.Grid"
+                        tools:src="@drawable/ic_img_loading" />
 
-                    <!-- 标题 + 豆瓣评分（评分暂无数据源，默认隐藏） -->
+                    <androidx.core.widget.NestedScrollView
+                        android:id="@+id/info_scroll"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:overScrollMode="never"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:paddingBottom="4dp">
+
+                            <!-- 标题 + 豆瓣评分（评分暂无数据源，默认隐藏） -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:baselineAligned="false"
+                                android:orientation="horizontal">
+
+                                <TextView
+                                    android:id="@+id/name"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_gravity="center_vertical"
+                                    android:layout_weight="1"
+                                    android:ellipsize="end"
+                                    android:maxLines="2"
+                                    android:textColor="@color/text_primary"
+                                    android:textSize="24sp"
+                                    android:textStyle="bold"
+                                    tools:text="长夜迷城" />
+
+                                <LinearLayout
+                                    android:id="@+id/rating_layout"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_gravity="center_vertical"
+                                    android:layout_marginStart="12dp"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:visibility="gone"
+                                    tools:visibility="visible">
+
+                                    <TextView
+                                        android:id="@+id/rating"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:textColor="@color/text_primary"
+                                        android:textSize="26sp"
+                                        android:textStyle="bold"
+                                        tools:text="9.2" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:drawablePadding="2dp"
+                                        android:gravity="center_vertical"
+                                        android:text="@string/detail_rating"
+                                        android:textColor="@color/text_secondary"
+                                        android:textSize="11sp"
+                                        app:drawableEndCompat="@drawable/ic_detail_chevron"
+                                        app:drawableTint="@color/text_secondary" />
+
+                                </LinearLayout>
+
+                            </LinearLayout>
+
+                            <!-- 年份 · 地区 · 集数 · 站点 -->
+                            <TextView
+                                android:id="@+id/meta"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:ellipsize="end"
+                                android:maxLines="1"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                tools:text="2024 · 中国大陆 · 12集 · 站点：瓜子" />
+
+                            <!-- 类型标签，由 VideoActivity 动态填充 -->
+                            <HorizontalScrollView
+                                android:id="@+id/tag_scroll"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="12dp"
+                                android:clipToPadding="false"
+                                android:scrollbars="none"
+                                android:visibility="gone"
+                                tools:visibility="visible">
+
+                                <LinearLayout
+                                    android:id="@+id/tags"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="horizontal" />
+
+                            </HorizontalScrollView>
+
+                            <!-- 演职人员恢复两行折叠，展开后可在右侧资料区上下滑动查看。 -->
+                            <FrameLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="10dp">
+
+                                <TextView
+                                    android:id="@+id/cast_text"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:ellipsize="end"
+                                    android:lineSpacingExtra="3dp"
+                                    android:maxLines="2"
+                                    android:textColor="@color/text_secondary"
+                                    android:textSize="13sp"
+                                    tools:text="演职人员：李昂（导演） / 曲云 / 袁霞 / 王志刚" />
+
+                                <TextView
+                                    android:id="@+id/cast_expand"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_gravity="bottom|end"
+                                    android:background="@color/surface_primary"
+                                    android:drawablePadding="2dp"
+                                    android:gravity="center_vertical"
+                                    android:paddingStart="10dp"
+                                    android:text="@string/detail_expand"
+                                    android:textColor="@color/text_secondary"
+                                    android:textSize="12sp"
+                                    android:visibility="gone"
+                                    app:drawableEndCompat="@drawable/ic_detail_expand"
+                                    app:drawableTint="@color/text_secondary"
+                                    tools:visibility="visible" />
+
+                            </FrameLayout>
+
+                        </LinearLayout>
+                    </androidx.core.widget.NestedScrollView>
+                </LinearLayout>
+
+                <!-- 只有播放线路及其下方内容随此区域上下滚动。 -->
+                <androidx.core.widget.NestedScrollView
+                    android:id="@+id/scroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:fillViewport="true">
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_marginTop="4dp"
-                        android:layout_marginEnd="16dp"
-                        android:baselineAligned="false"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/name"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="center_vertical"
-                            android:layout_weight="1"
-                            android:ellipsize="end"
-                            android:maxLines="2"
-                            android:textColor="@color/text_primary"
-                            android:textSize="24sp"
-                            android:textStyle="bold"
-                            tools:text="长夜迷城" />
-
-                        <LinearLayout
-                            android:id="@+id/rating_layout"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="center_vertical"
-                            android:layout_marginStart="12dp"
-                            android:gravity="center_horizontal"
-                            android:orientation="vertical"
-                            android:visibility="gone"
-                            tools:visibility="visible">
-
-                            <TextView
-                                android:id="@+id/rating"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textColor="@color/text_primary"
-                                android:textSize="26sp"
-                                android:textStyle="bold"
-                                tools:text="9.2" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:drawablePadding="2dp"
-                                android:gravity="center_vertical"
-                                android:text="@string/detail_rating"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="11sp"
-                                app:drawableEndCompat="@drawable/ic_detail_chevron"
-                                app:drawableTint="@color/text_secondary" />
-
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                    <!-- 年份 · 地区 · 集数 · 站点 -->
-                    <TextView
-                        android:id="@+id/meta"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_marginTop="6dp"
-                        android:layout_marginEnd="16dp"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        tools:text="2024 · 中国大陆 · 12集 · 站点：瓜子" />
-
-                    <!-- 类型标签，由 VideoActivity 动态填充 -->
-                    <HorizontalScrollView
-                        android:id="@+id/tag_scroll"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:clipToPadding="false"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
-                        android:scrollbars="none"
-                        android:visibility="gone"
-                        tools:visibility="visible">
-
-                        <LinearLayout
-                            android:id="@+id/tags"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal" />
-
-                    </HorizontalScrollView>
-
-                    <!-- 演职人员：导演 + 演员合并成一段。展开按钮压在最后一行末端，背景同卡片底色用来盖住被截断的文字 -->
-                    <FrameLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_marginTop="10dp"
-                        android:layout_marginEnd="16dp">
-
-                        <TextView
-                            android:id="@+id/cast_text"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:lineSpacingExtra="3dp"
-                            android:maxLines="2"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
-                            tools:text="演职人员：李昂（导演） / 曲云 / 袁霞 / 王志刚" />
-
-                        <TextView
-                            android:id="@+id/cast_expand"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="bottom|end"
-                            android:background="@color/surface_primary"
-                            android:drawablePadding="2dp"
-                            android:gravity="center_vertical"
-                            android:paddingStart="10dp"
-                            android:text="@string/detail_expand"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="12sp"
-                            android:visibility="gone"
-                            app:drawableEndCompat="@drawable/ic_detail_expand"
-                            app:drawableTint="@color/text_secondary"
-                            tools:visibility="visible" />
-
-                    </FrameLayout>
+                        android:orientation="vertical">
 
                     <!-- 播放线路 -->
                     <TextView
@@ -520,8 +556,10 @@
                         tools:visibility="visible" />
 
 
-                </LinearLayout>
-            </androidx.core.widget.NestedScrollView>
+                    </LinearLayout>
+                </androidx.core.widget.NestedScrollView>
+
+            </LinearLayout>
 
             </com.fongmi.android.tv.ui.custom.DragSheetLayout>
         </com.fongmi.android.tv.ui.custom.ProgressLayout>

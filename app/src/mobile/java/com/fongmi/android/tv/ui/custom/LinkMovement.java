@@ -8,10 +8,9 @@ import android.view.MotionEvent;
 import android.widget.TextView;
 
 /**
- * 只负责点开 ClickableSpan，不做滚动。
- *
- * LinkMovementMethod / ScrollingMovementMethod 会把上下拖当成文本滚动，
- * 折叠成两行的演职人员就能被手指"滑"出被截断的内容，这里去掉这个行为。
+ * 只负责点开 ClickableSpan，不接管滚动。
+ * 演职人员超出固定资料区时由外层 NestedScrollView 统一处理上下滑动，
+ * 避免 TextView 自己滚动而与整块资料区的手势互相争抢。
  */
 public class LinkMovement extends BaseMovementMethod {
 
