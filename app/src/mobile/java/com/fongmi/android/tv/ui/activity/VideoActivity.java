@@ -167,6 +167,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 长按倍速那对箭头走完一个来回的毫秒数，也就是没锁定时的最快速度。 */
     private static final int SPEED_CYCLE = 700;
+    private static final long BUFFERING_PROGRESS_DELAY_MS = 800;
     /** 竖屏全屏时，将画面中心固定在人眼更自然的、比屏幕几何中心高 28dp 的位置。 */
     private static final int PORTRAIT_VIEWING_CENTER_OFFSET_DP = 28;
     private static final int PLAYER_PANEL_HEIGHT_DP = 260;
@@ -203,7 +204,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private PlaybackCache mPlaybackCache;
     private Runnable mCacheWarmup;
     private Runnable mSpeedTick;
+    private Runnable mShowBufferingProgress;
     private boolean mScrubPlaying;
+    private boolean mScrubbing;
+    private boolean mBufferingProgressPending;
+    private long mBufferingProgressStartedAt;
+    private String mBufferingProgressReason;
     private boolean mBrightnessAdjusting;
     private boolean mVolumeAdjusting;
     private int mLeftControlsVisibility;
@@ -454,6 +460,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         checkId();
         mHandler = new Handler(Looper.getMainLooper());
         mSpeedTick = this::tickSpeedIcon;
+        mShowBufferingProgress = () -> {
+            if (!mBufferingProgressPending) return;
+            mBufferingProgressPending = false;
+            if (!mScrubbing && !mPlayers.isReady()) {
+                Logger.i("PlayerUI: spinner=show reason=" + mBufferingProgressReason
+                        + " elapsedMs=" + (SystemClock.uptimeMillis() - mBufferingProgressStartedAt));
+                showProgress();
+            }
+        };
         mHideGestureFeedback = () -> mBinding.widget.gestureFeedback.animate().alpha(0f).setDuration(150).withEndAction(() -> mBinding.widget.gestureFeedback.setVisibility(View.GONE)).start();
         initTimeBatteryUpdate();
     }
@@ -763,6 +778,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void setDetail(Vod item) {
         mCurrentVod = item;  // 保存当前视频对象
+        mBinding.swipeLayout.setEnabled(false);
         mBinding.progressLayout.showContent();
         mBinding.video.setTag(item.getVodPic(getPic()));
         mBinding.name.setText(item.getVodName(getName()));
@@ -967,6 +983,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mPlayers.start(result, isUseParse(), getPlayerTimeout());
         setQualityVisible(result.getUrl().isMulti());
         mBinding.swipeLayout.setRefreshing(false);
+        mBinding.swipeLayout.setEnabled(false);
         mPlayers.setKey(getHistoryKey());
         mQualityAdapter.addAll(result);
     }
@@ -2131,15 +2148,21 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void showProgress() {
+        boolean changed = mBinding.widget.progress.getVisibility() != View.VISIBLE;
         mBinding.widget.progress.setVisibility(View.VISIBLE);
         App.post(mR2, 0);
         hideError();
+        if (changed) Logger.i("PlayerUI: spinner=visible positionMs=" + mPlayers.getPosition()
+                + ", scrubbing=" + mScrubbing + ", delayPending=" + mBufferingProgressPending);
     }
 
     private void hideProgress() {
+        boolean changed = mBinding.widget.progress.getVisibility() == View.VISIBLE;
         mBinding.widget.progress.setVisibility(View.GONE);
         App.removeCallbacks(mR2);
         Traffic.reset();
+        if (changed) Logger.i("PlayerUI: spinner=gone positionMs=" + mPlayers.getPosition()
+                + ", scrubbing=" + mScrubbing + ", delayPending=" + mBufferingProgressPending);
     }
 
     private void showError(String text) {
@@ -2413,8 +2436,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onPlayerEvent(PlayerEvent event) {
         if (!event.getTag().equals(tag)) return;
+        Logger.i("PlayerState: state=" + playerStateName(event.getState())
+                + " positionMs=" + mPlayers.getPosition()
+                + " bufferedMs=" + mPlayers.getBuffered()
+                + " scrubbing=" + mScrubbing
+                + " delayPending=" + mBufferingProgressPending);
         switch (event.getState()) {
             case PlayerEvent.PREPARE:
+                mScrubbing = false;
+                cancelBufferingProgress();
                 // 第一次播放时服务尚未创建，不会提前出现空通知；切集或换源时则保留现有通知，
                 // 避免 PREPARE 到 READY 之间通知被撤掉又重新出现。转为投屏后本地通知才需要停止。
                 if (isCasting()) PlaybackService.stop();
@@ -2428,9 +2458,18 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 App.removeCallbacks(mCacheWarmup);
                 mPlaybackCache.pause();
                 mPreview.suspend();
-                showProgress();
+                if (mScrubbing) {
+                    // CustomSeekView seeks before delivering onScrubStop. Keep the spinner
+                    // suppressed for the whole gesture so that synchronous BUFFERING cannot
+                    // slip through in the single frame before the stop callback arrives.
+                    hideProgress();
+                    cancelBufferingProgress();
+                } else if (mBinding.widget.progress.getVisibility() != View.VISIBLE) {
+                    scheduleBufferingProgress("buffering");
+                }
                 break;
             case Player.STATE_READY:
+                cancelBufferingProgress();
                 mPlayers.reset();
                 confirmHistoryPlayback();
                 // 换集时 onReset 会暂停时钟；同轨媒体不一定再次派发 TRACK，
@@ -2459,6 +2498,17 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 updateQualityLabel();
                 break;
         }
+    }
+
+    private String playerStateName(int state) {
+        if (state == PlayerEvent.PREPARE) return "PREPARE";
+        if (state == Player.STATE_IDLE) return "IDLE";
+        if (state == Player.STATE_BUFFERING) return "BUFFERING";
+        if (state == Player.STATE_READY) return "READY";
+        if (state == Player.STATE_ENDED) return "ENDED";
+        if (state == PlayerEvent.TRACK) return "TRACK";
+        if (state == PlayerEvent.SIZE) return "SIZE";
+        return String.valueOf(state);
     }
 
     private void schedulePlaybackCache() {
@@ -2549,7 +2599,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onError(ErrorEvent event) {
-        mBinding.swipeLayout.setEnabled(true);
+        // Playback failure is not a detail-page loading failure. Enabling pull-to-refresh
+        // here makes the detail-card drag gesture trigger a home-style refresh instead.
+        mBinding.swipeLayout.setEnabled(false);
+        mScrubbing = false;
+        cancelBufferingProgress();
         // 轨道偏好保存时使用的是影片历史 key，而不是解析后的临时播放地址。
         // 删除地址 key 会让不可用的清晰度偏好一直残留，重试后仍然重复应用。
         Track.delete(mPlayers.getKey());
@@ -3190,11 +3244,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onScrubStart(long position) {
+        mScrubbing = true;
+        Logger.i("Seek: start positionMs=" + position + ", playing=" + mPlayers.isPlaying()
+                + ", local=" + PlaybackCache.isFullyLocal(mPlayers.getPreviewItem()));
         // 拖动期间把主播放器停下来：源站往往限同 IP 并发，两路一起拉的话预览要等十几秒
         // 才出得来。带宽和解码全让给预览，松手再接着放。
         mScrubPlaying = mPlayers.isPlaying();
         if (mScrubPlaying) mPlayers.pause();
         mPlaybackCache.pause();
+        cancelBufferingProgress();
+        hideProgress();
         mBinding.control.previewFrame.setAlpha(1f);
         onScrubMove(position);
     }
@@ -3211,22 +3270,46 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onScrubStop(long position, boolean canceled) {
+        Logger.i("Seek: stop positionMs=" + position + ", canceled=" + canceled
+                + ", playerMs=" + mPlayers.getPosition() + ", bufferedMs=" + mPlayers.getBuffered()
+                + ", ready=" + mPlayers.isReady()
+                + ", local=" + PlaybackCache.isFullyLocal(mPlayers.getPreviewItem()));
         mBinding.control.previewFrame.setAlpha(0f);
-        if (canceled) mPreview.idle();
-        else mPreview.finish(position);
+        if (canceled) {
+            mPreview.idle();
+            mScrubbing = false;
+            cancelBufferingProgress();
+        } else {
+            // The seek happens before this callback. Start the same buffering debounce used
+            // by normal playback only after the preview has handed control back.
+            mPreview.finish(position);
+            mScrubbing = false;
+            scheduleBufferingProgress("scrub-seek");
+        }
         if (!isCasting()) {
             // CustomSeekView 已先把主播放器 seek 到同一个毫秒目标。保留此前落盘的所有
             // 分片，只让后台任务从新位置向结尾重排；若主画面进入 BUFFERING 会先暂停。
             if (!canceled) mPlaybackCache.focus(position, currentDuration());
             schedulePlaybackCache();
-            if (!canceled) Logger.i("Seek: scrub-stop targetMs=" + position + " playerMs=" + mPlayers.getPosition()
-                    + " bufferedMs=" + mPlayers.getBuffered());
         }
         // CustomSeekView 已经 seek，这里只负责把暂停前的状态还原
         if (mScrubPlaying) mPlayers.play();
         mScrubPlaying = false;
         // 松手了才重新开始计时隐藏
         setR1Callback();
+    }
+
+    private void scheduleBufferingProgress(String reason) {
+        if (mBufferingProgressPending || mBinding.widget.progress.getVisibility() == View.VISIBLE) return;
+        mBufferingProgressPending = true;
+        mBufferingProgressStartedAt = SystemClock.uptimeMillis();
+        mBufferingProgressReason = reason;
+        App.post(mShowBufferingProgress, BUFFERING_PROGRESS_DELAY_MS);
+    }
+
+    private void cancelBufferingProgress() {
+        mBufferingProgressPending = false;
+        if (mShowBufferingProgress != null) App.removeCallbacks(mShowBufferingProgress);
     }
 
     @Override
@@ -3617,7 +3700,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         RefreshEvent.history();
         PlaybackService.stop();
         mHandler.removeCallbacksAndMessages(null);
-        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5, mCacheWarmup);
+        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5, mCacheWarmup, mShowBufferingProgress);
         EventBus.getDefault().unregister(this);
         mViewModel.result.removeObserver(mObserveDetail);
         mViewModel.player.removeObserver(mObservePlayer);

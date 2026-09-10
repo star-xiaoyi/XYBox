@@ -38,9 +38,15 @@ public class OkProxySelector extends ProxySelector {
 
     @Override
     public List<Proxy> select(URI uri) {
-        if (proxy == null || hosts.isEmpty() || uri.getHost() == null || "127.0.0.1".equals(uri.getHost())) return List.of(Proxy.NO_PROXY);
+        if (proxy == null || hosts.isEmpty() || isLoopback(uri)) return List.of(Proxy.NO_PROXY);
         for (String host : hosts) if (Util.containOrMatch(uri.getHost(), host)) return List.of(proxy);
         return List.of(Proxy.NO_PROXY);
+    }
+
+    private boolean isLoopback(URI uri) {
+        String host = uri == null ? null : uri.getHost();
+        if (host == null) return true;
+        return host.equalsIgnoreCase("localhost") || host.equals("::1") || host.equals("[::1]") || host.startsWith("127.");
     }
 
     @Override
