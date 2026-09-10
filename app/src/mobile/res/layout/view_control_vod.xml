@@ -246,6 +246,7 @@
                 style="@style/Control.VodIcon.Borderless"
                 android:layout_marginStart="8dp"
                 android:contentDescription="@string/play_enter_full"
+                android:padding="8.5dp"
                 android:src="@drawable/ic_control_full" />
 
         </LinearLayout>
