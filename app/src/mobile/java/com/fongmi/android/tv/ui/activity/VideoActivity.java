@@ -719,6 +719,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.swipeLayout.setRefreshing(true);
         mBinding.swipeLayout.setEnabled(false);
         mBinding.scroll.scrollTo(0, 0);
+        mBinding.infoScroll.scrollTo(0, 0);
         mClock.setCallback(null);
         mPlayers.reset();
         mPlayers.stop();
@@ -764,6 +765,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.progressLayout.showContent();
         mBinding.video.setTag(item.getVodPic(getPic()));
         mBinding.name.setText(item.getVodName(getName()));
+        mBinding.poster.setContentDescription(item.getVodName(getName()));
+        ImgUtil.rect(item.getVodName(getName()), item.getVodPic(getPic()), mBinding.poster);
         setText(mBinding.content, 0, Html.fromHtml(item.getVodContent()).toString());
         setCast(item);
         updateContentExpand();
@@ -783,7 +786,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     
     /**
      * 演职人员合并成一段：导演名后跟"（导演）"，再接演员，中间用斜杠分隔。
-     * 默认最多两行，超出时右下角出现展开按钮。
+     * 默认最多两行，超出时右下角出现展开按钮；展开后的内容可在右侧资料区滚动。
      */
     private void setCast(Vod item) {
         List<CastMember> members = new ArrayList<>();
@@ -1650,8 +1653,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void setSheetPadding(boolean land) {
         int start = land ? ResUtil.dp2px(10) : 0;
         int vertical = land ? ResUtil.dp2px(22) : 0;
-        mBinding.scroll.setClipToPadding(false);
-        mBinding.scroll.setPadding(start, vertical, 0, vertical);
+        mBinding.handle.setClipToPadding(false);
+        mBinding.handle.setPadding(start, vertical, 0, vertical);
+        mBinding.scroll.setPadding(0, 0, 0, 0);
     }
 
     /**
