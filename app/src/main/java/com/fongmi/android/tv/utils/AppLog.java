@@ -12,6 +12,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.net.ConnectException;
+import java.net.NoRouteToHostException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -249,6 +253,9 @@ public final class AppLog {
      * failure and our call site without burying one playback action under hundreds of lines.
      */
     private static String compactThrowable(Throwable throwable) {
+        String expectedNetworkFailure = expectedNetworkFailure(throwable);
+        if (expectedNetworkFailure != null) return expectedNetworkFailure + '\n';
+
         StringBuilder result = new StringBuilder(2048);
         Throwable current = throwable;
         int causeDepth = 0;
@@ -273,6 +280,30 @@ public final class AppLog {
             causeDepth++;
         }
         return result.toString();
+    }
+
+    /**
+     * DNS misses, connection refusals and timeouts are normal while concurrent sources are being
+     * probed. Their framework stacks do not help diagnose the source; the exception type and host
+     * remain in the one-line summary. Other failures keep the compact stack above.
+     */
+    private static String expectedNetworkFailure(Throwable throwable) {
+        Throwable current = throwable;
+        int causeDepth = 0;
+        while (current != null && causeDepth < 8) {
+            if (current instanceof UnknownHostException
+                    || current instanceof ConnectException
+                    || current instanceof NoRouteToHostException
+                    || current instanceof SocketTimeoutException) {
+                String message = current.getMessage();
+                String summary = current.getClass().getSimpleName();
+                if (message != null && !message.trim().isEmpty()) summary += ": " + message.trim();
+                return redact(summary);
+            }
+            current = current.getCause();
+            causeDepth++;
+        }
+        return null;
     }
 
     /**

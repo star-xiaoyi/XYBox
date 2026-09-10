@@ -11,9 +11,15 @@ import com.github.catvod.net.interceptor.RequestInterceptor;
 import com.github.catvod.net.interceptor.ResponseInterceptor;
 import com.github.catvod.utils.Logger;
 
+import java.io.IOException;
+import java.net.Proxy;
 import java.net.ProxySelector;
+import java.net.SocketAddress;
+import java.net.URI;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -48,7 +54,39 @@ public class OkHttp {
     private boolean proxy;
 
     static {
-        defaultSelector = ProxySelector.getDefault();
+        defaultSelector = new LoopbackProxySelector(ProxySelector.getDefault());
+    }
+
+    /**
+     * Android 的系统代理也可能接管应用内播放器访问的 127.0.0.1 地址。这样本地
+     * m3u8 代理返回的就不再是清单，而是外部代理的错误页，播放器只会报“容器不支持”。
+     * 回环请求无论用户是否开启系统代理都必须直连，其余地址仍完整交还系统选择器。
+     */
+    private static final class LoopbackProxySelector extends ProxySelector {
+
+        private final ProxySelector delegate;
+
+        private LoopbackProxySelector(ProxySelector delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public List<Proxy> select(URI uri) {
+            if (isLoopback(uri) || delegate == null) return Collections.singletonList(Proxy.NO_PROXY);
+            List<Proxy> proxies = delegate.select(uri);
+            return proxies == null || proxies.isEmpty() ? Collections.singletonList(Proxy.NO_PROXY) : proxies;
+        }
+
+        @Override
+        public void connectFailed(URI uri, SocketAddress address, IOException error) {
+            if (delegate != null && !isLoopback(uri)) delegate.connectFailed(uri, address, error);
+        }
+
+        private static boolean isLoopback(URI uri) {
+            String host = uri == null ? null : uri.getHost();
+            if (host == null) return false;
+            return host.equalsIgnoreCase("localhost") || host.equals("::1") || host.equals("[::1]") || host.startsWith("127.");
+        }
     }
 
     private static class Loader {
@@ -77,6 +115,7 @@ public class OkHttp {
         ProxySelector.setDefault(TextUtils.isEmpty(proxy) ? defaultSelector : selector());
         if (!TextUtils.isEmpty(proxy)) selector().setProxy(proxy);
         this.proxy = !TextUtils.isEmpty(proxy);
+        Logger.i("NetworkProxy: appProxy=" + this.proxy + ", loopback=direct");
         client = null;
     }
 
