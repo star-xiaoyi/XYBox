@@ -61,8 +61,8 @@ public class DragSheetLayout extends FrameLayout {
 
     /**
      * 落点所在的纵向滚动区能否继续向上滚。
-     * 详情头部和下方内容现在各有一个 NestedScrollView，不能再只检查唯一的直属子 View；
-     * 否则手指在演职人员资料区回滚时，会被误判成拖动整张详情卡。
+     * 主滚动区被固定资料区包在更深的布局层级里，不能再只检查唯一的直属子 View；
+     * 否则手指在演职人员及其下方内容回滚时，会被误判成拖动整张详情卡。
      */
     private boolean canScrollUp(View view, float x, float y) {
         if (!(view instanceof ViewGroup)) return false;

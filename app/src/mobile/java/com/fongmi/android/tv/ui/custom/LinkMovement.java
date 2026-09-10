@@ -9,8 +9,8 @@ import android.widget.TextView;
 
 /**
  * 只负责点开 ClickableSpan，不接管滚动。
- * 演职人员超出固定资料区时由外层 NestedScrollView 统一处理上下滑动，
- * 避免 TextView 自己滚动而与整块资料区的手势互相争抢。
+ * 演职人员展开后的上下滑动由详情主滚动区统一处理，
+ * 避免 TextView 自己滚动而与详情卡的拖动手势互相争抢。
  */
 public class LinkMovement extends BaseMovementMethod {
 

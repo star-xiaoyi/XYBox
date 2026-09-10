@@ -593,7 +593,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.contentExpand.setOnClickListener(view -> onContent());
         mBinding.handle.setOnTouchListener(this::onHandleTouch);
         mBinding.handleLand.setOnTouchListener(this::onHandleTouch);
-        mBinding.name.setOnClickListener(view -> onName());
+        mBinding.name.setOnClickListener(view -> mBinding.name.replayOnce());
         mBinding.more.setOnClickListener(view -> onMore());
         mBinding.download.setOnClickListener(view -> onDownload());
         mBinding.content.setOnClickListener(view -> onContent());
@@ -719,7 +719,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.swipeLayout.setRefreshing(true);
         mBinding.swipeLayout.setEnabled(false);
         mBinding.scroll.scrollTo(0, 0);
-        mBinding.infoScroll.scrollTo(0, 0);
+        mBinding.metaScroll.scrollTo(0, 0);
+        mBinding.tagScroll.scrollTo(0, 0);
         mClock.setCallback(null);
         mPlayers.reset();
         mPlayers.stop();
@@ -765,6 +766,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.progressLayout.showContent();
         mBinding.video.setTag(item.getVodPic(getPic()));
         mBinding.name.setText(item.getVodName(getName()));
+        mBinding.name.playOnce();
         mBinding.poster.setContentDescription(item.getVodName(getName()));
         ImgUtil.rect(item.getVodName(getName()), item.getVodPic(getPic()), mBinding.poster);
         setText(mBinding.content, 0, Html.fromHtml(item.getVodContent()).toString());
@@ -786,7 +788,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     
     /**
      * 演职人员合并成一段：导演名后跟"（导演）"，再接演员，中间用斜杠分隔。
-     * 默认最多两行，超出时右下角出现展开按钮；展开后的内容可在右侧资料区滚动。
+     * 默认最多两行，超出时右下角出现展开按钮；这一整行位于下方主滚动区的顶部。
      */
     private void setCast(Vod item) {
         List<CastMember> members = new ArrayList<>();
@@ -918,7 +920,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (!item.getVodRemarks().trim().isEmpty()) parts.add(item.getVodRemarks().trim());
         if (!getSite().getName().trim().isEmpty()) parts.add(getSite().getName().trim());
         mBinding.meta.setText(TextUtils.join("  ·  ", parts));
-        mBinding.meta.setVisibility(parts.isEmpty() ? View.GONE : View.VISIBLE);
+        mBinding.metaScroll.setVisibility(parts.isEmpty() ? View.INVISIBLE : View.VISIBLE);
     }
 
     /**
@@ -939,7 +941,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             params.setMarginEnd(ResUtil.dp2px(8));
             mBinding.tags.addView(view, params);
         }
-        mBinding.tagScroll.setVisibility(tags.isEmpty() ? View.GONE : View.VISIBLE);
+        mBinding.tagScroll.setVisibility(tags.isEmpty() ? View.INVISIBLE : View.VISIBLE);
     }
 
     private void getPlayer(Flag flag, Episode episode, boolean replay) {
@@ -1186,12 +1188,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mFlagAdapter.reverse();
         setEpisodeAdapter(getFlag().getEpisodes());
         if (scroll) mBinding.episode.scrollToPosition(mEpisodeAdapter.getPosition());
-    }
-
-    private void onName() {
-        String name = mBinding.name.getText().toString();
-        Notify.show(getString(R.string.detail_search, name));
-        initSearch(name, false);
     }
 
     private void onMore() {
