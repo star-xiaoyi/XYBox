@@ -12,6 +12,7 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.databinding.DialogDanmakuSettingsBinding;
@@ -28,9 +29,11 @@ public final class DanmakuSettingsDialog extends BaseCenterDialog implements Dan
     private static final String TAG = "DanmakuSettingsDialog";
 
     private final DanmakuAdapter adapter = new DanmakuAdapter(this);
+    private final Runnable applySettingsRunnable = this::applyPendingSettings;
     private DialogDanmakuSettingsBinding binding;
     private Players player;
     private float displayScale = 1.0f;
+    private boolean settingsApplyPending;
 
     public static DanmakuSettingsDialog create() {
         return new DanmakuSettingsDialog();
@@ -78,7 +81,7 @@ public final class DanmakuSettingsDialog extends BaseCenterDialog implements Dan
         binding.sizeSlider.setValue(Setting.getDanmakuSize());
         binding.opacitySlider.setRange(0.1f, 1.0f, 0.05f);
         binding.opacitySlider.setValue(Setting.getDanmakuOpacity());
-        binding.speedSlider.setRange(0.5f, 2.0f, 0.05f);
+        binding.speedSlider.setRange(0.1f, 2.0f, 0.05f);
         binding.speedSlider.setValue(toDisplaySpeed(Setting.getDanmakuSpeed()));
         binding.areaSlider.setRange(10, 100, 5);
         binding.areaSlider.setValue(Setting.getDanmakuArea());
@@ -97,27 +100,38 @@ public final class DanmakuSettingsDialog extends BaseCenterDialog implements Dan
 
     private void setSize(float value) {
         Setting.putDanmakuSize(value);
-        applySettings();
+        applySettings(true);
     }
 
     private void setOpacity(float value) {
         Setting.putDanmakuOpacity(value);
-        applySettings();
+        applySettings(false);
     }
 
     private void setSpeed(float value) {
         Setting.putDanmakuSpeed(1.2f / value);
-        applySettings();
+        applySettings(true);
     }
 
     private void setArea(int value) {
         Setting.putDanmakuArea(value);
-        applySettings();
+        applySettings(false);
     }
 
-    private void applySettings() {
-        player.applyDanmakuSettings(displayScale);
+    private void applySettings(boolean debounce) {
         updateValues();
+        settingsApplyPending = true;
+        if (debounce) App.post(applySettingsRunnable, 80);
+        else {
+            App.removeCallbacks(applySettingsRunnable);
+            applyPendingSettings();
+        }
+    }
+
+    private void applyPendingSettings() {
+        if (!settingsApplyPending || player == null) return;
+        settingsApplyPending = false;
+        player.applyDanmakuSettings(displayScale);
     }
 
     private void updateValues() {
@@ -129,6 +143,14 @@ public final class DanmakuSettingsDialog extends BaseCenterDialog implements Dan
 
     private float toDisplaySpeed(float factor) {
         return 1.2f / Math.max(0.1f, factor);
+    }
+
+    @Override
+    public void onDestroyView() {
+        App.removeCallbacks(applySettingsRunnable);
+        applyPendingSettings();
+        binding = null;
+        super.onDestroyView();
     }
 
     private void showChooser(View view) {
