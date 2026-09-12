@@ -29,7 +29,7 @@
             android:layout_height="match_parent"
             app:surface_type="surface_view" />
 
-        <master.flame.danmaku.ui.widget.DanmakuView
+        <master.flame.danmaku.ui.widget.DanmakuSurfaceView
             android:id="@+id/danmaku"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />

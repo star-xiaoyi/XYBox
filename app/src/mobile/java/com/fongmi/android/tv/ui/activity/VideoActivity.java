@@ -207,6 +207,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private Runnable mShowBufferingProgress;
     private boolean mScrubPlaying;
     private boolean mScrubbing;
+    private boolean mGestureSeekPlaying;
+    private boolean mGestureSeeking;
+    private long mGestureSeekBasePosition;
+    private long mGestureSeekPosition;
+    private float mPreviewRatio = 16f / 9f;
     private boolean mBufferingProgressPending;
     private long mBufferingProgressStartedAt;
     private String mBufferingProgressReason;
@@ -3216,11 +3221,45 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onSeek(long time) {
+        if (mKeyDown.isSeeking() && !isCasting()) startGestureSeekPreview();
+        if (mGestureSeeking) {
+            mGestureSeekPosition = getGestureSeekPosition(time);
+            mPreview.seek(mGestureSeekPosition);
+        }
         mBinding.widget.action.setImageResource(time > 0 ? R.drawable.ic_widget_forward : R.drawable.ic_widget_rewind);
-        mBinding.widget.time.setText(isCasting() ? castPositionTime(time) : mPlayers.getPositionTime(time));
+        mBinding.widget.time.setText(isCasting() ? castPositionTime(time)
+                : mPlayers.stringToTime(mGestureSeeking ? mGestureSeekPosition : mPlayers.getPositionValue(time)));
         mBinding.widget.seek.setVisibility(View.VISIBLE);
         setSeekDuration();
         hideProgress();
+    }
+
+    private void startGestureSeekPreview() {
+        if (mGestureSeeking || mPlayers.isEmpty()) return;
+        mGestureSeeking = true;
+        mGestureSeekPlaying = mPlayers.isPlayRequested();
+        mGestureSeekBasePosition = mPlayers.getPosition();
+        mGestureSeekPosition = mGestureSeekBasePosition;
+        App.removeCallbacks(mR1);
+        if (mGestureSeekPlaying) mPlayers.pause();
+        mPlaybackCache.pause();
+        cancelBufferingProgress();
+        hideProgress();
+        mBinding.control.previewFrame.setAlpha(0f);
+        mBinding.widget.seekPreviewImage.setVisibility(View.GONE);
+        mBinding.widget.seekPreviewBox.setVisibility(View.VISIBLE);
+        resizePreview(mBinding.widget.seekPreviewVideo, mBinding.widget.seekPreviewImage, mPreviewRatio);
+        mPreview.attach(mBinding.widget.seekPreviewVideo, this);
+        Logger.i("SeekGesture: start positionMs=" + mGestureSeekBasePosition
+                + ", playing=" + mGestureSeekPlaying
+                + ", local=" + PlaybackCache.isFullyLocal(mPlayers.getPreviewItem()));
+    }
+
+    private long getGestureSeekPosition(long delta) {
+        long position = mGestureSeekBasePosition + delta;
+        long duration = currentDuration();
+        if (duration > 0 && position > duration) position = duration;
+        return Math.max(0, position);
     }
 
     /** 只有拖动进度时才补总时长；双击快进那种一闪而过的提示不需要。 */
@@ -3237,6 +3276,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void hideSeek() {
         mBinding.widget.seek.setVisibility(View.GONE);
+        mBinding.widget.seekPreviewBox.setVisibility(View.GONE);
         mBinding.widget.duration.setVisibility(View.GONE);
     }
 
@@ -3245,6 +3285,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onScrubStart(long position) {
         mScrubbing = true;
+        mPreview.attach(mBinding.control.previewVideo, this);
         Logger.i("Seek: start positionMs=" + position + ", playing=" + mPlayers.isPlaying()
                 + ", local=" + PlaybackCache.isFullyLocal(mPlayers.getPreviewItem()));
         // 拖动期间把主播放器停下来：源站往往限同 IP 并发，两路一起拉的话预览要等十几秒
@@ -3315,26 +3356,38 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onPreviewRatio(float ratio) {
         // 预览窗宽度固定，高度跟着片源比例走，不然 4:3 的片会被拉扁
-        View video = mBinding.control.previewVideo;
-        int height = (int) (video.getWidth() / Math.max(0.5f, ratio));
-        if (video.getWidth() <= 0 || height <= 0 || height == video.getLayoutParams().height) return;
+        mPreviewRatio = ratio;
+        resizePreview(mBinding.control.previewVideo, mBinding.control.previewImage, ratio);
+        resizePreview(mBinding.widget.seekPreviewVideo, mBinding.widget.seekPreviewImage, ratio);
+    }
+
+    private void resizePreview(View video, View image, float ratio) {
+        int width = video.getWidth() > 0 ? video.getWidth() : video.getLayoutParams().width;
+        int height = (int) (width / Math.max(0.5f, ratio));
+        if (width <= 0 || height <= 0 || height == video.getLayoutParams().height) return;
         video.getLayoutParams().height = height;
-        mBinding.control.previewImage.getLayoutParams().height = height;
+        image.getLayoutParams().height = height;
         video.requestLayout();
-        mBinding.control.previewImage.requestLayout();
+        image.requestLayout();
     }
 
     @Override
     public void onPreviewFrame(Bitmap bitmap) {
-        mBinding.control.previewImage.setImageBitmap(bitmap);
-        mBinding.control.previewImage.setVisibility(View.VISIBLE);
+        if (mGestureSeeking) {
+            mBinding.widget.seekPreviewImage.setImageBitmap(bitmap);
+            mBinding.widget.seekPreviewImage.setVisibility(View.VISIBLE);
+        } else {
+            mBinding.control.previewImage.setImageBitmap(bitmap);
+            mBinding.control.previewImage.setVisibility(View.VISIBLE);
+        }
     }
 
     @Override
     public void onPreviewLoading() {
         // 新目标没有现成 Bitmap 时必须露出下层 TextureView。beta2 一直用旧图片盖住它，
         // 实际播放器在背后已经换帧，用户看到的却只能隔很久跳一张静态图。
-        mBinding.control.previewImage.setVisibility(View.GONE);
+        if (mGestureSeeking) mBinding.widget.seekPreviewImage.setVisibility(View.GONE);
+        else mBinding.control.previewImage.setVisibility(View.GONE);
     }
 
     @Override
@@ -3342,12 +3395,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         // 换集必须清掉旧画面，否则新片源首帧出来前会短暂显示上一集。
         mBinding.control.previewImage.setImageDrawable(null);
         mBinding.control.previewImage.setVisibility(View.GONE);
+        mBinding.widget.seekPreviewImage.setImageDrawable(null);
+        mBinding.widget.seekPreviewImage.setVisibility(View.GONE);
     }
 
     @Override
     public void onPreviewFail() {
         // 预览这一路挂了就别占着地方，主播放器不受影响
-        mBinding.control.previewFrame.setAlpha(0f);
+        if (mGestureSeeking) mBinding.widget.seekPreviewBox.setVisibility(View.GONE);
+        else mBinding.control.previewFrame.setAlpha(0f);
     }
 
     /**
@@ -3390,12 +3446,39 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             CastManager.get().seekTo(CastManager.get().getPosition() + time);
             return;
         }
-        handleLandscapeSeek(time);
+        if (mGestureSeeking) finishGestureSeekPreview(false);
+        else handleLandscapeSeek(time);
     }
 
     @Override
     public void onSeekCancel() {
+        if (mGestureSeeking) finishGestureSeekPreview(true);
+        else hideSeek();
+    }
+
+    private void finishGestureSeekPreview(boolean canceled) {
+        long position = mGestureSeekPosition;
+        boolean resume = mGestureSeekPlaying;
+        Logger.i("SeekGesture: stop positionMs=" + position + ", canceled=" + canceled
+                + ", playerMs=" + mPlayers.getPosition() + ", bufferedMs=" + mPlayers.getBuffered());
         hideSeek();
+        if (canceled) {
+            mPreview.idle();
+            cancelBufferingProgress();
+        } else {
+            mPreview.finish(position);
+        }
+        mPreview.attach(mBinding.control.previewVideo, this);
+        mGestureSeeking = false;
+        mGestureSeekPlaying = false;
+        if (!canceled) {
+            mPlayers.seekTo(position);
+            mPlaybackCache.focus(position, currentDuration());
+            scheduleBufferingProgress("gesture-seek");
+        }
+        schedulePlaybackCache();
+        if (resume) mPlayers.play();
+        setR1Callback();
     }
     
     private void handleLandscapeSeek(long time) {

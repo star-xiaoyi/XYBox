@@ -108,7 +108,14 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
 
     public void attach(TextureView view, Callback callback) {
         this.callback = callback;
+        if (this.view == view) return;
+        TextureView previous = this.view;
+        if (player != null) {
+            cacheCurrentFrame();
+            if (previous != null) player.clearVideoTextureView(previous);
+        }
         this.view = view;
+        if (player != null && view != null) player.setVideoTextureView(view);
     }
 
     /** 换片源：地址没变就什么都不做，变了就把旧的放掉，下次拖动时按新地址重建。 */

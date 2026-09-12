@@ -24,6 +24,7 @@ import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionParameters;
@@ -69,7 +70,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import master.flame.danmaku.ui.widget.DanmakuView;
+import master.flame.danmaku.controller.IDanmakuView;
 
 public class Players implements Player.Listener, ParseCallback {
 
@@ -167,10 +168,16 @@ public class Players implements Player.Listener, ParseCallback {
         this.view = view;
     }
 
-    public void setDanmakuView(DanmakuView view) {
+    public void setDanmakuView(IDanmakuView view) {
         danPlayer = new DanPlayer();
         danPlayer.setPlayer(this);
         danPlayer.setView(view);
+        updateDanmakuPlayerSnapshot();
+    }
+
+    private void updateDanmakuPlayerSnapshot() {
+        if (danPlayer == null) return;
+        danPlayer.updatePlayerSnapshot(getPosition(), isPlaying(), getSpeed());
     }
 
     public ExoPlayer get() {
@@ -348,6 +355,7 @@ public class Players implements Player.Listener, ParseCallback {
     public String setSpeed(float speed) {
         if (exoPlayer == null || !exoPlayer.isCommandAvailable(COMMAND_SET_SPEED_AND_PITCH)) return getSpeedText();
         exoPlayer.setPlaybackParameters(exoPlayer.getPlaybackParameters().withSpeed(speed));
+        updateDanmakuPlayerSnapshot();
         return getSpeedText();
     }
 
@@ -449,11 +457,13 @@ public class Players implements Player.Listener, ParseCallback {
 
     public void seekTo(long time) {
         if (exoPlayer != null) exoPlayer.seekTo(time);
+        updateDanmakuPlayerSnapshot();
         if (danPlayer != null) danPlayer.seekTo(time);
     }
 
     public void seekToDefaultPosition() {
         if (exoPlayer != null) exoPlayer.seekToDefaultPosition();
+        updateDanmakuPlayerSnapshot();
         prepare();
     }
 
@@ -463,16 +473,19 @@ public class Players implements Player.Listener, ParseCallback {
 
     public void play() {
         if (exoPlayer != null) exoPlayer.play();
+        updateDanmakuPlayerSnapshot();
         if (danPlayer != null) danPlayer.play();
     }
 
     public void pause() {
         if (exoPlayer != null) exoPlayer.pause();
+        updateDanmakuPlayerSnapshot();
         if (danPlayer != null) danPlayer.pause();
     }
 
     public void stop() {
         if (exoPlayer != null) exoPlayer.stop();
+        updateDanmakuPlayerSnapshot();
         if (danPlayer != null) danPlayer.stop();
         stopParse();
     }
@@ -573,7 +586,8 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     private void setMediaItem(Map<String, String> headers, String url, String format, Drm drm, List<Sub> subs, List<Danmaku> danmakus, long timeout) {
-        if (exoPlayer != null) exoPlayer.setMediaItem(ExoUtil.getMediaItem(this.headers = checkUa(headers), UrlUtil.uri(this.url = url), this.format = format, this.drm = drm, checkSub(this.subs = subs), decode));
+        String resolvedFormat = ExoUtil.resolveMediaMimeType(url, format);
+        if (exoPlayer != null) exoPlayer.setMediaItem(ExoUtil.getMediaItem(this.headers = checkUa(headers), UrlUtil.uri(this.url = url), this.format = resolvedFormat, this.drm = drm, checkSub(this.subs = subs), decode));
         if (danPlayer != null) setDanmaku(this.danmakus = danmakus);
         App.post(runnable, timeout);
         PlayerEvent.prepare(tag);
@@ -742,6 +756,7 @@ public class Players implements Player.Listener, ParseCallback {
     @Override
     public void onEvents(@NonNull Player player, @NonNull Player.Events events) {
         if (!events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_POSITION_DISCONTINUITY, Player.EVENT_MEDIA_METADATA_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED, Player.EVENT_PLAYER_ERROR)) return;
+        if (danPlayer != null) danPlayer.updatePlayerSnapshot(player.getCurrentPosition(), player.isPlaying(), player.getPlaybackParameters().speed);
         updateMetadataDuration();
         switch (player.getPlaybackState()) {
             case Player.STATE_IDLE:
@@ -762,7 +777,10 @@ public class Players implements Player.Listener, ParseCallback {
 
     @Override
     public void onPlaybackStateChanged(int state) {
-        if (danPlayer != null) danPlayer.check(state);
+        if (danPlayer != null) {
+            updateDanmakuPlayerSnapshot();
+            danPlayer.check(state);
+        }
         PlayerEvent.state(tag, state);
     }
 
@@ -786,10 +804,13 @@ public class Players implements Player.Listener, ParseCallback {
         String friendlyMsg = new com.fongmi.android.tv.player.exo.ErrorMsgProvider().get(error);
         Logger.e("Error: " + friendlyMsg);
         
-        if (isNetworkError(error.errorCode)) {
+        boolean manifestError = isManifestError(error.errorCode);
+        if (isNetworkError(error.errorCode) || manifestError) {
             // VPN 路由切换时连接可能连续失败几次。先保留当前 MediaItem 和播放位置原地重连，
             // 不要一两次缓冲失败就重新解析、换源甚至重建详情页。
-            if (++networkRetry <= 5) App.post(this::prepare, Math.min(networkRetry * 700L, 2800L));
+            int attempt = ++networkRetry;
+            Logger.i("PlayerRetry: reason=" + (manifestError ? "manifest" : "network") + " attempt=" + attempt);
+            if (attempt <= 5) App.post(this::prepare, Math.min(attempt * 700L, 2800L));
             else {
                 networkRetry = 0;
                 ErrorEvent.extract(tag, friendlyMsg);
@@ -827,5 +848,13 @@ public class Players implements Player.Listener, ParseCallback {
         return errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
                 || errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
                 || errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS;
+    }
+
+    private boolean isManifestError(int errorCode) {
+        return ExoUtil.isMimeType(format, MimeTypes.APPLICATION_M3U8)
+                && (errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED
+                || errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED
+                || errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+                || errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED);
     }
 }

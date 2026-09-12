@@ -168,6 +168,18 @@ public class ExoUtil {
         return null;
     }
 
+    public static String resolveMediaMimeType(String url, String mimeType) {
+        if (!TextUtils.isEmpty(mimeType) || TextUtils.isEmpty(url)) return mimeType;
+        String lower = url.toLowerCase(Locale.US);
+        int query = lower.indexOf('?');
+        String path = query == -1 ? lower : lower.substring(0, query);
+        if (path.endsWith(".m3u8") || path.endsWith(".m3u")
+                || lower.contains(".m3u8") || lower.contains("do=m3u8")) {
+            return MimeTypes.APPLICATION_M3U8;
+        }
+        return mimeType;
+    }
+
     public static boolean isMimeType(String value, String mimeType) {
         if (TextUtils.isEmpty(value)) return false;
         if (mimeType.equalsIgnoreCase(value)) return true;

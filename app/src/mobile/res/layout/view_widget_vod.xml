@@ -64,15 +64,39 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:background="@drawable/shape_widget"
         android:gravity="center"
         android:orientation="vertical"
         android:visibility="gone"
         tools:visibility="visible">
 
+        <FrameLayout
+            android:id="@+id/seekPreviewBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/shape_preview"
+            android:foregroundGravity="center"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <TextureView
+                android:id="@+id/seekPreviewVideo"
+                android:layout_width="160dp"
+                android:layout_height="90dp" />
+
+            <ImageView
+                android:id="@+id/seekPreviewImage"
+                android:layout_width="160dp"
+                android:layout_height="90dp"
+                android:scaleType="fitXY"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:background="@drawable/shape_widget"
             android:gravity="center"
             android:orientation="horizontal">
 
