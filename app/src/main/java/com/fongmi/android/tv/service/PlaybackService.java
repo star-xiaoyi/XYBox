@@ -120,7 +120,7 @@ public class PlaybackService extends Service {
         builder.setShowWhen(false);
         builder.setContentTitle(getTitle());
         builder.setContentText(getArtist());
-        builder.setSmallIcon(R.drawable.ic_logo);
+        builder.setSmallIcon(R.drawable.ic_notification_small);
         builder.setCategory(NotificationCompat.CATEGORY_TRANSPORT);
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         if (nonNull()) builder.setContentIntent(player.getSession().getController().getSessionActivity());

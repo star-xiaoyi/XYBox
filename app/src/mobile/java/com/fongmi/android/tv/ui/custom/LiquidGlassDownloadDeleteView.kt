@@ -105,7 +105,7 @@ class LiquidGlassDownloadDeleteView @JvmOverloads constructor(
             episodeSurface = if (light) Color(0xFFEAEAED) else Color(0xFF303034),
             episodeBorder = if (light) Color(0xFFD1D1D6) else Color(0xFF48484A),
             text = if (light) Color(0xFF1C1C1E) else Color.White,
-            secondary = if (light) Color(0xFF6C6C70) else Color(0xFF98989D),
+            secondary = if (light) Color(0xFF6E6E73) else Color(0xFF98989D),
             accent = Color(context.getColor(R.color.accent))
         )
         val frameNanos = remember { mutableLongStateOf(0L) }

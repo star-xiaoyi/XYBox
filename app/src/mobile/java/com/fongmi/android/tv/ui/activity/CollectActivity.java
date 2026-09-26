@@ -194,6 +194,7 @@ public class CollectActivity extends BaseActivity implements CustomScroller.Call
         mBinding.agent.setVisibility(View.GONE);
         mBinding.view.setVisibility(View.VISIBLE);
         mBinding.result.setVisibility(View.VISIBLE);
+        refreshBackHandling();
         updateEmptyState(); // 搜索开始时显示空状态
         if (mExecutor != null) mExecutor.shutdownNow();
         mExecutor = new PauseExecutor(20);
@@ -266,6 +267,7 @@ public class CollectActivity extends BaseActivity implements CustomScroller.Call
         mBinding.agent.setVisibility(View.VISIBLE);
         mBinding.emptyLayout.getRoot().setVisibility(View.GONE); // 隐藏空状态动画
         if (mExecutor != null) mExecutor.shutdownNow();
+        refreshBackHandling();
     }
 
     @Override
@@ -335,11 +337,21 @@ public class CollectActivity extends BaseActivity implements CustomScroller.Call
     }
 
     @Override
-    public void onBackPressed() {
+    protected boolean shouldInterceptBack() {
+        return mBinding != null && isVisible(mBinding.result);
+    }
+
+    @Override
+    protected View getPredictiveBackTarget() {
+        return shouldInterceptBack() ? mBinding.result : mBinding.getRoot();
+    }
+
+    @Override
+    protected void onBackPress() {
         if (isVisible(mBinding.result)) {
             showAgent();
         } else {
-            super.onBackPressed();
+            super.onBackPress();
         }
     }
 }

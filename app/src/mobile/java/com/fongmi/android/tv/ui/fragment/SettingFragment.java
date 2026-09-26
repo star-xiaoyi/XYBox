@@ -173,6 +173,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.settingsHeader.setOnSearchStateChangedListener(active -> {
             searchActive = active;
             getRoot().setGlassAction(active ? LiquidGlassNavigationView.ACTION_CLOSE : LiquidGlassNavigationView.ACTION_SEARCH, true);
+            getRoot().refreshBackHandling();
         });
     }
 

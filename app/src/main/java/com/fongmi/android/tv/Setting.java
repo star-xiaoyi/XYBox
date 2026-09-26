@@ -484,6 +484,14 @@ public class Setting {
         Prefers.put("liquid_glass_navigation", enabled);
     }
 
+    public static boolean isPredictiveBackEnabled() {
+        return Prefers.getBoolean("predictive_back", false);
+    }
+
+    public static void putPredictiveBackEnabled(boolean enabled) {
+        Prefers.put("predictive_back", enabled);
+    }
+
     // 局域网自动同步配置
     public static boolean isAutoSync() {
         return Prefers.getBoolean("auto_sync", false);

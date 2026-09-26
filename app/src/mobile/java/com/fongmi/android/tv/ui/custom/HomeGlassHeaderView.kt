@@ -104,7 +104,7 @@ class HomeGlassHeaderView @JvmOverloads constructor(
         id = View.generateViewId()
         scaleType = ImageView.ScaleType.CENTER_CROP
         setBackgroundResource(R.drawable.shape_action_background)
-        setImageResource(R.drawable.ic_logo)
+        setImageResource(R.drawable.ic_app_logo)
         isClickable = true
     }
 

@@ -69,7 +69,8 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
         mBinding.emptyLayout.getRoot().setVisibility(empty ? View.VISIBLE : View.GONE);
         mBinding.recycler.setVisibility(empty ? View.GONE : View.VISIBLE);
         mBinding.toolbar.setSecondaryActionVisible(!empty);
-        if (empty) mAdapter.setDelete(false);
+        if (empty) setDeleteMode(false);
+        refreshBackHandling();
         if (!empty) return;
         mBinding.emptyLayout.text.setText(R.string.download_empty);
         LottieAnimationView lottie = mBinding.emptyLayout.getRoot().findViewById(R.id.lottieAnimation);
@@ -80,12 +81,12 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
         if (mAdapter.isDelete()) {
             GlassConfirmDialog.show(this, R.string.dialog_delete_download, () -> {
                 DownloadManager.get().removeAll();
-                mAdapter.setDelete(false);
+                setDeleteMode(false);
                 refresh();
                 Notify.show(R.string.download_delete_all_done);
             });
         } else if (!mAdapter.isEmpty()) {
-            mAdapter.setDelete(true);
+            setDeleteMode(true);
         }
     }
 
@@ -103,8 +104,13 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
 
     @Override
     public boolean onLongClick() {
-        mAdapter.setDelete(!mAdapter.isDelete());
+        setDeleteMode(!mAdapter.isDelete());
         return true;
+    }
+
+    private void setDeleteMode(boolean delete) {
+        mAdapter.setDelete(delete);
+        refreshBackHandling();
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -119,8 +125,13 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
     }
 
     @Override
-    public void onBackPressed() {
-        if (mAdapter.isDelete()) mAdapter.setDelete(false);
-        else super.onBackPressed();
+    protected boolean shouldInterceptBack() {
+        return mAdapter != null && mAdapter.isDelete();
+    }
+
+    @Override
+    protected void onBackPress() {
+        if (mAdapter.isDelete()) setDeleteMode(false);
+        else super.onBackPress();
     }
 }

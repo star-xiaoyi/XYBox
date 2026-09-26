@@ -86,7 +86,7 @@ public class CrashActivity extends BaseActivity {
      */
     private String buildDetails(String trace) {
         StringBuilder sb = new StringBuilder();
-        sb.append("【XYBox 崩溃】\n");
+        sb.append("【XY影视崩溃】\n");
         sb.append(getEnv()).append("\n");
         sb.append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date())).append("\n\n");
         for (String line : trace.split("\n")) {
@@ -139,7 +139,7 @@ public class CrashActivity extends BaseActivity {
     private void copyErrorToClipboard() {
         try {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            clipboard.setPrimaryClip(ClipData.newPlainText("XYBox 崩溃报告", details));
+            clipboard.setPrimaryClip(ClipData.newPlainText("XY影视崩溃报告", details));
             Toast.makeText(this, "报错信息已复制，可直接粘贴", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Toast.makeText(this, "复制失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();

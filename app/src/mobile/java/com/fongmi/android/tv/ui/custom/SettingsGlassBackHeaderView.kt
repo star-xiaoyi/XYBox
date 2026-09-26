@@ -209,7 +209,7 @@ class SettingsGlassBackHeaderView @JvmOverloads constructor(
     @Composable
     private fun LegacyHeaderContent() {
         val light = !isSystemInDarkTheme()
-        val container = if (light) Color(0xFFF2F2F7) else Color.Black
+        val container = if (light) Color(0xFFF5F5F7) else Color.Black
         val glass = if (light) Color.White else Color(0xFF1C1C1E)
         val text = if (light) Color(0xFF1C1C1E) else Color.White
         val frameNanos = remember { mutableLongStateOf(0L) }

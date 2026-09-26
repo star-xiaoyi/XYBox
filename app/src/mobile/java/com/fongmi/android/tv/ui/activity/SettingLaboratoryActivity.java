@@ -11,6 +11,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.databinding.ActivitySettingLaboratoryBinding;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 
@@ -39,11 +40,18 @@ public class SettingLaboratoryActivity extends BaseActivity {
         mBinding.header.setTitle(getString(R.string.setting_laboratory));
         mBinding.header.setBackdropView(mBinding.content);
         mBinding.header.setRenderingEnabled(true);
+        mBinding.predictiveBackSwitch.setChecked(Setting.isPredictiveBackEnabled());
     }
 
     @Override
     protected void initEvent() {
         mBinding.header.setOnClickListener(v -> finish());
         mBinding.glassShowcase.setOnClickListener(v -> LiquidGlassShowcaseActivity.start(this));
+        mBinding.predictiveBack.setOnClickListener(v -> mBinding.predictiveBackSwitch.performClick());
+        mBinding.predictiveBackSwitch.setOnClickListener(v -> {
+            boolean checked = mBinding.predictiveBackSwitch.isChecked();
+            Setting.putPredictiveBackEnabled(checked);
+            refreshBackHandling();
+        });
     }
 }

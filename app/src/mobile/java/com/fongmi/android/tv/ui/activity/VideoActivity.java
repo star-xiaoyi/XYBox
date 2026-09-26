@@ -604,7 +604,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     @SuppressLint("ClickableViewAccessibility")
     protected void initEvent() {
-        mBinding.detailBack.setOnClickListener(view -> onBackPressed());
+        mBinding.detailBack.setOnClickListener(view -> dispatchBack());
         mBinding.castExpand.setOnClickListener(view -> onCastExpand());
         mBinding.castExit.setOnClickListener(view -> onCastExit());
         // 投屏占位层盖住了播放手势区，把触摸原样转给同一套手势识别，
@@ -625,6 +625,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.full.setOnClickListener(view -> onFull());
         mBinding.control.keep.setOnClickListener(view -> onKeep());
         mBinding.control.play.setOnClickListener(view -> checkPlay());
+        mBinding.control.detailPlay.setOnClickListener(view -> checkPlay());
         mBinding.control.next.setOnClickListener(view -> checkNext());
         mBinding.control.prev.setOnClickListener(view -> checkPrev());
         mBinding.control.playerMore.setOnClickListener(this::onPlayerMore);
@@ -654,7 +655,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.swipeLayout.setOnRefreshListener(this::onSwipeRefresh);
         mBinding.control.seek.setListener(mPlayers);
         mBinding.control.seek.setScrubListener(this);
-        mBinding.playbackPanel.setOnPanelDismissListener(this::setR1Callback);
+        mBinding.playbackPanel.setOnPanelDismissListener(() -> {
+            setR1Callback();
+            refreshBackHandling();
+        });
+        mBinding.playbackPanel.setOnVisibilityChangedListener(visible -> refreshBackHandling());
         mPreview.attach(mBinding.control.previewVideo, this);
         // 倍速锁定只能点这个胶囊解除，点画面其它地方仍然是开关控制栏
         mBinding.widget.speedLock.setOnClickListener(v -> mKeyDown.unlockSpeed());
@@ -1414,7 +1419,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             exitFullscreen();
         } else {
             stopSearch();
-            super.onBackPressed();
+            super.onBackPress();
         }
     }
 
@@ -1484,6 +1489,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (isFullscreen() && !isActionShown(mBinding.control.action.ending)) addMore(ids, labels, icons, MORE_ENDING, R.string.play_ed, 0);
         if (isFullscreen() && !isActionShown(mBinding.control.action.exit)) addMore(ids, labels, icons, MORE_EXIT, R.string.play_exit_full, R.drawable.ic_control_exit_full);
         mBinding.playbackPanel.show(anchor, getString(R.string.play_more), toIntArray(ids), labels.toArray(new String[0]), toIntArray(icons), null, 236, PLAYER_PANEL_HEIGHT_DP, this::onMoreItem);
+        refreshBackHandling();
         App.removeCallbacks(mR1);
     }
 
@@ -1830,6 +1836,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             if (type == C.TRACK_TYPE_VIDEO) updateQualityLabel();
             setR1Callback();
         });
+        refreshBackHandling();
         App.removeCallbacks(mR1);
     }
 
@@ -1922,6 +1929,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             mBinding.playbackPanel.dismiss();
             setR1Callback();
         });
+        refreshBackHandling();
         App.removeCallbacks(mR1);
     }
 
@@ -1944,6 +1952,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             mBinding.playbackPanel.dismiss();
             setR1Callback();
         });
+        refreshBackHandling();
         App.removeCallbacks(mR1);
     }
 
@@ -1971,6 +1980,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             mBinding.playbackPanel.dismiss();
             setR1Callback();
         });
+        refreshBackHandling();
         App.removeCallbacks(mR1);
     }
 
@@ -1990,6 +2000,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             mBinding.playbackPanel.dismiss();
             setR1Callback();
         });
+        refreshBackHandling();
         App.removeCallbacks(mR1);
     }
 
@@ -2116,6 +2127,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         App.post(mR3, 2000);
         hideControl();
         mBinding.video.post(() -> logVideoLayout("fullscreen-after-layout", -1f));
+        refreshBackHandling();
     }
 
     private void exitFullscreen() {
@@ -2138,6 +2150,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mKeyDown.resetScale();
         App.post(mR3, 2000);
         hideControl();
+        refreshBackHandling();
     }
 
     private int getLockOrient() {
@@ -2230,11 +2243,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         // 起播和弱网阶段优先给主画面。已有 15 秒余量时再预热；否则第一次拖动仍会
         // 现场创建预览播放器，功能不会消失。
         if (!isCasting() && mPlayers.getBuffered() - mPlayers.getPosition() >= 15000) mPreview.prepare(mPlayers.getPosition());
+        refreshBackHandling();
     }
 
     private void setActionVisible() {
         int widthDp = getPlayerWidthDp();
         boolean portraitFull = isFullscreen() && !isLand();
+        mBinding.control.detailPlay.setVisibility(isFullscreen() ? View.GONE : View.VISIBLE);
         mBinding.control.action.player.setVisibility(View.GONE);
         mBinding.control.action.scale.setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
         mBinding.control.action.speed.setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
@@ -2257,6 +2272,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mPreview.idle();
         if (!isFullscreen()) mBinding.detailBack.setVisibility(View.VISIBLE);
         App.removeCallbacks(mR1);
+        refreshBackHandling();
     }
 
     private void hideSheet() {
@@ -2354,7 +2370,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         // isPlaying() 在缓冲期间会变成 false，但此时用户并没有暂停。按钮表示点击后
         // 将执行的动作，所以只要播放器仍准备继续播放，就始终显示双竖线。
         boolean playRequested = isCasting() ? CastManager.get().isPlaying() : mPlayers.isPlayRequested();
-        mBinding.control.play.setImageResource(playRequested ? R.drawable.ic_control_pause : R.drawable.ic_control_play);
+        int icon = playRequested ? R.drawable.ic_control_pause : R.drawable.ic_control_play;
+        mBinding.control.play.setImageResource(icon);
+        mBinding.control.detailPlay.setImageResource(icon);
         mPiP.update(this, mPlayers.isPlayRequested());
         ActionEvent.update();
     }
@@ -3755,7 +3773,29 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     @Override
-    public void onBackPressed() {
+    protected boolean shouldInterceptBack() {
+        if (mBinding == null) return false;
+        return mBinding.playbackPanel.isPanelVisible()
+                || (isFullscreen() && !isLock())
+                || isVisible(mBinding.control.getRoot())
+                || isLock();
+    }
+
+    @Override
+    protected View getPredictiveBackTarget() {
+        if (mBinding.playbackPanel.isPanelVisible()) return mBinding.playbackPanel;
+        if (isFullscreen()) return mBinding.getRoot();
+        if (isVisible(mBinding.control.getRoot())) return mBinding.control.getRoot();
+        return mBinding.getRoot();
+    }
+
+    @Override
+    protected boolean shouldAnimatePredictiveBack() {
+        return !isLock() || mBinding.playbackPanel.isPanelVisible() || isVisible(mBinding.control.getRoot());
+    }
+
+    @Override
+    protected void onBackPress() {
         if (mBinding.playbackPanel.isPanelVisible()) {
             mBinding.playbackPanel.dismiss();
             setR1Callback();
@@ -3765,7 +3805,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             hideControl();
         } else if (!isLock()) {
             stopSearch();
-            super.onBackPressed();
+            super.onBackPress();
         }
     }
 

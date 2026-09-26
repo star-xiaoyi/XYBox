@@ -80,7 +80,7 @@ public class LogActivity extends BaseActivity {
             App.post(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                clipboard.setPrimaryClip(ClipData.newPlainText("XYBox 运行日志", text));
+                clipboard.setPrimaryClip(ClipData.newPlainText("XY影视运行日志", text));
                 Notify.show(getString(R.string.log_copied));
             });
         });

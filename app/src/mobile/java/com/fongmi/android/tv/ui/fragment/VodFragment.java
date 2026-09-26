@@ -1021,7 +1021,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     private void setLogo() {
         Config config = VodConfig.get().getConfig();
         String logo = config == null ? "" : config.getLogo();
-        Glide.with(this).load(UrlUtil.convert(logo)).circleCrop().override(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL).error(R.drawable.ic_logo).listener(getLogoListener()).into(mBinding.headerBar.getLogoView());
+        Glide.with(this).load(UrlUtil.convert(logo)).circleCrop().override(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL).error(R.drawable.ic_app_logo).listener(getLogoListener()).into(mBinding.headerBar.getLogoView());
     }
 
     private RequestListener<Drawable> getLogoListener() {
@@ -1125,6 +1125,13 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         if (mBinding.pager.getAdapter() == null) return true;
         if (mBinding.pager.getAdapter().getCount() == 0) return true;
         return getFragment().canBack();
+    }
+
+    public boolean hasBackState() {
+        if (mBinding == null) return false;
+        if (mBinding.filterPanel.isPanelVisible() || mSearchResultsVisible || mSearchEditing || mBinding.headerBar.hasSearchFocus()) return true;
+        TypeFragment fragment = getFragmentOrNull();
+        return fragment != null && fragment.hasBackStack();
     }
 
     @Override
