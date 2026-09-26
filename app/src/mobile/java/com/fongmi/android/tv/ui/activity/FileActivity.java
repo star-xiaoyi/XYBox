@@ -52,6 +52,7 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
         mBinding.recycler.scrollToPosition(0);
         mAdapter.addAll(Path.list(this.dir = dir));
         mBinding.progressLayout.showContent(true, mAdapter.getItemCount());
+        refreshBackHandling();
     }
 
     @Override
@@ -65,11 +66,13 @@ public class FileActivity extends BaseActivity implements FileAdapter.OnClickLis
     }
 
     @Override
-    public void onBackPressed() {
-        if (isRoot()) {
-            super.onBackPressed();
-        } else {
-            update(dir.getParentFile());
-        }
+    protected boolean shouldInterceptBack() {
+        return dir != null && !isRoot();
+    }
+
+    @Override
+    protected void onBackPress() {
+        if (dir == null || isRoot()) super.onBackPress();
+        else update(dir.getParentFile());
     }
 }

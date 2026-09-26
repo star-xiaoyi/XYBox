@@ -98,11 +98,11 @@ class LiquidGlassShowcaseView @JvmOverloads constructor(
         val light = !isSystemInDarkTheme()
         val accent = Color(ContextCompat.getColor(context, ThemeUtil.getAccentColorResource()))
         val palette = ShowcasePalette(
-            background = if (light) Color(0xFFF4F4F8) else Color(0xFF09090B),
-            card = if (light) Color.White.copy(alpha = 0.76f) else Color(0xFF18181B).copy(alpha = 0.78f),
-            glass = if (light) Color.White.copy(alpha = 0.36f) else Color(0xFF18181B).copy(alpha = 0.42f),
-            text = if (light) Color(0xFF17171A) else Color.White,
-            secondary = if (light) Color(0xFF67676E) else Color(0xFFA6A6AD),
+            background = if (light) Color(0xFFF5F5F7) else Color(0xFF09090B),
+            card = if (light) Color.White.copy(alpha = 0.92f) else Color(0xFF18181B).copy(alpha = 0.78f),
+            glass = if (light) Color.White.copy(alpha = 0.58f) else Color(0xFF18181B).copy(alpha = 0.42f),
+            text = if (light) Color(0xFF1C1C1E) else Color.White,
+            secondary = if (light) Color(0xFF6E6E73) else Color(0xFFA6A6AD),
             accent = accent
         )
         val frameNanos = remember { mutableLongStateOf(0L) }

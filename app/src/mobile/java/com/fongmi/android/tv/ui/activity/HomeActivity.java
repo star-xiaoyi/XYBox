@@ -211,6 +211,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         boolean liveVisible = LiveConfig.hasUrl() && !Setting.isLiveTabVisible();
         mBinding.navigation.getMenu().findItem(R.id.live).setVisible(liveVisible);
         mBinding.glassNavigation.setLiveVisible(liveVisible);
+        refreshBackHandling();
     }
 
     private boolean openLive() {
@@ -236,6 +237,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         int itemId = position == 1 ? R.id.setting : R.id.vod;
         mBinding.glassNavigation.setSelectedItemId(itemId);
         updateGlassActionForCurrentPage();
+        refreshBackHandling();
     }
 
     private void setSettingsChrome(boolean settings) {
@@ -262,6 +264,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         boolean show = visible || currentPosition == 1;
         bottomNavigationVisible = show;
         updateNavigationVisibility();
+        refreshBackHandling();
     }
 
     private void updateNavigationVisibility() {
@@ -302,6 +305,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         float targetAlpha = visible ? (night ? 0.22f : 0.12f) : 0f;
         mBinding.statusScrim.animate().cancel();
         mBinding.statusScrim.animate().alpha(targetAlpha).setDuration(160L).start();
+        refreshBackHandling();
     }
 
     public void setGlassAction(int action, boolean visible) {
@@ -426,8 +430,13 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         RefreshEvent.video();
     }
 
-    protected boolean handleBack() {
-        return true;
+    @Override
+    protected boolean shouldInterceptBack() {
+        if (mBinding == null || mManager == null) return false;
+        if (!mBinding.navigation.getMenu().findItem(R.id.vod).isVisible()) return true;
+        if (mManager.isVisible(1)) return true;
+        VodFragment fragment = getVodFragment();
+        return fragment != null && fragment.hasBackState();
     }
 
     @Override
@@ -439,7 +448,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
             if (fragment != null && fragment.closeSearchIfActive()) return;
             mBinding.navigation.setSelectedItemId(R.id.vod);
         } else if (mManager.canBack(0)) {
-            finish();
+            super.onBackPress();
         }
     }
 

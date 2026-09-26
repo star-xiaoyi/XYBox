@@ -58,20 +58,29 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
 
     @Override
     protected void initEvent() {
-        mBinding.toolbar.setBackClickListener(v -> onBackPress());
+        mBinding.toolbar.setBackClickListener(v -> dispatchBack());
         mBinding.toolbar.setSecondaryActionClickListener(this::onDelete);
-        mBinding.toolbar.setPrimaryActionClickListener(v -> mBinding.settingPanel.show(mBinding.content));
+        mBinding.toolbar.setPrimaryActionClickListener(v -> {
+            mBinding.settingPanel.show(mBinding.content);
+            refreshBackHandling();
+        });
+        mBinding.settingPanel.setOnPanelDismissListener(this::refreshBackHandling);
     }
 
     @Override
-    protected boolean handleBack() {
-        return true;
+    protected boolean shouldInterceptBack() {
+        return mBinding != null && mBinding.settingPanel.isPanelVisible();
+    }
+
+    @Override
+    protected View getPredictiveBackTarget() {
+        return shouldInterceptBack() ? mBinding.settingPanel : mBinding.getRoot();
     }
 
     @Override
     protected void onBackPress() {
         if (mBinding.settingPanel.isPanelVisible()) mBinding.settingPanel.dismiss();
-        else finish();
+        else super.onBackPress();
     }
 
     private void refresh() {

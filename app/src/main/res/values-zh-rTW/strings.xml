@@ -1,7 +1,7 @@
 <resources xmlns:xliff="http://schemas.android.com/apk/res-auto">
 
     <!-- App -->
-    <string name="app_name">XYBox</string>
+    <string name="app_name">XY影视</string>
     <string name="back">返回</string>
 
     <!-- Vod -->
@@ -272,7 +272,7 @@
     <string name="setting_webdav_summary">透過雲端同步記錄、播放源和偏好</string>
     <string name="setting_lan_sync">區域網路裝置同步</string>
     <string name="setting_lan_sync_summary">掃碼連接同一網路中的裝置</string>
-    <string name="setting_about">關於 XYBox</string>
+    <string name="setting_about">關於 XY影视</string>
     <string name="setting_source_tip">點擊匯入播放源，長按可編輯</string>
     <string name="setting_player_summary">播放核心、解碼、字幕和背景播放</string>
     <string name="setting_operation">操作設定</string>
@@ -280,6 +280,8 @@
     <string name="setting_cache_summary">點擊清理圖片快取和暫存檔</string>
     <string name="laboratory_liquid_glass_navigation">玻璃擬態底欄</string>
     <string name="laboratory_liquid_glass_navigation_summary">懸浮膠囊底欄；Android 13 及以上啟用完整液態折射，舊系統使用半透明降級效果</string>
+    <string name="laboratory_predictive_back">預測性返回</string>
+    <string name="laboratory_predictive_back_summary">返回時介面跟隨手勢移動並預覽目標頁面；僅 Android 13 及以上生效</string>
     <string name="glass_showcase_title">液態玻璃樣式展廳</string>
     <string name="glass_showcase_summary">查看並操作 Backdrop 專案的全部命名樣式</string>
     <string name="glass_showcase_hint">所有樣式都可以實際操作。以後你可以直接用下方名稱告訴我想採用哪一種。</string>
@@ -325,7 +327,7 @@
     <string name="action_change_source">換源</string>
     <string name="action_back_to_top">回到頂部</string>
     <string name="setting_log">執行記錄</string>
-    <string name="setting_log_summary">查看並匯出 XYBox 診斷記錄</string>
+    <string name="setting_log_summary">查看並匯出 XY影视診斷記錄</string>
     <string name="log_loading">正在讀取記錄…</string>
     <string name="log_empty">暫時沒有記錄</string>
     <string name="log_refresh">重新整理</string>

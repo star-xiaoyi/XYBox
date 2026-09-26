@@ -1,7 +1,7 @@
 <resources xmlns:xliff="http://schemas.android.com/apk/res-auto">
 
     <!-- App -->
-    <string name="app_name">XYBox</string>
+    <string name="app_name">XY影视</string>
     <string name="back">返回</string>
 
     <!-- Vod -->
@@ -117,7 +117,7 @@
     <string name="setting_webdav_summary">通过云端同步记录、播放源和偏好</string>
     <string name="setting_lan_sync">局域网设备同步</string>
     <string name="setting_lan_sync_summary">扫码连接同一网络中的设备</string>
-    <string name="setting_about">关于 XYBox</string>
+    <string name="setting_about">关于 XY影视</string>
     <string name="setting_source_tip">单击导入播放源，长按可编辑</string>
     <string name="setting_player_summary">播放核心、解码、字幕和后台播放</string>
     <string name="setting_operation">操作设置</string>
@@ -127,6 +127,8 @@
     <string name="setting_laboratory_summary">体验仍在开发中的新功能</string>
     <string name="laboratory_liquid_glass_navigation">玻璃拟态底栏</string>
     <string name="laboratory_liquid_glass_navigation_summary">悬浮胶囊底栏；Android 13 及以上启用完整液态折射，旧系统使用半透明降级效果</string>
+    <string name="laboratory_predictive_back">预测性返回</string>
+    <string name="laboratory_predictive_back_summary">返回时界面跟随手势移动并预览目标页面；仅 Android 13 及以上生效</string>
     <string name="glass_showcase_title">液态玻璃样式展厅</string>
     <string name="glass_showcase_summary">查看并操作 Backdrop 项目的全部命名样式</string>
     <string name="glass_showcase_hint">所有样式都可以实际操作。以后你可以直接用下方名称告诉我想采用哪一种。</string>
@@ -330,7 +332,7 @@
     <string name="crash_title">应用崩溃了</string>
 
     <string name="setting_log">运行日志</string>
-    <string name="setting_log_summary">查看并导出 XYBox 诊断日志</string>
+    <string name="setting_log_summary">查看并导出 XY影视诊断日志</string>
     <string name="log_loading">正在读取日志…</string>
     <string name="log_empty">暂时没有日志</string>
     <string name="log_refresh">刷新</string>

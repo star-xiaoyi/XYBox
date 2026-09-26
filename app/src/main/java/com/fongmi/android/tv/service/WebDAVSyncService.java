@@ -107,7 +107,7 @@ public class WebDAVSyncService extends Service {
         PendingIntent contentIntent = launch == null ? null : PendingIntent.getActivity(
                 this, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_logo)
+                .setSmallIcon(R.drawable.ic_notification_small)
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText("正在同步观看记录")
                 .setContentIntent(contentIntent)

@@ -130,9 +130,9 @@ public final class AppLog {
         return callOnWriter(() -> {
             File shareDir = new File(context.getCacheDir(), "log-share");
             if (!shareDir.exists() && !shareDir.mkdirs()) return null;
-            File target = new File(shareDir, "XYBox-log-"
+            File target = new File(shareDir, "XY影视-log-"
                     + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date()) + ".txt");
-            String header = "XYBox " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")\n"
+            String header = "XY影视 " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")\n"
                     + Build.MANUFACTURER + " " + Build.MODEL + " · Android " + Build.VERSION.RELEASE
                     + " (SDK " + Build.VERSION.SDK_INT + ")\n"
                     + "导出时间：" + timestamp() + "\n\n";

@@ -463,6 +463,7 @@ public class LiveActivity extends BaseActivity implements CustomKeyDownLive.List
         if (isGone(mBinding.recycler)) return;
         mBinding.recycler.setVisibility(View.GONE);
         setPosition();
+        refreshBackHandling();
     }
 
     private void showUI() {
@@ -471,6 +472,7 @@ public class LiveActivity extends BaseActivity implements CustomKeyDownLive.List
         mBinding.channel.requestFocus();
         setPosition();
         hideEpg();
+        refreshBackHandling();
     }
 
     private void showEpg(Channel item) {
@@ -523,11 +525,13 @@ public class LiveActivity extends BaseActivity implements CustomKeyDownLive.List
         setR1Callback();
         checkPlayImg();
         hideInfo();
+        refreshBackHandling();
     }
 
     private void hideControl() {
         mBinding.control.getRoot().setVisibility(View.GONE);
         App.removeCallbacks(mR1);
+        refreshBackHandling();
     }
 
     private void showInfo() {
@@ -536,12 +540,14 @@ public class LiveActivity extends BaseActivity implements CustomKeyDownLive.List
         setR3Callback();
         hideControl();
         setInfo();
+        refreshBackHandling();
     }
 
     private void hideInfo() {
         mBinding.widget.infoPip.setVisibility(View.GONE);
         mBinding.widget.info.setVisibility(View.GONE);
         App.removeCallbacks(mR3);
+        refreshBackHandling();
     }
 
     private void setTraffic() {
@@ -1155,7 +1161,29 @@ public class LiveActivity extends BaseActivity implements CustomKeyDownLive.List
     }
 
     @Override
-    public void onBackPressed() {
+    protected boolean shouldInterceptBack() {
+        if (mBinding == null) return false;
+        return isVisible(mBinding.control.getRoot())
+                || isVisible(mBinding.widget.info)
+                || isVisible(mBinding.recycler)
+                || isLock();
+    }
+
+    @Override
+    protected View getPredictiveBackTarget() {
+        if (isVisible(mBinding.control.getRoot())) return mBinding.control.getRoot();
+        if (isVisible(mBinding.widget.info)) return mBinding.widget.info;
+        if (isVisible(mBinding.recycler)) return mBinding.recycler;
+        return mBinding.getRoot();
+    }
+
+    @Override
+    protected boolean shouldAnimatePredictiveBack() {
+        return !isLock() || isVisible(mBinding.control.getRoot()) || isVisible(mBinding.widget.info) || isVisible(mBinding.recycler);
+    }
+
+    @Override
+    protected void onBackPress() {
         if (isVisible(mBinding.control.getRoot())) {
             hideControl();
         } else if (isVisible(mBinding.widget.info)) {
@@ -1163,7 +1191,7 @@ public class LiveActivity extends BaseActivity implements CustomKeyDownLive.List
         } else if (isVisible(mBinding.recycler)) {
             hideUI();
         } else if (!isLock()) {
-            super.onBackPressed();
+            super.onBackPress();
         }
     }
 

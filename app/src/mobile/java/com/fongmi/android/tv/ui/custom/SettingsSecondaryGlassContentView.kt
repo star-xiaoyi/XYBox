@@ -554,14 +554,14 @@ class SettingsOperationGlassContentView @JvmOverloads constructor(
 private fun secondaryPalette(): SecondaryPalette {
     val light = !isSystemInDarkTheme()
     return SecondaryPalette(
-        background = if (light) Color(0xFFF2F2F7) else Color.Black,
-        backdropStart = if (light) Color(0xFFF0F5FB) else Color(0xFF070A10),
-        backdropEnd = if (light) Color(0xFFF7F3EE) else Color(0xFF100D12),
-        card = if (light) Color.White.copy(alpha = 0.74f) else Color(0xFF18181B).copy(alpha = 0.76f),
-        glass = if (light) Color.White.copy(alpha = 0.34f) else Color(0xFF18181B).copy(alpha = 0.40f),
+        background = if (light) Color(0xFFF5F5F7) else Color.Black,
+        backdropStart = if (light) Color(0xFFF8F8FA) else Color(0xFF070A10),
+        backdropEnd = if (light) Color(0xFFF1F1F4) else Color(0xFF100D12),
+        card = if (light) Color.White.copy(alpha = 0.92f) else Color(0xFF18181B).copy(alpha = 0.76f),
+        glass = if (light) Color.White.copy(alpha = 0.58f) else Color(0xFF18181B).copy(alpha = 0.40f),
         text = if (light) Color(0xFF1C1C1E) else Color.White,
-        secondary = if (light) Color(0xFF6C6C70) else Color(0xFF98989D),
-        separator = if (light) Color(0x263C3C43) else Color(0x40545458),
+        secondary = if (light) Color(0xFF6E6E73) else Color(0xFF98989D),
+        separator = if (light) Color(0x203C3C43) else Color(0x40545458),
         accent = Color(ContextCompat.getColor(androidx.compose.ui.platform.LocalContext.current, ThemeUtil.getAccentColorResource()))
     )
 }

@@ -108,13 +108,13 @@ class LogGlassContentView @JvmOverloads constructor(
     override fun Content() {
         val light = !isSystemInDarkTheme()
         val palette = LogPalette(
-            background = if (light) Color(0xFFF2F2F7) else Color.Black,
-            backdropStart = if (light) Color(0xFFF0F5FB) else Color(0xFF070A10),
-            backdropEnd = if (light) Color(0xFFF7F3EE) else Color(0xFF100D12),
-            card = if (light) Color.White.copy(alpha = 0.76f) else Color(0xFF18181B).copy(alpha = 0.78f),
-            glass = if (light) Color.White.copy(alpha = 0.36f) else Color(0xFF18181B).copy(alpha = 0.42f),
+            background = if (light) Color(0xFFF5F5F7) else Color.Black,
+            backdropStart = if (light) Color(0xFFF8F8FA) else Color(0xFF070A10),
+            backdropEnd = if (light) Color(0xFFF1F1F4) else Color(0xFF100D12),
+            card = if (light) Color.White.copy(alpha = 0.92f) else Color(0xFF18181B).copy(alpha = 0.78f),
+            glass = if (light) Color.White.copy(alpha = 0.58f) else Color(0xFF18181B).copy(alpha = 0.42f),
             text = if (light) Color(0xFF1C1C1E) else Color.White,
-            secondary = if (light) Color(0xFF6C6C70) else Color(0xFF98989D)
+            secondary = if (light) Color(0xFF6E6E73) else Color(0xFF98989D)
         )
         val backdrop = rememberLayerBackdrop()
         val frameNanos = remember { mutableLongStateOf(0L) }

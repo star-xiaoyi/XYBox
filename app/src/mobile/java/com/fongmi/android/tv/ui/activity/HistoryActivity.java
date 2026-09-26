@@ -65,6 +65,8 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
 
     private void getHistory() {
         mAdapter.addAll(History.getAll()); // 显示所有视频源的观看记录
+        if (mAdapter.getItemCount() == 0) setDeleteMode(false);
+        else refreshBackHandling();
         mBinding.toolbar.setSecondaryActionVisible(mAdapter.getItemCount() > 0);
         updateEmptyState();
     }
@@ -108,10 +110,11 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         if (mAdapter.isDelete()) {
             new MaterialAlertDialogBuilder(this).setTitle(R.string.dialog_delete_record).setMessage(R.string.dialog_delete_history).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
                 mAdapter.clear();
+                setDeleteMode(false);
                 updateEmptyState();
             }).show();
         } else if (mAdapter.getItemCount() > 0) {
-            mAdapter.setDelete(true);
+            setDeleteMode(true);
         } else {
             mBinding.toolbar.setSecondaryActionVisible(false);
         }
@@ -132,19 +135,29 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         mAdapter.remove(item.delete());
         if (mAdapter.getItemCount() > 0) return;
         mBinding.toolbar.setSecondaryActionVisible(false);
-        mAdapter.setDelete(false);
+        setDeleteMode(false);
         updateEmptyState();
     }
 
     @Override
     public boolean onLongClick() {
-        mAdapter.setDelete(!mAdapter.isDelete());
+        setDeleteMode(!mAdapter.isDelete());
         return true;
     }
 
+    private void setDeleteMode(boolean delete) {
+        mAdapter.setDelete(delete);
+        refreshBackHandling();
+    }
+
     @Override
-    public void onBackPressed() {
-        if (mAdapter.isDelete()) mAdapter.setDelete(false);
-        else super.onBackPressed();
+    protected boolean shouldInterceptBack() {
+        return mAdapter != null && mAdapter.isDelete();
+    }
+
+    @Override
+    protected void onBackPress() {
+        if (mAdapter.isDelete()) setDeleteMode(false);
+        else super.onBackPress();
     }
 }

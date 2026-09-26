@@ -53,7 +53,14 @@ public class FolderActivity extends BaseActivity {
     }
 
     @Override
-    public void onBackPressed() {
-        if (getFragment().canBack()) super.onBackPressed();
+    protected boolean shouldInterceptBack() {
+        TypeFragment fragment = getFragment();
+        return fragment != null && fragment.hasBackStack();
+    }
+
+    @Override
+    protected void onBackPress() {
+        TypeFragment fragment = getFragment();
+        if (fragment == null || fragment.canBack()) super.onBackPress();
     }
 }

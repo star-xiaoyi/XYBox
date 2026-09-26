@@ -29,6 +29,7 @@ import com.fongmi.android.tv.utils.Util;
 import com.fongmi.android.tv.ui.activity.CollectActivity;
 import com.fongmi.android.tv.ui.activity.VideoActivity;
 import com.fongmi.android.tv.ui.adapter.VodAdapter;
+import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.base.BaseFragment;
 import com.fongmi.android.tv.ui.custom.CustomScroller;
 import com.fongmi.android.tv.utils.Notify;
@@ -272,6 +273,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
             mViewModel.action(getKey(), item.getAction());
         } else if (item.isFolder()) {
             mPages.add(Page.get(item, findPosition()));
+            notifyBackStateChanged();
             getVideo(item.getVodId(), "1");
         } else {
             if (getSite().isIndex()) {
@@ -293,7 +295,16 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     public boolean canBack() {
         if (mPages.isEmpty()) return true;
         mPages.remove(mPage = getLastPage());
+        notifyBackStateChanged();
         refreshContent();
         return false;
+    }
+
+    public boolean hasBackStack() {
+        return !mPages.isEmpty();
+    }
+
+    private void notifyBackStateChanged() {
+        if (getActivity() instanceof BaseActivity) ((BaseActivity) getActivity()).refreshBackHandling();
     }
 }

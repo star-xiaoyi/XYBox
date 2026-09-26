@@ -73,6 +73,10 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
         fun onItemClick(id: Int)
     }
 
+    fun interface OnVisibilityChangedListener {
+        fun onVisibilityChanged(visible: Boolean)
+    }
+
     private data class PanelItem(val id: Int, val label: String, val icon: Int)
 
     private var visibleState by mutableStateOf(false)
@@ -86,6 +90,7 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
     private var panelYState by mutableStateOf(12)
     private var listener: OnItemClickListener? = null
     private var dismissListener: Runnable? = null
+    private var visibilityChangedListener: OnVisibilityChangedListener? = null
     private val hideRunnable = Runnable {
         if (!visibleState) visibility = View.GONE
     }
@@ -129,6 +134,7 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
         doOnNextLayout {
             place(anchor)
             visibleState = true
+            visibilityChangedListener?.onVisibilityChanged(true)
         }
     }
 
@@ -138,11 +144,16 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
         listener = null
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         postDelayed(hideRunnable, 150)
+        visibilityChangedListener?.onVisibilityChanged(false)
         dismissListener?.run()
     }
 
     fun setOnPanelDismissListener(listener: Runnable?) {
         dismissListener = listener
+    }
+
+    fun setOnVisibilityChangedListener(listener: OnVisibilityChangedListener?) {
+        visibilityChangedListener = listener
     }
 
     fun isPanelVisible(): Boolean = visibleState
@@ -187,7 +198,7 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
             panel = if (light) Color(0xFFF8F8FA).copy(alpha = 0.90f) else Color(0xFF18181B).copy(alpha = 0.93f),
             glass = if (light) Color.White.copy(alpha = 0.82f) else Color(0xFF242428).copy(alpha = 0.86f),
             text = if (light) Color(0xFF1C1C1E) else Color.White,
-            secondary = if (light) Color(0xFF6C6C70) else Color(0xFFAAAAB0),
+            secondary = if (light) Color(0xFF6E6E73) else Color(0xFFAAAAB0),
             accent = accent
         )
         val frameNanos = remember { mutableLongStateOf(0L) }

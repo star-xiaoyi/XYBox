@@ -74,6 +74,7 @@ class LiquidGlassDownloadSettingView @JvmOverloads constructor(
     private var taskState by mutableIntStateOf(Setting.getDownloadTask())
     private var initialMode = modeState
     private var initialTask = taskState
+    private var dismissListener: Runnable? = null
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -95,11 +96,17 @@ class LiquidGlassDownloadSettingView @JvmOverloads constructor(
     }
 
     fun dismiss() {
+        if (!visibleState) return
         visibleState = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        dismissListener?.run()
     }
 
     fun isPanelVisible(): Boolean = visibleState
+
+    fun setOnPanelDismissListener(listener: Runnable?) {
+        dismissListener = listener
+    }
 
     private fun confirm() {
         Setting.putDownloadMode(modeState)
@@ -119,7 +126,7 @@ class LiquidGlassDownloadSettingView @JvmOverloads constructor(
             glass = if (light) Color.White.copy(alpha = 0.86f)
             else Color(0xFF242428).copy(alpha = 0.88f),
             text = if (light) Color(0xFF1C1C1E) else Color.White,
-            secondary = if (light) Color(0xFF6C6C70) else Color(0xFF98989D),
+            secondary = if (light) Color(0xFF6E6E73) else Color(0xFF98989D),
             accent = Color(context.getColor(ThemeUtil.getAccentColorResource()))
         )
         val backdrop = rememberLayerBackdrop()
