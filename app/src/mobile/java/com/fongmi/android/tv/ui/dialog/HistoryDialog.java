@@ -62,7 +62,10 @@ public class HistoryDialog implements ConfigAdapter.OnClickListener {
             Notify.tip(ResUtil.getString(R.string.no_history_config));
             return;
         }
-        dialog.getWindow().setDimAmount(0);
+        dialog.getWindow().setDimAmount(0.32f);
+        dialog.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        dialog.getWindow().setGravity(android.view.Gravity.CENTER);
+        dialog.getWindow().setWindowAnimations(0);
         dialog.show();
     }
 

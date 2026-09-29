@@ -61,4 +61,25 @@ public class Migrations {
             database.execSQL("ALTER TABLE Download ADD COLUMN vodType TEXT DEFAULT NULL");
         }
     };
+    /** Existing history keeps its progress; episode metadata is filled on the next playback. */
+    public static final Migration MIGRATION_37_38 = new Migration(37, 38) {
+        @Override public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("ALTER TABLE History ADD COLUMN episodeCount INTEGER NOT NULL DEFAULT 0");
+            database.execSQL("ALTER TABLE History ADD COLUMN episodeNumber INTEGER NOT NULL DEFAULT 0");
+        }
+    };
+
+    /** Preserve all beta14 records under the default profile. */
+    public static final Migration MIGRATION_36_37 = new Migration(36, 37) {
+        @Override public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("CREATE TABLE IF NOT EXISTS `Keep_Profiles` (`accountId` TEXT NOT NULL, `key` TEXT NOT NULL, `siteName` TEXT, `vodName` TEXT, `vodPic` TEXT, `createTime` INTEGER NOT NULL, `type` INTEGER NOT NULL, `cid` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `key`))");
+            database.execSQL("INSERT INTO `Keep_Profiles` (`accountId`, `key`, `siteName`, `vodName`, `vodPic`, `createTime`, `type`, `cid`) SELECT 'default', `key`, `siteName`, `vodName`, `vodPic`, `createTime`, `type`, `cid` FROM `Keep`");
+            database.execSQL("DROP TABLE `Keep`");
+            database.execSQL("ALTER TABLE `Keep_Profiles` RENAME TO `Keep`");
+            database.execSQL("CREATE TABLE IF NOT EXISTS `History_Profiles` (`accountId` TEXT NOT NULL, `key` TEXT NOT NULL, `vodPic` TEXT, `vodName` TEXT, `vodFlag` TEXT, `vodRemarks` TEXT, `episodeUrl` TEXT, `revSort` INTEGER NOT NULL, `revPlay` INTEGER NOT NULL, `createTime` INTEGER NOT NULL, `opening` INTEGER NOT NULL, `ending` INTEGER NOT NULL, `position` INTEGER NOT NULL, `duration` INTEGER NOT NULL, `speed` REAL NOT NULL, `scale` INTEGER NOT NULL, `cid` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `key`))");
+            database.execSQL("INSERT INTO `History_Profiles` (`accountId`, `key`, `vodPic`, `vodName`, `vodFlag`, `vodRemarks`, `episodeUrl`, `revSort`, `revPlay`, `createTime`, `opening`, `ending`, `position`, `duration`, `speed`, `scale`, `cid`) SELECT 'default', `key`, `vodPic`, `vodName`, `vodFlag`, `vodRemarks`, `episodeUrl`, `revSort`, `revPlay`, `createTime`, `opening`, `ending`, `position`, `duration`, `speed`, `scale`, `cid` FROM `History`");
+            database.execSQL("DROP TABLE `History`");
+            database.execSQL("ALTER TABLE `History_Profiles` RENAME TO `History`");
+        }
+    };
 }

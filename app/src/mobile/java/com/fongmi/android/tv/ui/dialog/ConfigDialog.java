@@ -73,7 +73,10 @@ public class ConfigDialog {
         dialog = new AlertDialog.Builder(binding.getRoot().getContext()).setView(binding.getRoot()).create();
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
-            dialog.getWindow().setDimAmount(0.3f);
+            dialog.getWindow().setDimAmount(0.32f);
+            dialog.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            dialog.getWindow().setGravity(android.view.Gravity.CENTER);
+            dialog.getWindow().setWindowAnimations(0);
         }
         dialog.show();
         Context context = binding.getRoot().getContext();

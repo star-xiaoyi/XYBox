@@ -9,7 +9,7 @@ import androidx.annotation.DrawableRes
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -32,21 +33,31 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -65,10 +76,14 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.drawPlainBackdrop
+import com.kyant.backdrop.isRuntimeShaderSupported
+import com.kyant.backdrop.effects.runtimeShaderEffect
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.Capsule
+import com.kyant.shapes.RoundedRectangle
 import kotlin.math.roundToInt
 
 /**
@@ -110,11 +125,19 @@ class HomeGlassHeaderView @JvmOverloads constructor(
 
     private var queryState by mutableStateOf(TextFieldValue(""))
     private var hintState by mutableStateOf(context.getString(R.string.search_keyword))
+    private var brandModeState by mutableStateOf(false)
+    private var statusBarInsetState by mutableIntStateOf(0)
+    private var compactState by mutableStateOf(false)
+    private var categoryModeState by mutableStateOf(false)
+    fun setCategoryMode(enabled: Boolean) { categoryModeState = enabled }
+    private var brandTitleState by mutableStateOf("XY影视")
     private var expandedState by mutableStateOf(false)
     private var searchFocusedState by mutableStateOf(false)
     private var focusRequestedState by mutableStateOf(false)
     private var searchIconState by mutableIntStateOf(R.drawable.ic_action_search)
     private var logoSizeState by mutableIntStateOf(24)
+    private var backdropViewState by mutableStateOf<View?>(null)
+    private var renderingEnabledState by mutableStateOf(false)
 
     private var queryChangedListener: OnQueryChangedListener? = null
     private var searchFocusChangedListener: OnSearchFocusChangedListener? = null
@@ -181,6 +204,24 @@ class HomeGlassHeaderView @JvmOverloads constructor(
         expandedState = expanded
     }
 
+    fun setBrandMode(enabled: Boolean, title: CharSequence? = null) {
+        brandModeState = enabled
+        if (!title.isNullOrEmpty()) brandTitleState = title.toString()
+    }
+
+    fun setCompact(compact: Boolean) {
+        compactState = compact
+    }
+
+    fun setStatusBarInset(inset: Int) {
+        statusBarInsetState = inset.coerceAtLeast(0)
+    }
+
+    fun setBackdropView(view: View?) {
+        backdropViewState = view
+        renderingEnabledState = view != null
+    }
+
     fun setSearchIcon(@DrawableRes resource: Int) {
         searchIconState = resource
     }
@@ -215,6 +256,9 @@ class HomeGlassHeaderView @JvmOverloads constructor(
      * 中途截走事件。指针即使拖出顶栏，仍由最初按下的玻璃控件收到完整的抬起/取消序列。
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // 底部的渐变区仅绘制，不挡住下方内容的点击或滑动。
+        if (brandModeState && event.actionMasked == MotionEvent.ACTION_DOWN &&
+            (event.y < statusBarInsetState || event.y >= statusBarInsetState + 56 * resources.displayMetrics.density)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             parent?.requestDisallowInterceptTouchEvent(true)
         }
@@ -234,16 +278,37 @@ class HomeGlassHeaderView @JvmOverloads constructor(
     @Composable
     override fun Content() {
         val light = !isSystemInDarkTheme()
-        val glass = if (light) Color(0xFFF8F8FA).copy(alpha = 0.86f)
-        else Color(0xFF161618).copy(alpha = 0.82f)
+        val base = Color(context.getColor(R.color.screen_background))
+        val glass = base.copy(alpha = if (light) 0.86f else 0.82f)
         val text = Color(context.getColor(R.color.text_primary))
         val secondary = Color(context.getColor(R.color.text_secondary))
         val frameNanos = remember { mutableLongStateOf(0L) }
-        val backdrop = rememberLayerBackdrop()
+        val headerLocation = remember { IntArray(2) }
+        val sourceLocation = remember { IntArray(2) }
+        val sourceView = backdropViewState
+        // 取样只录入离屏图层，不把未经处理的快照再次盖到页面上。
+        val backdrop = rememberLayerBackdrop(onDraw = {
+            frameNanos.longValue
+            drawRect(base)
+            if (sourceView != null && sourceView.isAttachedToWindow && sourceView.isShown) {
+                this@HomeGlassHeaderView.getLocationInWindow(headerLocation)
+                sourceView.getLocationInWindow(sourceLocation)
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    val saved = native.save()
+                    native.clipRect(0f, 0f, size.width, size.height)
+                    native.translate(
+                        (sourceLocation[0] - headerLocation[0] - sourceView.scrollX).toFloat(),
+                        (sourceLocation[1] - headerLocation[1] - sourceView.scrollY).toFloat()
+                    )
+                    sourceView.draw(native)
+                    native.restoreToCount(saved)
+                }
+            }
+        })
         val focusRequester = remember { FocusRequester() }
         val focusManager = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
-
         LaunchedEffect(focusRequestedState) {
             if (focusRequestedState) {
                 focusRequester.requestFocus()
@@ -253,20 +318,38 @@ class HomeGlassHeaderView @JvmOverloads constructor(
                 keyboard?.hide()
             }
         }
-
-        Box(Modifier.fillMaxWidth()) {
-            Canvas(Modifier.matchParentSize().layerBackdrop(backdrop)) {
-                // 首页统一使用页面纯色作为底，不在顶栏额外叠一层半透明长条。
-                drawRect(Color(context.getColor(R.color.screen_background)))
+        LaunchedEffect(renderingEnabledState, sourceView) {
+            while (renderingEnabledState && sourceView != null) {
+                withFrameNanos { frameNanos.longValue = it }
             }
+        }
+
+        val statusPadding = with(LocalDensity.current) {
+            (if (brandModeState) statusBarInsetState else 0).toDp()
+        }
+        val headerHeight = statusPadding + if (categoryModeState) 140.dp else if (!brandModeState) 56.dp else if (compactState) 60.dp else 76.dp
+        val fadeStartDp = statusPadding + if (categoryModeState) 96.dp else if (compactState) 24.dp else 28.dp
+        Box(Modifier.fillMaxWidth().height(headerHeight).clipToBounds()) {
+            Box(Modifier.matchParentSize().layerBackdrop(backdrop))
+            // 与实验室一致：同一底层取样经过模糊后，用 smoothstep 平滑淡出。
+            // 底色也在 shader 内一起混合，不另画一块会在末端形成分界的背景。
+            ProgressiveGlassSurface(Modifier.matchParentSize(), backdrop, base, glass,
+                fadeStartDp, frameNanos, brandModeState)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(top = statusPadding)
                     .height(56.dp)
                     .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (expandedState) {
+                if (brandModeState) {
+                    BasicText(
+                        text = brandTitleState,
+                        style = TextStyle(color = text, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold),
+                        maxLines = 1
+                    )
+                } else if (expandedState) {
                     GlassAction(
                         icon = R.drawable.ic_back,
                         description = stringResource(R.string.back),
@@ -284,8 +367,9 @@ class HomeGlassHeaderView @JvmOverloads constructor(
                 }
 
                 Spacer(Modifier.width(12.dp))
-                GlassSearchField(
-                    modifier = Modifier.weight(1f).height(36.dp),
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                  GlassSearchField(
+                    modifier = Modifier.widthIn(max = 240.dp).fillMaxWidth().height(36.dp),
                     value = queryState,
                     hint = hintState,
                     backdrop = backdrop,
@@ -302,20 +386,37 @@ class HomeGlassHeaderView @JvmOverloads constructor(
                         }
                     },
                     onSubmit = { searchSubmittedListener?.onSearchSubmitted() }
-                )
+                  )
+                }
                 Spacer(Modifier.width(12.dp))
 
-                GlassAction(
-                    icon = searchIconState,
-                    description = stringResource(R.string.search_keyword),
-                    backdrop = backdrop,
-                    frameNanos = frameNanos,
-                    glass = glass,
-                    tint = text,
-                    onClick = { searchClickListener?.onClick(this@HomeGlassHeaderView) }
-                )
+                if (brandModeState) {
+                    val searching = expandedState || searchFocusedState
+                    GlassAction(
+                        icon = if (searching) searchIconState else R.drawable.ic_action_history,
+                        description = stringResource(if (searching) R.string.search_keyword else R.string.app_history),
+                        backdrop = backdrop,
+                        frameNanos = frameNanos,
+                        glass = glass,
+                        tint = text,
+                        onClick = {
+                            if (searching) searchClickListener?.onClick(this@HomeGlassHeaderView)
+                            else historyClickListener?.onClick(this@HomeGlassHeaderView)
+                        }
+                    )
+                } else {
+                    GlassAction(
+                        icon = searchIconState,
+                        description = stringResource(R.string.search_keyword),
+                        backdrop = backdrop,
+                        frameNanos = frameNanos,
+                        glass = glass,
+                        tint = text,
+                        onClick = { searchClickListener?.onClick(this@HomeGlassHeaderView) }
+                    )
+                }
 
-                if (!expandedState) {
+                if (!brandModeState && !expandedState) {
                     Spacer(Modifier.width(8.dp))
                     GlassAction(
                         icon = R.drawable.ic_action_keep,
@@ -355,19 +456,29 @@ class HomeGlassHeaderView @JvmOverloads constructor(
         onFocusChanged: (Boolean) -> Unit,
         onSubmit: () -> Unit
     ) {
+        val surface = if (brandModeState) {
+            Modifier.drawBackdrop(
+                backdrop = backdrop,
+                shape = { Capsule() },
+                effects = { blur(8.dp.toPx()) },
+                onDrawSurface = { drawRect(glass) }
+            )
+        } else {
+            Modifier.drawBackdrop(
+                backdrop = backdrop,
+                shape = { Capsule() },
+                effects = {
+                    vibrancy()
+                    blur(3.dp.toPx())
+                    lens(12.dp.toPx(), 24.dp.toPx(), depthEffect = true)
+                },
+                onDrawSurface = { drawRect(glass) }
+            )
+        }
         Box(
             modifier
                 .onGloballyPositioned { updateSearchBounds(it.boundsInWindow()) }
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { Capsule() },
-                    effects = {
-                        vibrancy()
-                        blur(3.dp.toPx())
-                        lens(12.dp.toPx(), 24.dp.toPx(), depthEffect = true)
-                    },
-                    onDrawSurface = { drawRect(glass) }
-                )
+                .then(surface)
                 .padding(horizontal = 12.dp),
             contentAlignment = Alignment.CenterStart
         ) {
@@ -425,6 +536,24 @@ class HomeGlassHeaderView @JvmOverloads constructor(
         tint: Color,
         onClick: () -> Unit
     ) {
+        if (brandModeState) {
+            Box(
+                Modifier.size(36.dp)
+                    .drawBackdrop(
+                        backdrop = backdrop, shape = { Capsule() },
+                        effects = { blur(8.dp.toPx()) },
+                        onDrawSurface = { drawRect(glass) }
+                    )
+                    .clickable(role = Role.Button, onClick = onClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(icon), contentDescription = description,
+                    colorFilter = ColorFilter.tint(tint), modifier = Modifier.size(20.dp)
+                )
+            }
+            return
+        }
         LiquidButton(
             onClick = onClick,
             backdrop = backdrop,

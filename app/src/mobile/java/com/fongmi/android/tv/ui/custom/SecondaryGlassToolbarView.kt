@@ -5,9 +5,12 @@ import android.util.AttributeSet
 import android.view.View
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +33,10 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -66,7 +73,16 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : AbstractComposeView(context, attrs, defStyleAttr) {
 
+    private var profileStyleState by mutableStateOf(false)
+    fun setProfileStyle(enabled: Boolean) { profileStyleState = enabled }
+    private var backVisibleState by mutableStateOf(true)
+    fun setBackVisible(visible: Boolean) { backVisibleState = visible }
+    private var immersiveBottom = false
+
+    fun setImmersiveBottom(enabled: Boolean) { immersiveBottom = enabled }
+
     private var titleState by mutableStateOf("")
+    private var titleClickListenerState by mutableStateOf<View.OnClickListener?>(null)
     private var primaryIconState by mutableIntStateOf(R.drawable.ic_action_sync)
     private var primaryDescriptionState by mutableStateOf("")
     private var primaryVisibleState by mutableStateOf(true)
@@ -86,12 +102,21 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
         clipToPadding = false
     }
 
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        clipBounds = android.graphics.Rect(0, 0, w, h)
+    }
+
     fun setTitle(@StringRes resource: Int) {
         titleState = context.getString(resource)
     }
 
     fun setTitle(title: CharSequence?) {
         titleState = title?.toString().orEmpty()
+    }
+
+    fun setTitleClickListener(listener: View.OnClickListener?) {
+        titleClickListenerState = listener
     }
 
     fun setPrimaryAction(@DrawableRes icon: Int, @StringRes description: Int) {
@@ -135,7 +160,15 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
         val contentTop = (72 * resources.displayMetrics.density).toInt()
         ViewCompat.setOnApplyWindowInsetsListener(scrollContent) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(start, bars.top + contentTop, end, bars.bottom + bottom)
+            view.setPadding(start, bars.top + contentTop, end, (if (immersiveBottom) 0 else bars.bottom) + bottom)
+            // 同时限定 Android View 的实际高度，避免取样画布因父布局约束占满屏幕。
+            val headerHeight = bars.top + (72 * resources.displayMetrics.density + 0.5f).toInt()
+            layoutParams?.let { params ->
+                if (params.height != headerHeight) {
+                    params.height = headerHeight
+                    layoutParams = params
+                }
+            }
             insets
         }
         ViewCompat.requestApplyInsets(scrollContent)
@@ -156,14 +189,33 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
     @Composable
     override fun Content() {
         val light = !isSystemInDarkTheme()
-        val glass = if (light) Color(0xFFF8F8FA).copy(alpha = 0.86f)
-        else Color(0xFF161618).copy(alpha = 0.82f)
+        val background = Color(context.getColor(R.color.screen_background))
+        val glass = background.copy(alpha = if (light) 0.86f else 0.82f)
         val text = Color(context.getColor(R.color.text_primary))
         val frameNanos = remember { mutableLongStateOf(0L) }
-        val backdrop = rememberLayerBackdrop()
         val toolbarLocation = remember { IntArray(2) }
         val sourceLocation = remember { IntArray(2) }
         val sourceView = backdropViewState
+        // 页面取样只录入离屏图层，不能把整页的背景直接画到顶栏外。
+        val backdrop = rememberLayerBackdrop(onDraw = {
+            frameNanos.longValue
+            drawRect(background)
+            if (sourceView != null && sourceView.isAttachedToWindow && sourceView.isShown) {
+                this@SecondaryGlassToolbarView.getLocationInWindow(toolbarLocation)
+                sourceView.getLocationInWindow(sourceLocation)
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    val saved = native.save()
+                    native.clipRect(0f, 0f, size.width, size.height)
+                    native.translate(
+                        (sourceLocation[0] - toolbarLocation[0] - sourceView.scrollX).toFloat(),
+                        (sourceLocation[1] - toolbarLocation[1] - sourceView.scrollY).toFloat()
+                    )
+                    sourceView.draw(native)
+                    native.restoreToCount(saved)
+                }
+            }
+        })
 
         LaunchedEffect(renderingEnabledState, sourceView) {
             while (renderingEnabledState && sourceView != null) {
@@ -171,40 +223,11 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
             }
         }
 
-        Box(Modifier.fillMaxWidth()) {
-            Canvas(Modifier.matchParentSize().layerBackdrop(backdrop)) {
-                frameNanos.longValue
-                drawRect(Color(context.getColor(R.color.screen_background)))
-                if (sourceView != null && sourceView.isAttachedToWindow) {
-                    this@SecondaryGlassToolbarView.getLocationInWindow(toolbarLocation)
-                    sourceView.getLocationInWindow(sourceLocation)
-                    drawIntoCanvas { canvas ->
-                        val nativeCanvas = canvas.nativeCanvas
-                        val saveCount = nativeCanvas.save()
-                        nativeCanvas.translate(
-                            (sourceLocation[0] - toolbarLocation[0]).toFloat(),
-                            (sourceLocation[1] - toolbarLocation[1]).toFloat()
-                        )
-                        sourceView.draw(nativeCanvas)
-                        nativeCanvas.restoreToCount(saveCount)
-                    }
-                }
-            }
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .drawPlainBackdrop(
-                        backdrop = backdrop,
-                        shape = { RoundedRectangle(0.dp) },
-                        effects = {
-                            vibrancy()
-                            blur(8.dp.toPx())
-                            lens(24.dp.toPx(), 24.dp.toPx())
-                        },
-                        onDrawBehind = { frameNanos.longValue },
-                        onDrawSurface = { drawRect(glass) }
-                    )
-            )
+        val statusPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val base = background
+        Box(Modifier.fillMaxWidth().height(statusPadding + 72.dp).clipToBounds()) {
+            Box(Modifier.matchParentSize().layerBackdrop(backdrop))
+            ProgressiveGlassSurface(Modifier.matchParentSize(), backdrop, base, glass, statusPadding + 28.dp, frameNanos)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -213,7 +236,7 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ToolbarAction(
+                if (backVisibleState) ToolbarAction(
                     icon = R.drawable.ic_back,
                     description = stringResource(R.string.back),
                     enabled = true,
@@ -224,11 +247,30 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
                     onClick = { backClickListener?.onClick(this@SecondaryGlassToolbarView) }
                 )
 
-                BasicText(
-                    text = titleState,
-                    modifier = Modifier.weight(1f).padding(start = 12.dp),
-                    style = TextStyle(color = text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                )
+                Box(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Row(
+                        Modifier.clickable(enabled = titleClickListenerState != null, role = Role.Button) {
+                            titleClickListenerState?.onClick(this@SecondaryGlassToolbarView)
+                        }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        BasicText(
+                            text = titleState,
+                            modifier = Modifier.weight(1f, fill = false),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = TextStyle(color = text, fontSize = 22.sp, fontWeight = if (profileStyleState) FontWeight.ExtraBold else FontWeight.Bold)
+                        )
+                        if (titleClickListenerState != null) {
+                            Image(
+                                painter = painterResource(R.drawable.ic_arrow_right),
+                                contentDescription = null,
+                                colorFilter = ColorFilter.tint(text),
+                                modifier = Modifier.padding(start = 6.dp).size(16.dp).rotate(90f)
+                            )
+                        }
+                    }
+                }
 
                 if (primaryVisibleState) {
                     ToolbarAction(

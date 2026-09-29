@@ -89,7 +89,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     }
 
     private HomeActivity getRoot() {
-        return (HomeActivity) getActivity();
+        return getActivity() instanceof HomeActivity ? (HomeActivity) getActivity() : null;
     }
 
     @Override
@@ -99,6 +99,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
 
     @Override
     protected void initView() {
+        mBinding.settingsHeader.setBackClickListener(v -> requireActivity().getOnBackPressedDispatcher().onBackPressed());
         mBinding.settingsHeader.setBackdropView(mBinding.settingsContent);
         mBinding.settingsHeader.setRenderingEnabled(true);
         setSourceText();
@@ -172,8 +173,8 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.settingsHeader.setOnQueryChangedListener(mBinding.settingsContent::setQuery);
         mBinding.settingsHeader.setOnSearchStateChangedListener(active -> {
             searchActive = active;
-            getRoot().setGlassAction(active ? LiquidGlassNavigationView.ACTION_CLOSE : LiquidGlassNavigationView.ACTION_SEARCH, true);
-            getRoot().refreshBackHandling();
+            if (getRoot() != null) getRoot().setGlassAction(active ? LiquidGlassNavigationView.ACTION_CLOSE : LiquidGlassNavigationView.ACTION_SEARCH, true);
+            ((com.fongmi.android.tv.ui.base.BaseActivity) requireActivity()).refreshBackHandling();
         });
     }
 
@@ -216,7 +217,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
 
     private void setLiquidGlassNavigation(boolean checked) {
         Setting.putLiquidGlassNavigation(checked);
-        getRoot().refreshNavigationMode();
+        if (getRoot() != null) getRoot().refreshNavigationMode();
     }
 
     private void onSettingOption(int action, int index) {

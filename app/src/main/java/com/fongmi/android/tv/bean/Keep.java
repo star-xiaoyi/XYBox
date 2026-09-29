@@ -15,11 +15,16 @@ import java.lang.reflect.Type;
 import java.util.Collections;
 import java.util.List;
 
-@Entity
+@Entity(primaryKeys = {"accountId", "key"})
 public class Keep {
+    @NonNull
+    @androidx.room.ColumnInfo(name = "accountId")
+    private transient String accountId = com.fongmi.android.tv.utils.LocalProfile.id();
+    @NonNull public String getAccountId() { return accountId; }
+    public void setAccountId(@NonNull String value) { accountId = value; }
+
 
     @NonNull
-    @PrimaryKey
     @SerializedName("key")
     private String key;
     @SerializedName("siteName")
@@ -151,7 +156,7 @@ public class Keep {
 
     public Keep delete() {
         com.fongmi.android.tv.utils.WebDAVSyncManager.get().markKeepDeleted(this);
-        AppDatabase.get().getKeepDao().delete(getCid(), getKey());
+        AppDatabase.get().getKeepDao().deleteForAccount(getAccountId(), getCid(), getKey());
         return this;
     }
 

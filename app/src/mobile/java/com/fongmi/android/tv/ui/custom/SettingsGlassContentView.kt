@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
@@ -146,6 +147,9 @@ class SettingsGlassContentView @JvmOverloads constructor(
         val query: String = ""
     )
 
+    private var servicesModeState by mutableStateOf(false)
+    fun setServicesMode(enabled: Boolean) { servicesModeState = enabled }
+    fun closeEditors() { expandedAction = 0; webDavProviderExpanded = false }
     private var state by mutableStateOf(State())
     private var actionListener: OnActionListener? = null
     private var longActionListener: OnLongActionListener? = null
@@ -331,7 +335,22 @@ class SettingsGlassContentView @JvmOverloads constructor(
             while (true) withFrameNanos { frameNanos.longValue = it }
         }
 
-        Box(Modifier.fillMaxSize().background(palette.background)) {
+        if (servicesModeState) {
+            Box(Modifier.fillMaxWidth()) {
+                Canvas(Modifier.matchParentSize().layerBackdrop(backdrop)) {
+                    // Native profile card already paints this surface; record it without a second visible tint.
+                    drawRect(palette.card)
+                }
+                Column(Modifier.fillMaxWidth()) {
+                    SettingsItem(ACTION_VOD, backdrop, frameNanos, palette, state)
+                    Divider(palette)
+                    SettingsItem(ACTION_WEBDAV, backdrop, frameNanos, palette, state)
+                }
+            }
+            return
+        }
+
+        Box(Modifier.fillMaxSize().background(palette.background), contentAlignment = Alignment.TopCenter) {
             Canvas(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
                 drawRect(Brush.linearGradient(listOf(palette.backdropStart, palette.backdropEnd)))
             }
@@ -456,24 +475,25 @@ class SettingsGlassContentView @JvmOverloads constructor(
         current: State
     ) {
         val groups = listOf(
-            listOf(ACTION_VOD, ACTION_LIVE, ACTION_WEBDAV),
-            listOf(ACTION_THEME, ACTION_ACCENT, ACTION_SIZE, ACTION_GLASS_NAVIGATION, ACTION_HISTORY_VISIBLE, ACTION_LIVE_TAB_VISIBLE),
             listOf(ACTION_PLAYER, ACTION_OPERATION),
-            listOf(ACTION_INCOGNITO, ACTION_CACHE, ACTION_BACKUP, ACTION_RESTORE),
-            listOf(ACTION_LABORATORY),
-            listOf(ACTION_VERSION, ACTION_LOG, ACTION_ABOUT)
+            listOf(ACTION_THEME, ACTION_ACCENT, ACTION_GLASS_NAVIGATION, ACTION_LIVE_TAB_VISIBLE),
+            listOf(ACTION_LIVE, ACTION_DOH, ACTION_PROXY),
+            listOf(ACTION_INCOGNITO, ACTION_CACHE),
+            listOf(ACTION_LABORATORY, ACTION_LOG)
         )
+        val headings = listOf("播放与操作", "外观与导航", "网络与直播", "隐私与存储", "高级与诊断")
         var resultCount = 0
 
         Column(
             Modifier
+                .widthIn(max = 760.dp)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .statusBarsPadding()
                 .padding(start = 16.dp, top = 72.dp, end = 16.dp, bottom = 112.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            groups.forEach { ids ->
+            groups.forEachIndexed { groupIndex, ids ->
                 val visible = ArrayList<Int>()
                 ids.forEach { id ->
                     if (id != ACTION_LIVE || current.liveVisible) {
@@ -482,6 +502,8 @@ class SettingsGlassContentView @JvmOverloads constructor(
                 }
                 if (visible.isNotEmpty()) {
                     resultCount += visible.size
+                    BasicText(headings[groupIndex], Modifier.padding(start = 4.dp, top = 8.dp),
+                        style = TextStyle(palette.secondary, 12.sp, FontWeight.Medium))
                     GlassCard(palette) {
                         visible.forEachIndexed { index, id ->
                             SettingsItem(id, backdrop, frameNanos, palette, current)
@@ -814,7 +836,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
                                         onClick = {
                                             state = state.copy(
                                                 webDavProvider = index,
-                                                webDavUrl = if (index == 0) JIANGUOYUN_URL else current.webDavUrl
+                                                webDavUrl = current.webDavUrl
                                             )
                                             webDavProviderExpanded = false
                                         }
@@ -831,10 +853,8 @@ class SettingsGlassContentView @JvmOverloads constructor(
                         }
                     }
                 }
-                if (current.webDavProvider != 0) {
-                    EditorTextField(current.webDavUrl, "WebDAV 服务器地址", backdrop, palette) {
-                        state = state.copy(webDavUrl = it)
-                    }
+                EditorTextField(current.webDavUrl, "完整同步目录地址", backdrop, palette) {
+                    state = state.copy(webDavUrl = it)
                 }
                 EditorTextField(current.webDavUsername, "用户名", backdrop, palette) {
                     state = state.copy(webDavUsername = it)
@@ -862,7 +882,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
     }
 
     private fun sendWebDavAction(action: Int) {
-        val url = if (state.webDavProvider == 0) JIANGUOYUN_URL else state.webDavUrl.trim()
+        val url = state.webDavUrl.trim()
         webDavActionListener?.onWebDavAction(
             action,
             url,

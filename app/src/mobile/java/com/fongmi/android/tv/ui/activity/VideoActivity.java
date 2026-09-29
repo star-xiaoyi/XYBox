@@ -233,6 +233,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private int mRatingGeneration;
     private String mRatingKey = "";
     private List<String> mDoubanGenres = new ArrayList<>();
+    private Douban.Subject mDoubanSubject;
     /** 片源比对的目标：规整后的片名、年份、片种，详情加载后以详情为准。 */
     private String mTargetKey = "";
     private int mTargetYear;
@@ -243,8 +244,19 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private FlagAdapter mFlagAdapter;
     private List<Dialog> mDialogs;
     private History mHistory;
+    private History mPendingCloudHistory;
+    private long mCloudResumePosition = -1;
     /** 当前选中的剧集已经真正进入可播放状态，避免失败片源覆盖或合并掉旧记录。 */
     private boolean mHistoryPlaybackConfirmed;
+    private final Object mHistoryWriteLock = new Object();
+    private volatile long mKnownHistoryVersion;
+    private volatile int mHistoryWriteGeneration;
+    private long mLastHistoryCapture;
+    private volatile boolean mAwaitingCloudSync;
+    private volatile boolean mCloudChoicePending;
+    private volatile boolean mSuppressHistorySaves;
+    private boolean mResumeAfterCloudSync;
+    private androidx.appcompat.app.AlertDialog mCloudProgressDialog;
     private Players mPlayers;
     private Vod mCurrentVod;  // 保存当前视频对象，用于演职人员跳转
     private boolean fullscreen;
@@ -873,6 +885,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         setTarget(item.getVodName(getName()), item.getVodYear().isEmpty() ? getYear() : item.getVodYear(), item.getTypeName());
         setCurrentSource(item);
         checkHistory(item);
+        applyDoubanMetadata();
         checkFlag(item);
         checkOffline();
         checkKeepImg();
@@ -907,11 +920,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
      */
     private void setCast(Vod item) {
         List<CastMember> members = new ArrayList<>();
-        String director = item.getVodDirector();
-        String actor = item.getVodActor();
-        if (director != null && !director.isEmpty()) members.addAll(CastUtil.parseCastMembers(Html.fromHtml(director).toString(), CastMember.CastType.DIRECTOR));
+        List<String> directorsFromDouban = mDoubanSubject == null ? new ArrayList<>() : mDoubanSubject.getDirectors();
+        List<String> actorsFromDouban = mDoubanSubject == null ? new ArrayList<>() : mDoubanSubject.getActors();
+        if (directorsFromDouban.isEmpty()) members.addAll(sourcePeople(item.getVodDirector(), CastMember.CastType.DIRECTOR));
+        else for (String name : directorsFromDouban) members.add(new CastMember(name, CastMember.CastType.DIRECTOR));
         int directors = members.size();
-        if (actor != null && !actor.isEmpty()) members.addAll(CastUtil.parseCastMembers(Html.fromHtml(actor).toString(), CastMember.CastType.ACTOR));
+        if (actorsFromDouban.isEmpty()) members.addAll(sourcePeople(item.getVodActor(), CastMember.CastType.ACTOR));
+        else for (String name : actorsFromDouban) members.add(new CastMember(name, CastMember.CastType.ACTOR));
         if (members.isEmpty()) {
             mBinding.castText.setVisibility(View.GONE);
             mBinding.castExpand.setVisibility(View.GONE);
@@ -933,6 +948,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.castText.setMovementMethod(LinkMovement.getInstance());
         setExpandState(mBinding.castExpand, false);
         checkOverflow(mBinding.castText, mBinding.castExpand, 2);
+    }
+
+    private List<CastMember> sourcePeople(String raw, CastMember.CastType type) {
+        List<CastMember> result = new ArrayList<>();
+        for (CastMember member : CastUtil.parseCastMembers(raw, type)) {
+            String name = member.getName().trim();
+            if (name.matches("[0-9\\s年月日./-]+") || name.equals("未知") || name.equals("不详") || name.equals("暂无")) continue;
+            result.add(member);
+        }
+        return result;
     }
 
     private void onCastExpand() {
@@ -1028,21 +1053,27 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
      */
     private void setMeta(Vod item) {
         List<String> parts = new ArrayList<>();
-        String year = item.getVodYear().trim();
+        String year = mDoubanSubject != null && !mDoubanSubject.getYear().isEmpty() ? mDoubanSubject.getYear() : item.getVodYear().trim();
         if (year.length() >= 4 && TextUtils.isDigitsOnly(year.substring(0, 4))) year = year.substring(0, 4);
         if (!year.isEmpty()) parts.add(year);
-        if (!item.getVodArea().trim().isEmpty()) parts.add(item.getVodArea().trim());
+        String area = mDoubanSubject != null && !mDoubanSubject.getCountries().isEmpty() ? TextUtils.join(" / ", mDoubanSubject.getCountries()) : item.getVodArea().trim();
+        if (!area.isEmpty()) parts.add(area);
         if (!item.getVodRemarks().trim().isEmpty()) parts.add(item.getVodRemarks().trim());
         if (!getSite().getName().trim().isEmpty()) parts.add(getSite().getName().trim());
         mBinding.meta.setText(TextUtils.join("  ·  ", parts));
         mBinding.metaScroll.setVisibility(parts.isEmpty() ? View.INVISIBLE : View.VISIBLE);
     }
 
-    /** 类型标签只采用豆瓣条目返回的 genres，避免站源分类混入线路名和采集站自定义标签。 */
+    /** 优先使用豆瓣类型；确实没有时才回退片源分类。 */
     private void setTags(List<String> doubanGenres) {
         mBinding.tags.removeAllViews();
         List<String> tags = new ArrayList<>();
         if (doubanGenres != null) for (String tag : doubanGenres) if (!tag.trim().isEmpty() && !tags.contains(tag.trim())) tags.add(tag.trim());
+        if (tags.isEmpty() && mCurrentVod != null) {
+            for (String type : mCurrentVod.getTypeName().split("[,，/、\\s]+")) {
+                if (!type.isEmpty() && !type.matches("[0-9]+") && type.length() <= 12 && !tags.contains(type)) tags.add(type);
+            }
+        }
         for (String tag : tags) {
             TextView view = new TextView(this);
             view.setText(tag);
@@ -1068,7 +1099,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void setPlayer(Result result) {
         result.getUrl().set(mQualityAdapter.getPosition());
-        if (!result.getDesc().isEmpty()) {
+        if (!result.getDesc().isEmpty() && (mDoubanSubject == null || mDoubanSubject.getIntro().isEmpty())) {
             setText(mBinding.content, R.string.detail_content, Html.fromHtml(result.getDesc()).toString());
             updateContentExpand();
         }
@@ -1077,6 +1108,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.parse.setVisibility(View.GONE);
         stopPlaybackCache();
         mPlayers.start(result, isUseParse(), getPlayerTimeout());
+        if (mAwaitingCloudSync || mCloudChoicePending) mPlayers.pause();
         setQualityVisible(result.getUrl().isMulti());
         mBinding.swipeLayout.setRefreshing(false);
         mBinding.swipeLayout.setEnabled(false);
@@ -1115,6 +1147,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         try {
             stopPlaybackCache();
             mPlayers.start(result, isUseParse(), getPlayerTimeout());
+        if (mAwaitingCloudSync || mCloudChoicePending) mPlayers.pause();
         } catch (Exception e) {
             ErrorEvent.extract(tag, e.getMessage());
             Logger.e("Error", e);
@@ -1469,11 +1502,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         }
         long position = CastManager.get().getPosition();
         long duration = CastManager.get().getDuration();
-        if (mHistory != null && position > 0) {
+        if (mHistory != null && position > 0 && position != mHistory.getPosition()) {
             mHistoryPlaybackConfirmed = true;
             mHistory.setPosition(position);
             if (duration > 0) mHistory.setDuration(duration);
-            if (!Setting.isIncognito()) App.execute(() -> mHistory.updateProgress());
+            queueHistorySnapshot(true, false);
         }
         checkPlayImg();
         checkCastEnded(position, duration);
@@ -2424,8 +2457,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void checkHistory(Vod item) {
         mHistoryPlaybackConfirmed = false;
-        mHistory = History.find(getHistoryKey());
+        mHistory = mPendingCloudHistory != null ? mPendingCloudHistory : History.find(getHistoryKey());
+        mPendingCloudHistory = null;
         mHistory = mHistory == null ? createHistory(item) : mHistory;
+        synchronized (mHistoryWriteLock) {
+            mHistoryWriteGeneration++;
+            mKnownHistoryVersion = mHistory.getCreateTime();
+            for (History record : mHistory.find()) mKnownHistoryVersion = Math.max(mKnownHistoryVersion, record.getCreateTime());
+            mLastHistoryCapture = mKnownHistoryVersion;
+        }
         if (!TextUtils.isEmpty(getMark())) mHistory.setVodRemarks(getMark());
         mBinding.control.action.opening.setText(mHistory.getOpening() <= 0 ? getString(R.string.play_op) : mPlayers.stringToTime(mHistory.getOpening()));
         mBinding.control.action.ending.setText(mHistory.getEnding() <= 0 ? getString(R.string.play_ed) : mPlayers.stringToTime(mHistory.getEnding()));
@@ -2446,18 +2486,31 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void updateHistory(Episode item, boolean replay) {
         mHistoryPlaybackConfirmed = false;
         replay = replay || !item.equals(mHistory.getEpisode());
+        // Signed episode URLs may change between devices; an explicit cloud choice keeps its time.
+        if (mCloudResumePosition >= 0) {
+            mHistory.setPosition(mCloudResumePosition);
+            mCloudResumePosition = -1;
+            replay = false;
+        }
         mHistory.setEpisodeUrl(item.getUrl());
         mHistory.setVodRemarks(item.getName());
         mHistory.setVodFlag(getFlag().getFlag());
+        int count = mEpisodeAdapter.getItemCount();
+        int kind = mCurrentVod == null ? TitleKey.KIND_UNKNOWN : TitleKey.kind(mCurrentVod.getTypeName());
+        boolean series = kind != TitleKey.KIND_MOVIE && (count > 1 || kind == TitleKey.KIND_TV);
+        int index = mEpisodeAdapter.getPosition(item);
+        int number = mHistory.isRevSort() ? count - index : index + 1;
+        mHistory.setEpisodeCount(series ? count : 0);
+        mHistory.setEpisodeNumber(series && index >= 0 ? number : 0);
         mHistory.setCreateTime(System.currentTimeMillis());
         mHistory.setPosition(replay ? C.TIME_UNSET : mHistory.getPosition());
     }
 
     /** 只有播放器确认片源可用后才允许创建/更新记录，失败片源不会碰数据库里的旧记录。 */
     private void confirmHistoryPlayback() {
-        if (mHistoryPlaybackConfirmed || mHistory == null) return;
+        if (mHistoryPlaybackConfirmed || mHistory == null || mAwaitingCloudSync || mCloudChoicePending || mSuppressHistorySaves) return;
         mHistoryPlaybackConfirmed = true;
-        if (!Setting.isIncognito()) mHistory.update();
+        queueHistorySnapshot(true, false);
     }
 
     private void checkControl() {
@@ -2506,19 +2559,17 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onTimeChanged() {
-        // 投屏时进度在对端，本地播放器停在开投那一刻。这里每秒都写一次记录，
-        // 不挡住的话它会跟 onCastChanged 抢着写，换集起播位置和退出后的续播全被它带偏。
-        if (isCasting()) return;
-        long position, duration;
-        mHistory.setPosition(position = mPlayers.getPosition());
-        mHistory.setDuration(duration = mPlayers.getDuration());
-        if (position >= 0 && duration > 0 && !Setting.isIncognito()) {
-            confirmHistoryPlayback();
-            App.execute(() -> mHistory.updateProgress());
-        }
-        if (mHistory.getEnding() > 0 && duration > 0 && mHistory.getEnding() + position >= duration) {
-            checkEnded(false);
-        }
+        if (isCasting() || mHistory == null) return;
+        long position = mPlayers.getPosition(), duration = mPlayers.getDuration();
+        boolean changed = com.fongmi.android.tv.utils.PlaybackProgressPolicy.shouldRecord(
+                mPlayers.isPlaying(), mAwaitingCloudSync || mCloudChoicePending || mSuppressHistorySaves,
+                mHistory.getPosition(), position);
+        if (!changed || duration <= 0) return;
+        mHistory.setPosition(position);
+        mHistory.setDuration(duration);
+        confirmHistoryPlayback();
+        queueHistorySnapshot(true, false);
+        if (mHistory.getEnding() > 0 && mHistory.getEnding() + position >= duration) checkEnded(false);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -2590,6 +2641,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 }
                 break;
             case Player.STATE_READY:
+                if (mAwaitingCloudSync || mCloudChoicePending) mPlayers.pause();
                 cancelBufferingProgress();
                 mPlayers.reset();
                 confirmHistoryPlayback();
@@ -2813,6 +2865,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         String key = TitleKey.normalize(name) + "#" + TitleKey.year(year);
         if (key.equals(mRatingKey)) return;
         mRatingKey = key;
+        mDoubanSubject = null;
         int generation = ++mRatingGeneration;
         mDoubanGenres = new ArrayList<>();
         mRelatedAdapter.setItems(new ArrayList<>());
@@ -2838,16 +2891,31 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 if (result != null) {
                     mDoubanGenres = result.getGenres();
                     setTags(mDoubanGenres);
-                    if (mBinding.content.getText().toString().trim().isEmpty() && !result.getIntro().isEmpty()) {
-                        setText(mBinding.content, 0, result.getIntro());
-                        updateContentExpand();
-                        mBinding.contentLayout.setVisibility(View.VISIBLE);
-                    }
+                    mDoubanSubject = result;
+                    applyDoubanMetadata();
                 }
                 mRelatedAdapter.setItems(recommendations);
                 mBinding.relatedSection.setVisibility(recommendations.isEmpty() ? View.GONE : View.VISIBLE);
             });
         });
+    }
+
+    private void applyDoubanMetadata() {
+        if (mDoubanSubject == null) return;
+        if (mCurrentVod != null) { setCast(mCurrentVod); setMeta(mCurrentVod); }
+        setTags(mDoubanSubject.getGenres());
+        if (!mDoubanSubject.getIntro().isEmpty()) {
+            setText(mBinding.content, 0, mDoubanSubject.getIntro());
+            updateContentExpand();
+            mBinding.contentLayout.setVisibility(View.VISIBLE);
+        }
+        if (!mDoubanSubject.getPic().isEmpty()) {
+            String pic = mDoubanSubject.getPic();
+            ImgUtil.rect(mBinding.name.getText().toString(), pic, mBinding.poster);
+            mBinding.video.setTag(pic);
+            setArtwork(pic);
+            if (mHistory != null) mHistory.setVodPic(pic);
+        }
     }
 
     private void showDoubanRating(double rating) {
@@ -3018,6 +3086,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onPlay() {
+        if (mAwaitingCloudSync || mCloudChoicePending) { mResumeAfterCloudSync = true; return; }
         if (mHistory != null && mPlayers.isEnded()) mPlayers.seekTo(mHistory.getOpening());
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (!mPlayers.isEmpty() && mPlayers.isIdle()) mPlayers.prepare();
@@ -3031,6 +3100,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void setFullscreen(boolean fullscreen) {
         this.fullscreen = fullscreen;
+        refreshBackHandling();
         applyDetailTopInset();
         Util.toggleFullscreen(this, fullscreen);
         if (!fullscreen) showDetailSystemUI();
@@ -3898,9 +3968,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     protected void onStart() {
         super.onStart();
-        mClock.stop().start();
+        mAwaitingCloudSync = !isCasting() && !mPlayers.isPlaying() && App.isAwaitingForegroundSync();
+        mResumeAfterCloudSync = mAwaitingCloudSync;
+        if (mAwaitingCloudSync && mHistory != null) Notify.show("正在同步观看进度…");
+        mClock.stop();
+        if (!mAwaitingCloudSync) mClock.start();
         setStop(false);
-        // 投屏中本地播放器必须保持停着，不然回到前台又开始拉一份流
+        if (!mAwaitingCloudSync && !isCasting() && offerCloudProgress()) return;
         if (!isCasting()) onPlay();
     }
 
@@ -3940,25 +4014,116 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void savePlaybackProgress() {
-        if (!mHistoryPlaybackConfirmed || mHistory == null || mHistory.getCreateTime() <= 0 || Setting.isIncognito()) return;
-        if (isCasting()) {
-            // 投屏时进度在电视那边，本地播放器是停着的，读它只会把记录写回 0
-            // 换集在途时对端报的还是上一集的进度，这时候一个字都不能写
-            if (isCastSwitching()) return;
-            long position = CastManager.get().getPosition();
-            long duration = CastManager.get().getDuration();
-            if (position > 0) mHistory.setPosition(position);
-            if (duration > 0) mHistory.setDuration(duration);
-            mHistory.update();
-            return;
+        if (!mHistoryPlaybackConfirmed || mHistory == null || mAwaitingCloudSync || mCloudChoicePending || mSuppressHistorySaves || Setting.isIncognito()) return;
+        if (isCasting() && isCastSwitching()) return;
+        long position = isCasting() ? CastManager.get().getPosition() : mPlayers.getPosition();
+        long duration = isCasting() ? CastManager.get().getDuration() : mPlayers.getDuration();
+        boolean changed = position >= 0 && position != mHistory.getPosition();
+        if (position >= 0) mHistory.setPosition(position);
+        if (duration > 0) mHistory.setDuration(duration);
+        queueHistorySnapshot(changed, true);
+    }
+
+    private void queueHistorySnapshot(boolean watched, boolean flush) {
+        if (!mHistoryPlaybackConfirmed || mHistory == null || mAwaitingCloudSync || mCloudChoicePending || mSuppressHistorySaves || Setting.isIncognito()) return;
+        History snapshot = History.objectFrom(mHistory.toString());
+        snapshot.setAccountId(mHistory.getAccountId());
+        if (watched) {
+            mLastHistoryCapture = Math.max(System.currentTimeMillis(), Math.max(mLastHistoryCapture, mKnownHistoryVersion) + 1);
+            snapshot.setCreateTime(mLastHistoryCapture);
         }
-        if (mPlayers != null && !mPlayers.isEmpty()) {
-            long position = mPlayers.getPosition();
-            long duration = mPlayers.getDuration();
-            if (position >= 0) mHistory.setPosition(position);
-            if (duration > 0) mHistory.setDuration(duration);
+        int generation = mHistoryWriteGeneration;
+        App.execute(() -> {
+            boolean written;
+            synchronized (mHistoryWriteLock) {
+                if (generation != mHistoryWriteGeneration || mAwaitingCloudSync || mCloudChoicePending || mSuppressHistorySaves
+                        || snapshot.getCreateTime() < mKnownHistoryVersion) return;
+                written = snapshot.savePlayback(mKnownHistoryVersion);
+                if (written) mKnownHistoryVersion = snapshot.getCreateTime();
+            }
+            if (written) {
+                App.post(() -> {
+                    if (generation == mHistoryWriteGeneration && mHistory != null)
+                        mHistory.setCreateTime(Math.max(mHistory.getCreateTime(), snapshot.getCreateTime()));
+                });
+                if (flush) com.fongmi.android.tv.utils.WebDAVSyncManager.get().flushPendingSync();
+            } else App.post(this::offerCloudProgress);
+        });
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onForegroundSyncEvent(com.fongmi.android.tv.event.ForegroundSyncEvent event) {
+        if (isFinishing() || isDestroyed() || isStop()) return;
+        boolean resume = mResumeAfterCloudSync;
+        mAwaitingCloudSync = false;
+        mResumeAfterCloudSync = false;
+        mClock.stop().start();
+        if (event.success && offerCloudProgress()) return;
+        if (!event.success && resume) Notify.show("本次云端同步未成功，继续本机进度");
+        if (resume && !isCasting()) onPlay();
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onProfileChanged(com.fongmi.android.tv.event.ProfileChangedEvent event) {
+        mSuppressHistorySaves = true;
+        mHistoryWriteGeneration++;
+        mPlayers.pause();
+        finish();
+    }
+
+    private boolean offerCloudProgress() {
+        if (mHistory == null || mCloudChoicePending || mAwaitingCloudSync || mSuppressHistorySaves || isStop() || isFinishing() || isDestroyed()) return false;
+        History latest = null;
+        for (History record : com.fongmi.android.tv.db.AppDatabase.get().getHistoryDao().findByName(mHistory.getCid(), mHistory.getVodName())) {
+            if (record.getCreateTime() > mKnownHistoryVersion && (latest == null || record.getCreateTime() > latest.getCreateTime())) latest = record;
         }
-        mHistory.update();
+        if (latest == null) return false;
+        if (TextUtils.equals(latest.getVodRemarks(), mHistory.getVodRemarks()) && Math.abs(latest.getPosition() - mHistory.getPosition()) < 3000) {
+            synchronized (mHistoryWriteLock) { mKnownHistoryVersion = latest.getCreateTime(); }
+            return false;
+        }
+        History remote = latest;
+        mCloudChoicePending = true;
+        mPlayers.pause();
+        checkPlayImg();
+        String localTime = android.text.format.DateUtils.formatElapsedTime(Math.max(0, mHistory.getPosition()) / 1000);
+        String cloudTime = android.text.format.DateUtils.formatElapsedTime(Math.max(0, remote.getPosition()) / 1000);
+        mCloudProgressDialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("发现云端最新观看进度")
+                .setMessage(mHistory.getVodName() + "\n本机：" + mHistory.getVodRemarks() + " · " + localTime
+                        + "\n云端：" + remote.getVodRemarks() + " · " + cloudTime)
+                .setCancelable(false)
+                .setNegativeButton("继续本机进度", (dialog, which) -> {
+                    synchronized (mHistoryWriteLock) {
+                        mHistoryWriteGeneration++;
+                        mKnownHistoryVersion = remote.getCreateTime();
+                        mHistory.setCreateTime(remote.getCreateTime());
+                    }
+                    mCloudChoicePending = false;
+                    onPlay();
+                })
+                .setPositiveButton("跳转到云端进度", (dialog, which) -> {
+                    mSuppressHistorySaves = true;
+                    mHistoryWriteGeneration++;
+                    mPlayers.pause();
+                    mClock.setCallback(null);
+                    mPlayers.reset();
+                    mPlayers.stop();
+                    mHistoryPlaybackConfirmed = false;
+                    mPendingCloudHistory = History.objectFrom(App.gson().toJson(remote));
+                    mCloudResumePosition = Math.max(0, remote.getPosition());
+                    GroupCache.remove(getGroupToken());
+                    getIntent().removeExtra("group");
+                    getIntent().removeExtra("mark");
+                    getIntent().removeExtra("offline");
+                    getIntent().putExtra("key", remote.getSiteKey()).putExtra("id", remote.getVodId())
+                            .putExtra("name", remote.getVodName()).putExtra("pic", remote.getVodPic());
+                    resetSources();
+                    mCloudChoicePending = false;
+                    mSuppressHistorySaves = false;
+                    checkId();
+                }).show();
+        return true;
     }
 
     @Override
@@ -4043,6 +4208,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     protected boolean shouldAnimatePredictiveBack() {
+        if (isFullscreen()) return false;
         return !isLock() || mBinding.playbackPanel.isPanelVisible() || isVisible(mBinding.control.getRoot());
     }
 
@@ -4063,6 +4229,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     protected void onDestroy() {
+        if (mCloudProgressDialog != null) mCloudProgressDialog.dismiss();
         mRatingGeneration++;
         super.onDestroy();
         stopSourceSearch();

@@ -55,6 +55,7 @@
             android:name="android.max_aspect"
             android:value="2.5" />
 
+        <activity android:name=".ui.activity.ProfileSettingsActivity" android:exported="false" />
         <activity
             android:name=".ui.activity.HomeActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
@@ -118,6 +119,16 @@
 
         <activity
             android:name=".ui.activity.KeepActivity"
+            android:screenOrientation="fullUser" />
+
+        <activity
+            android:name=".ui.activity.RecommendListActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:screenOrientation="fullUser" />
+
+        <activity
+            android:name=".ui.activity.RecommendFilterActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|uiMode"
             android:screenOrientation="fullUser" />
 
         <activity

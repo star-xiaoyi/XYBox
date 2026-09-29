@@ -76,7 +76,10 @@ public class SiteDialog implements SiteAdapter.OnClickListener {
 
     private void setDialog() {
         if (adapter.getItemCount() == 0) return;
-        dialog.getWindow().setDimAmount(0);
+        dialog.getWindow().setDimAmount(0.32f);
+        dialog.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        dialog.getWindow().setGravity(android.view.Gravity.CENTER);
+        dialog.getWindow().setWindowAnimations(0);
         dialog.show();
     }
 

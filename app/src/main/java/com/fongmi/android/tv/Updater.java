@@ -44,6 +44,11 @@ public class Updater implements Download.Callback {
      */
     private static final String DEV_API = "https://api.github.com/repos/star-xiaoyi/XYBox/releases?per_page=100";
 
+    private static final String REPOSITORY = "https://github.com/star-xiaoyi/XYBox";
+    private static final java.util.concurrent.atomic.AtomicBoolean CHECKING = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final String[] CACHE = new String[2];
+    private static final long[] CACHE_TIME = new long[2];
+    private static long apiRetryAt;
     private DialogUpdateBinding binding;
     private Download download;
     private AlertDialog dialog;
@@ -85,33 +90,17 @@ public class Updater implements Download.Callback {
 
     public void start(Activity activity) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        if (!CHECKING.compareAndSet(false, true)) {
+            if (!silent) Notify.tip("正在检查更新，请稍候");
+            return;
+        }
         if (!silent) Notify.tip(App.get().getString(R.string.update_check));
-        App.execute(() -> checkUpdate(activity));
+        App.execute(() -> { try { checkUpdate(activity); } finally { CHECKING.set(false); } });
     }
 
     private void checkUpdate(Activity activity) {
         try {
-            String response = OkHttp.string(dev ? DEV_API : RELEASE_API);
-            if (TextUtils.isEmpty(response)) {
-                tipError("检查更新失败：网络连接异常");
-                return;
-            }
-
-            JSONObject release = parseRelease(response);
-            if (release == null) {
-                tipError("检查更新失败：未找到发布版本");
-                return;
-            }
-            // GitHub 的错误响应（404、限流）带 message 字段而非 release 数据。
-            // 不能用 response.contains("404") 判断：APK 体积等数字里也可能出现 404。
-            if (release.has("message")) {
-                String message = release.optString("message");
-                tipError(message.contains("rate limit")
-                        ? "检查更新失败：API请求次数已达上限"
-                        : "检查更新失败：未找到发布版本");
-                return;
-            }
-
+            JSONObject release = fetchRelease();
             String tagName = release.optString("tag_name");
             String version = tagName.startsWith("v") || tagName.startsWith("V") ? tagName.substring(1) : tagName;
             String body = release.optString("body");
@@ -132,6 +121,101 @@ public class Updater implements Download.Callback {
             Logger.e("Updater: " + e.getMessage());
             tipError("检查更新失败：" + e.getMessage());
         }
+    }
+
+    /** API is quota-limited per public IP. Cache successful lookups and fall back to official web feeds. */
+    private JSONObject fetchRelease() throws Exception {
+        int channel = dev ? 1 : 0;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (CACHE[channel] != null && now - CACHE_TIME[channel] < 60_000)
+            return new JSONObject(CACHE[channel]);
+        JSONObject release = null;
+        if (System.currentTimeMillis() >= apiRetryAt) {
+            try (okhttp3.Response response = OkHttp.newCall(dev ? DEV_API : RELEASE_API).execute()) {
+                if (response.code() == 403 || response.code() == 429) {
+                    long retry = System.currentTimeMillis() + 60_000;
+                    try { retry = Math.max(retry, Long.parseLong(response.header("X-RateLimit-Reset", "0")) * 1000); }
+                    catch (NumberFormatException ignored) { }
+                    apiRetryAt = retry;
+                }
+                if (response.isSuccessful() && response.body() != null) release = parseRelease(response.body().string());
+                if (release != null && (release.has("message") || TextUtils.isEmpty(release.optString("tag_name")))) release = null;
+            } catch (Exception error) { Logger.w("Updater API: " + error.getClass().getSimpleName()); }
+        }
+        if (release == null || TextUtils.isEmpty(findApk(release.optJSONArray("assets")))) release = fetchWebRelease();
+        if (release == null || TextUtils.isEmpty(findApk(release.optJSONArray("assets"))))
+            throw new java.io.IOException("暂时无法获取安装包，请稍后重试或从项目发布页下载");
+        CACHE[channel] = release.toString(); CACHE_TIME[channel] = now;
+        return release;
+    }
+
+    private JSONObject fetchWebRelease() throws Exception {
+        JSONObject release = null;
+        if (dev) {
+            try (okhttp3.Response response = OkHttp.newCall(REPOSITORY + "/releases.atom").execute()) {
+                if (!response.isSuccessful() || response.body() == null) throw new java.io.IOException("发布订阅暂时不可用");
+                release = parseFeed(response.body().string());
+            }
+        } else {
+            // GitHub redirects this public page to the latest non-prerelease tag.
+            try (okhttp3.Response response = OkHttp.newCall(REPOSITORY + "/releases/latest").execute()) {
+                String link = response.request().url().toString();
+                String prefix = REPOSITORY + "/releases/tag/";
+                if (response.isSuccessful() && link.startsWith(prefix)) {
+                    String tag = link.substring(prefix.length());
+                    if (validTag(tag) && !normalizeVersion(tag).contains("-")) release = new JSONObject().put("tag_name", tag);
+                }
+            }
+        }
+        if (release == null) throw new java.io.IOException("暂时无法读取发布版本");
+        String tag = release.getString("tag_name");
+        try (okhttp3.Response response = OkHttp.newCall(REPOSITORY + "/releases/expanded_assets/" + tag).execute()) {
+            if (!response.isSuccessful() || response.body() == null) throw new java.io.IOException("安装包列表暂时不可用");
+            release.put("assets", parseWebAssets(response.body().string(), tag));
+        }
+        return release;
+    }
+
+    private boolean validTag(String tag) {
+        return tag.matches("[vV]?[0-9]+\\.[0-9]+\\.[0-9]+(?:-beta[0-9]+)?");
+    }
+
+    private JSONObject parseFeed(String xml) throws Exception {
+        org.xmlpull.v1.XmlPullParser parser = android.util.Xml.newPullParser();
+        parser.setFeature(org.xmlpull.v1.XmlPullParser.FEATURE_PROCESS_NAMESPACES, true);
+        parser.setInput(new java.io.StringReader(xml));
+        JSONObject latest = null, entry = null;
+        String prefix = REPOSITORY + "/releases/tag/";
+        for (int event = parser.next(); event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT; event = parser.next()) {
+            if (event == org.xmlpull.v1.XmlPullParser.START_TAG) {
+                if ("entry".equals(parser.getName())) entry = new JSONObject();
+                else if (entry != null && "link".equals(parser.getName())) {
+                    String href = parser.getAttributeValue(null, "href");
+                    if (href != null && href.startsWith(prefix) && validTag(href.substring(prefix.length())))
+                        entry.put("tag_name", href.substring(prefix.length()));
+                } else if (entry != null && "content".equals(parser.getName())) {
+                    entry.put("body", android.text.Html.fromHtml(parser.nextText()).toString().trim());
+                }
+            } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && "entry".equals(parser.getName())) {
+                if (entry != null && entry.has("tag_name") && (latest == null
+                        || compare(normalizeVersion(entry.getString("tag_name")), normalizeVersion(latest.getString("tag_name"))) > 0)) latest = entry;
+                entry = null;
+            }
+        }
+        return latest;
+    }
+
+    private JSONArray parseWebAssets(String html, String tag) throws Exception {
+        String prefix = "/star-xiaoyi/XYBox/releases/download/" + tag + "/";
+        java.util.regex.Matcher links = java.util.regex.Pattern.compile("href=\"(" + java.util.regex.Pattern.quote(prefix) + "[^\"<>]+)\"").matcher(html);
+        JSONArray assets = new JSONArray();
+        while (links.find()) {
+            String path = links.group(1).replace("&amp;", "&");
+            String name = android.net.Uri.decode(path.substring(prefix.length()));
+            if (!name.toLowerCase(Locale.ROOT).endsWith(".apk")) continue;
+            assets.put(new JSONObject().put("name", name).put("browser_download_url", "https://github.com" + path));
+        }
+        return assets;
     }
 
     /**

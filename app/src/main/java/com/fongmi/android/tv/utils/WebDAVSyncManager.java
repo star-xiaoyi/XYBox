@@ -98,6 +98,7 @@ public final class WebDAVSyncManager {
 
     private static volatile WebDAVSyncManager instance;
     private volatile boolean syncing;
+    private boolean testing;
     private Sardine sardine;
     private String baseUrl;
     private String username;
@@ -143,8 +144,36 @@ public final class WebDAVSyncManager {
         return TextUtils.isEmpty(url) || url.endsWith("/") ? url : url + "/";
     }
 
-    public synchronized void reloadConfig() {
+    /** Do not switch while a network transaction could apply another profile's records. */
+    public synchronized boolean switchProfile(String id) {
+        if (syncing || testing) return false;
+        App.removeCallbacks(dirtySyncTask);
+        dirtySyncScheduled = false;
+        dirtyGeneration = 0;
+        flushAfterSync = false;
+        LocalProfile.activate(id);
+        directoryReady = false;
         loadConfig();
+        return true;
+    }
+
+    public synchronized String configure(String url, String user, String secret) {
+        if (syncing || testing) return "正在同步或测试，请稍后保存配置";
+        for (String id : LocalProfile.ids()) {
+            if (TextUtils.isEmpty(url)) break;
+            if (id.equals(LocalProfile.id())) continue;
+            String otherUrl = Prefers.getString(LocalProfile.keyFor(id, "webdav_url"), "");
+            String otherUser = Prefers.getString(LocalProfile.keyFor(id, "webdav_username"), "");
+            if (normalizeBaseUrl(url).equals(normalizeBaseUrl(otherUrl)) && user.equals(otherUser))
+                return "此同步目录已用于另一个本地账号，请为当前账号填写独立目录";
+        }
+        Setting.putWebDAVUrl(url); Setting.putWebDAVUsername(user); Setting.putWebDAVPassword(secret);
+        loadConfig();
+        return null;
+    }
+
+    public synchronized void reloadConfig() {
+        if (!syncing && !testing) loadConfig();
     }
 
     public boolean isConfigured() {
@@ -158,7 +187,15 @@ public final class WebDAVSyncManager {
     }
 
     public TestResult testConnectionWithMessage() {
-        reloadConfig();
+        synchronized (this) {
+            if (syncing || testing) return new TestResult(false, "正在同步或测试，请稍候");
+            loadConfig(); testing = true;
+        }
+        try { return testConnectionInternal(); }
+        finally { synchronized (this) { testing = false; } }
+    }
+
+    private TestResult testConnectionInternal() {
         if (!isConfigured()) return new TestResult(false, "WebDAV未配置，请检查地址、用户名和应用密码");
         if (!isNetworkAvailable()) return new TestResult(false, "当前网络不可用");
         try {
@@ -178,13 +215,30 @@ public final class WebDAVSyncManager {
     }
 
     public SyncResult syncNow() {
+        return syncNow(false);
+    }
+
+    public SyncResult syncOnForeground() {
+        return syncNow(true);
+    }
+
+    private SyncResult syncNow(boolean waitForRunning) {
         final long generationAtStart;
         synchronized (this) {
+            while (syncing && waitForRunning) {
+                try { wait(); }
+                catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return new SyncResult(false, "同步已取消", 0, 0);
+                }
+            }
             if (syncing) {
                 // 本轮上传期间又产生了观看进度，结束后必须再同步一次。
                 flushAfterSync = true;
                 return new SyncResult(false, "同步正在进行中，请稍候", 0, 0);
             }
+            if (testing) return new SyncResult(false, "正在测试连接，请稍候", 0, 0);
+            loadConfig();
             syncing = true;
             flushAfterSync = false;
             generationAtStart = dirtyGeneration;
@@ -241,6 +295,7 @@ public final class WebDAVSyncManager {
             boolean flush;
             synchronized (this) {
                 syncing = false;
+                notifyAll();
                 flush = flushAfterSync && dirtyGeneration != 0;
                 flushAfterSync = false;
             }
@@ -259,7 +314,7 @@ public final class WebDAVSyncManager {
             if (generation != dirtyGeneration) return;
             dirtyGeneration = 0;
             dirtySyncScheduled = false;
-            Prefers.getPrefers().edit().putBoolean(PREF_PENDING_SYNC, false).commit();
+            Prefers.getPrefers().edit().putBoolean(LocalProfile.key(PREF_PENDING_SYNC), false).commit();
         }
         App.removeCallbacks(dirtySyncTask);
         WebDAVSyncJobService.cancel();
@@ -293,8 +348,8 @@ public final class WebDAVSyncManager {
     private void markDirty() {
         synchronized (this) {
             dirtyGeneration++;
-            if (!Prefers.getBoolean(PREF_PENDING_SYNC)) {
-                Prefers.getPrefers().edit().putBoolean(PREF_PENDING_SYNC, true).commit();
+            if (!Prefers.getBoolean(LocalProfile.key(PREF_PENDING_SYNC))) {
+                Prefers.getPrefers().edit().putBoolean(LocalProfile.key(PREF_PENDING_SYNC), true).commit();
             }
         }
         WebDAVSyncJobService.schedule();
@@ -314,7 +369,7 @@ public final class WebDAVSyncManager {
      */
     public void flushPendingSync() {
         synchronized (this) {
-            if (dirtyGeneration == 0 && !Prefers.getBoolean(PREF_PENDING_SYNC)) return;
+            if (dirtyGeneration == 0 && !Prefers.getBoolean(LocalProfile.key(PREF_PENDING_SYNC))) return;
             dirtySyncScheduled = false;
             if (syncing) {
                 flushAfterSync = true;
@@ -332,7 +387,7 @@ public final class WebDAVSyncManager {
     }
 
     public synchronized boolean hasPendingSync() {
-        return dirtyGeneration != 0 || Prefers.getBoolean(PREF_PENDING_SYNC);
+        return dirtyGeneration != 0 || Prefers.getBoolean(LocalProfile.key(PREF_PENDING_SYNC));
     }
 
     private void dispatchDirtySync() {
@@ -348,16 +403,16 @@ public final class WebDAVSyncManager {
     }
 
     public String getLastStatus() {
-        return Prefers.getString(PREF_LAST_STATUS, "尚未同步");
+        return Prefers.getString(LocalProfile.key(PREF_LAST_STATUS), "尚未同步");
     }
 
     public void markHistoryDeleted(History history) {
-        if (history == null || TextUtils.isEmpty(history.getKey())) return;
+        if (history == null || !LocalProfile.id().equals(history.getAccountId()) || TextUtils.isEmpty(history.getKey())) return;
         markDeleted(HISTORY_PREFIX + history.getKey());
     }
 
     public void markKeepDeleted(Keep keep) {
-        if (keep == null || TextUtils.isEmpty(keep.getKey())) return;
+        if (keep == null || !LocalProfile.id().equals(keep.getAccountId()) || TextUtils.isEmpty(keep.getKey())) return;
         markDeleted(KEEP_PREFIX + keep.getKey());
     }
 
@@ -706,12 +761,21 @@ public final class WebDAVSyncManager {
         for (History history : merged.histories) historyKeys.add(history.getKey());
         for (Keep keep : merged.keeps) keepKeys.add(keep.getKey());
         AppDatabase.get().runInTransaction(() -> {
-            AppDatabase.get().getHistoryDao().insertOrUpdate(merged.histories);
+            // 网络请求期间仍可能继续观看，下载的旧快照不能回写覆盖刚保存的新进度。
+            for (History incoming : merged.histories) {
+                incoming.setAccountId(LocalProfile.id());
+                History current = AppDatabase.get().getHistoryDao().findByKey(incoming.getKey());
+                if (current == null || PlaybackProgressPolicy.canApplyDownloaded(incoming.getCreateTime(), current.getCreateTime()))
+                    AppDatabase.get().getHistoryDao().insertOrUpdate(incoming);
+            }
+            for (Keep incoming : merged.keeps) incoming.setAccountId(LocalProfile.id());
             AppDatabase.get().getKeepDao().insertOrUpdate(merged.keeps);
             for (Map.Entry<String, Long> entry : merged.tombstones.entrySet()) {
                 if (entry.getKey().startsWith(HISTORY_PREFIX)) {
                     String key = entry.getKey().substring(HISTORY_PREFIX.length());
-                    if (!historyKeys.contains(key)) AppDatabase.get().getHistoryDao().deleteByKey(key);
+                    History current = AppDatabase.get().getHistoryDao().findByKey(key);
+                    if (!historyKeys.contains(key) && (current == null || current.getCreateTime() <= entry.getValue()))
+                        AppDatabase.get().getHistoryDao().deleteByKey(key);
                 } else if (entry.getKey().startsWith(KEEP_PREFIX)) {
                     String key = entry.getKey().substring(KEEP_PREFIX.length());
                     if (!keepKeys.contains(key)) AppDatabase.get().getKeepDao().deleteByKey(key);
@@ -800,14 +864,14 @@ public final class WebDAVSyncManager {
             if (remoteExists(tempName)) sardine.delete(tempUrl);
             sardine.put(tempUrl, bytes, "application/json; charset=utf-8");
             sardine.move(tempUrl, finalUrl, true);
-            Prefers.put(PREF_ATOMIC_REPLACE, "true");
+            Prefers.put(LocalProfile.key(PREF_ATOMIC_REPLACE), "true");
         } catch (Exception e) {
             try {
                 sardine.delete(tempUrl);
             } catch (Exception ignored) {
             }
             if (e instanceof SyncConflictException || !isAtomicReplaceUnsupported(e)) throw e;
-            Prefers.put(PREF_ATOMIC_REPLACE, "false");
+            Prefers.put(LocalProfile.key(PREF_ATOMIC_REPLACE), "false");
             Logger.w("WebDAV: 服务器不支持临时文件替换，改用兼容写入");
             verifyRemoteUnchanged(expected);
             sardine.put(finalUrl, bytes, "application/json; charset=utf-8");
@@ -832,18 +896,18 @@ public final class WebDAVSyncManager {
     }
 
     private void createRemoteBackup(RemoteSnapshot expected, String finalUrl) {
-        if (!expected.exists || isJianguoyun() || "false".equals(Prefers.getString(PREF_REMOTE_COPY, ""))) return;
+        if (!expected.exists || isJianguoyun() || "false".equals(Prefers.getString(LocalProfile.key(PREF_REMOTE_COPY), ""))) return;
         try {
             sardine.copy(finalUrl, fileUrl(BACKUP_FILE), true);
-            Prefers.put(PREF_REMOTE_COPY, "true");
+            Prefers.put(LocalProfile.key(PREF_REMOTE_COPY), "true");
         } catch (Exception e) {
-            if (isAtomicReplaceUnsupported(e)) Prefers.put(PREF_REMOTE_COPY, "false");
+            if (isAtomicReplaceUnsupported(e)) Prefers.put(LocalProfile.key(PREF_REMOTE_COPY), "false");
             Logger.w("WebDAV: 创建云端回滚副本失败，继续写入: " + e.getMessage());
         }
     }
 
     private boolean shouldTryAtomicReplace() {
-        return !isJianguoyun() && !"false".equals(Prefers.getString(PREF_ATOMIC_REPLACE, ""));
+        return !isJianguoyun() && !"false".equals(Prefers.getString(LocalProfile.key(PREF_ATOMIC_REPLACE), ""));
     }
 
     private boolean isJianguoyun() {
@@ -874,7 +938,7 @@ public final class WebDAVSyncManager {
         putLong(PREF_LAST_SUCCESS, now);
         putLong(PREF_LAST_PROGRESS, now);
         putLong(PREF_SETTINGS_TIME, merged.settingsUpdatedAt);
-        Prefers.put(PREF_SETTINGS_HASH, settingsHash(merged.settings));
+        Prefers.put(LocalProfile.key(PREF_SETTINGS_HASH), settingsHash(merged.settings));
         saveLocalTombstones(merged.tombstones);
     }
 
@@ -906,7 +970,7 @@ public final class WebDAVSyncManager {
 
     private long resolveLocalSettingsTime(Map<String, Object> settings, boolean remoteHasSettings) {
         String currentHash = settingsHash(settings);
-        String previousHash = Prefers.getString(PREF_SETTINGS_HASH, "");
+        String previousHash = Prefers.getString(LocalProfile.key(PREF_SETTINGS_HASH), "");
         long previousTime = getLong(PREF_SETTINGS_TIME);
         if (TextUtils.isEmpty(previousHash)) return remoteHasSettings ? 0 : System.currentTimeMillis();
         return previousHash.equals(currentHash) ? previousTime : System.currentTimeMillis();
@@ -919,7 +983,7 @@ public final class WebDAVSyncManager {
     private Map<String, Long> loadLocalTombstones() {
         try {
             Type type = new TypeToken<Map<String, Long>>() {}.getType();
-            Map<String, Long> map = SYNC_GSON.fromJson(Prefers.getString(PREF_TOMBSTONES, "{}"), type);
+            Map<String, Long> map = SYNC_GSON.fromJson(Prefers.getString(LocalProfile.key(PREF_TOMBSTONES), "{}"), type);
             return map == null ? new HashMap<>() : new HashMap<>(map);
         } catch (Exception e) {
             return new HashMap<>();
@@ -927,7 +991,7 @@ public final class WebDAVSyncManager {
     }
 
     private void saveLocalTombstones(Map<String, Long> tombstones) {
-        Prefers.put(PREF_TOMBSTONES, SYNC_GSON.toJson(tombstones));
+        Prefers.put(LocalProfile.key(PREF_TOMBSTONES), SYNC_GSON.toJson(tombstones));
     }
 
     private void normalize(SyncEnvelope envelope) {
@@ -1015,10 +1079,10 @@ public final class WebDAVSyncManager {
     }
 
     private String getDeviceId() {
-        String id = Prefers.getString(PREF_DEVICE_ID, "");
+        String id = Prefers.getString(LocalProfile.key(PREF_DEVICE_ID), "");
         if (!TextUtils.isEmpty(id)) return id;
         id = UUID.randomUUID().toString();
-        Prefers.put(PREF_DEVICE_ID, id);
+        Prefers.put(LocalProfile.key(PREF_DEVICE_ID), id);
         return id;
     }
 
@@ -1030,7 +1094,7 @@ public final class WebDAVSyncManager {
 
     private SyncResult finish(boolean success, String message, int histories, int keeps) {
         if (!success && !message.startsWith("同步失败")) message = "同步失败：" + message;
-        Prefers.put(PREF_LAST_STATUS, message);
+        Prefers.put(LocalProfile.key(PREF_LAST_STATUS), message);
         if (success) Logger.d("WebDAV: " + message); else Logger.e("WebDAV: " + message);
         return new SyncResult(success, message, histories, keeps);
     }
@@ -1051,14 +1115,14 @@ public final class WebDAVSyncManager {
 
     private long getLong(String key) {
         try {
-            return Long.parseLong(Prefers.getString(key, "0"));
+            return Long.parseLong(Prefers.getString(LocalProfile.key(key), "0"));
         } catch (Exception e) {
             return 0;
         }
     }
 
     private void putLong(String key, long value) {
-        Prefers.put(key, String.valueOf(value));
+        Prefers.put(LocalProfile.key(key), String.valueOf(value));
     }
 
     // Compatibility API used by older UI variants.

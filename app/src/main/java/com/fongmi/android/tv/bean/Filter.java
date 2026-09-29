@@ -41,6 +41,12 @@ public class Filter implements Parcelable {
     public Filter() {
     }
 
+    public Filter(String key, String name, List<Value> value) {
+        this.key = key;
+        this.name = name;
+        this.value = value;
+    }
+
     public String getKey() {
         return key;
     }

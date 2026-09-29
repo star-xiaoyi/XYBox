@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/screen_background"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <FrameLayout
+        android:id="@+id/page_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/screen_background"
+        android:orientation="vertical">
+
+        <com.fongmi.android.tv.ui.custom.ProgressLayout
+            android:id="@+id/results"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/screen_background">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recycler"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:overScrollMode="never"
+                android:paddingStart="10dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="24dp"
+                tools:listitem="@layout/adapter_recommend_browse" />
+            <TextView
+                android:id="@+id/page_status"
+                android:visibility="gone"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+            </LinearLayout>
+        </com.fongmi.android.tv.ui.custom.ProgressLayout>
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/filter_options"
+            android:background="@color/screen_background"
+            android:elevation="2dp"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:nestedScrollingEnabled="true"
+            android:overScrollMode="never"
+            tools:listitem="@layout/adapter_filter" />
+
+    </FrameLayout>
+
+    <com.fongmi.android.tv.ui.custom.SecondaryGlassToolbarView
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:elevation="8dp"
+        android:outlineProvider="none" />
+
+</FrameLayout>

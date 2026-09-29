@@ -63,10 +63,14 @@ public class Douban {
         if (!TextUtils.isEmpty(country)) builder.addQueryParameter("countries", country);
         if (!TextUtils.isEmpty(yearRange)) builder.addQueryParameter("year_range", yearRange);
         List<Item> items = new ArrayList<>();
-        try (Response response = OkHttp.newCall(builder.build().toString(), Headers.of("Referer", "https://movie.douban.com/")).execute()) {
+        okhttp3.Call call = OkHttp.newCall(builder.build().toString(), Headers.of("Referer", "https://movie.douban.com/"));
+        call.timeout().timeout(20, java.util.concurrent.TimeUnit.SECONDS);
+        try (Response response = call.execute()) {
             if (!response.isSuccessful()) throw new IOException("Search HTTP " + response.code());
+            if (response.body() == null) throw new IOException("Search response has no body");
             JsonObject root = JsonParser.parseString(response.body().string()).getAsJsonObject();
             JsonElement data = root.get("data");
+            if (data == null || !data.isJsonArray()) throw new IOException("Search response has no data array");
             if (data != null && data.isJsonArray()) {
                 int rank = start + 1;
                 for (JsonElement element : data.getAsJsonArray()) {
@@ -220,16 +224,29 @@ public class Douban {
 
         private String id = "";
         private String intro = "";
+        private String cover = "";
         private double rating;
         private final List<String> genres = new ArrayList<>();
+        private final List<String> directors = new ArrayList<>();
+        private final List<String> actors = new ArrayList<>();
+        private final List<String> countries = new ArrayList<>();
+        private String year = "";
 
         static Subject parse(String id, JsonObject object) {
             Subject subject = new Subject();
             subject.id = id;
+            JsonElement pic = object.get("pic");
+            subject.cover = pic != null && pic.isJsonObject() ? getString(pic.getAsJsonObject(), "large") : "";
+            if (subject.cover.isEmpty()) subject.cover = Item.getCover(object);
             subject.intro = getString(object, "intro").replace('\n', ' ').trim();
             JsonElement rating = object.get("rating");
             if (rating != null && rating.isJsonObject()) subject.rating = getDouble(rating.getAsJsonObject(), "value");
             addStrings(subject.genres, object.get("genres"));
+            addPeople(subject.directors, object.get("directors"));
+            addPeople(subject.actors, object.get("actors"));
+            if (subject.actors.isEmpty()) addPeople(subject.actors, object.get("casts"));
+            addStrings(subject.countries, object.get("countries"));
+            subject.year = getString(object, "year");
             return subject;
         }
 
@@ -241,9 +258,18 @@ public class Douban {
             return intro;
         }
 
+        public String getPic() {
+            return cover.isEmpty() ? "" : cover + "@Referer=" + REFERER;
+        }
+
         public double getRating() {
             return rating;
         }
+
+        public List<String> getDirectors() { return new ArrayList<>(directors); }
+        public List<String> getActors() { return new ArrayList<>(actors); }
+        public List<String> getCountries() { return new ArrayList<>(countries); }
+        public String getYear() { return year; }
 
         public List<String> getGenres() {
             return new ArrayList<>(genres);
@@ -281,6 +307,7 @@ public class Douban {
             item.id = getString(object, "id");
             item.title = getString(object, "title");
             item.cover = getString(object, "cover");
+            item.year = getString(object, "year");
             item.rating = getDouble(object, "rate");
             List<String> people = new ArrayList<>();
             addStrings(people, object.get("directors"));
@@ -367,6 +394,15 @@ public class Douban {
             return element == null || element.isJsonNull() ? 0 : element.getAsDouble();
         } catch (Exception e) {
             return 0;
+        }
+    }
+
+    private static void addPeople(List<String> target, JsonElement element) {
+        if (element == null || !element.isJsonArray()) return;
+        for (JsonElement item : element.getAsJsonArray()) {
+            String name = item.isJsonObject() ? getString(item.getAsJsonObject(), "name")
+                    : item.isJsonPrimitive() ? item.getAsString().trim() : "";
+            if (!name.isEmpty() && !target.contains(name)) target.add(name);
         }
     }
 

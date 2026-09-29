@@ -36,8 +36,10 @@ public class KeepAdapter extends RecyclerView.Adapter<KeepAdapter.ViewHolder> {
     }
 
     public void setSize(int[] size) {
+        if (width == size[0] && height == size[1]) return;
         this.width = size[0];
         this.height = size[1];
+        notifyDataSetChanged();
     }
 
     public boolean isDelete() {
@@ -86,6 +88,9 @@ public class KeepAdapter extends RecyclerView.Adapter<KeepAdapter.ViewHolder> {
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+        holder.itemView.getLayoutParams().width = width > 0 ? width : ViewGroup.LayoutParams.MATCH_PARENT;
+        holder.itemView.getLayoutParams().height = height > 0 ? height : Math.round(180 * holder.itemView.getResources().getDisplayMetrics().density);
+        holder.itemView.requestLayout();
         Keep item = mItems.get(position);
         holder.binding.name.setText(item.getVodName());
         holder.binding.remark.setVisibility(View.GONE);

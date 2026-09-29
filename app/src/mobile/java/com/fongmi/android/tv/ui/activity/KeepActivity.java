@@ -61,9 +61,21 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     private void setRecyclerView() {
         mBinding.recycler.setHasFixedSize(true);
         mBinding.recycler.getItemAnimator().setChangeDuration(0);
-        mBinding.recycler.setLayoutManager(new GridLayoutManager(this, Product.getColumn(this)));
+        mBinding.recycler.setLayoutManager(new GridLayoutManager(this, 3));
         mBinding.recycler.setAdapter(mAdapter = new KeepAdapter(this));
-        mAdapter.setSize(Product.getSpec(getActivity()));
+        mBinding.recycler.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob) -> resizeCards(r-l));
+        mBinding.recycler.post(() -> resizeCards(mBinding.recycler.getWidth()));
+    }
+
+    private void resizeCards(int width) {
+        if (width <= 0) return;
+        float density = getResources().getDisplayMetrics().density;
+        int available = width - mBinding.recycler.getPaddingLeft() - mBinding.recycler.getPaddingRight();
+        int columns = Math.max(2, Math.min(8, (int) (available / density / 100)));
+        GridLayoutManager grid = (GridLayoutManager) mBinding.recycler.getLayoutManager();
+        if (grid.getSpanCount() != columns) grid.setSpanCount(columns);
+        int card = Math.max(1, available / columns - Math.round(16 * density));
+        mAdapter.setSize(new int[]{card, Math.round(card * 1.48f)});
     }
 
     private void getKeep() {
@@ -95,7 +107,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     private void onSync(View view) {
         WebDAVSyncManager manager = WebDAVSyncManager.get();
         if (!manager.isConfigured()) {
-            Notify.tip("请先在设置中配置 WebDAV");
+            Notify.tip("请先在“我的”中配置 WebDAV");
             return;
         }
         mBinding.toolbar.setPrimaryActionEnabled(false);

@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.fongmi.android.tv.ui.custom.ProgressLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/progress_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/screen_background">
+
+    <FrameLayout
+        android:id="@+id/content_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <com.fongmi.android.tv.ui.custom.HomeGlassHeaderView
+            android:id="@+id/header_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:elevation="8dp"
+            android:outlineProvider="none" />
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/scroll"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:fillViewport="true"
+                android:overScrollMode="never"
+                android:paddingBottom="92dp">
+
+                <LinearLayout
+                    android:id="@+id/home_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:orientation="vertical"
+                    android:paddingTop="92dp"
+                    android:paddingBottom="24dp">
+
+                    <LinearLayout
+                        android:id="@+id/hero_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipChildren="false"
+                        android:orientation="vertical">
+
+                        <FrameLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="10dp"
+                            android:clipChildren="false"
+                            android:clipToPadding="false">
+
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/hero_list"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:clipChildren="false"
+                                android:clipToPadding="false"
+                                android:overScrollMode="never"
+                                tools:listitem="@layout/adapter_recommend_hero" />
+                        </FrameLayout>
+                    </LinearLayout>
+
+                    <FrameLayout android:id="@+id/category_header"
+                        android:layout_width="match_parent" android:layout_height="48dp"
+                        android:clipChildren="false" android:clipToPadding="false">
+                        <com.fongmi.android.tv.ui.custom.ProgressiveGlassOverlayView
+                            android:id="@+id/category_blur" android:layout_width="match_parent"
+                            android:layout_height="72dp" android:visibility="gone" />
+                    <LinearLayout
+                        android:id="@+id/channel_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:paddingEnd="0dp">
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/channel"
+                            android:layout_width="0dp"
+                            android:layout_height="44dp"
+                            android:layout_weight="1"
+                            android:clipToPadding="false"
+                            android:overScrollMode="never"
+                            android:paddingStart="8dp"
+                            android:paddingEnd="8dp" />
+                        <TextView
+                            android:id="@+id/filter_button"
+                            android:visibility="gone"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="6dp"
+                            android:drawablePadding="4dp"
+                            android:text="@string/vod_filter"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_primary"
+                            app:drawableStartCompat="@drawable/ic_fab_filter"
+                            app:drawableTint="@color/text_primary" />
+                    </LinearLayout>
+
+                    </FrameLayout>
+
+                    <com.fongmi.android.tv.ui.custom.ProgressLayout
+                        android:id="@+id/category_results"
+                        android:layout_width="match_parent"
+                        android:layout_height="480dp"
+                        android:visibility="gone">
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/category_grid"
+                                android:layout_width="match_parent"
+                                android:layout_height="0dp"
+                                android:layout_weight="1"
+                                android:clipToPadding="false"
+                                android:paddingStart="10dp"
+                                android:paddingEnd="10dp"
+                                android:paddingTop="10dp"
+                                android:overScrollMode="never" />
+                            <TextView
+                                android:id="@+id/category_status"
+                                android:visibility="gone"
+                                android:layout_width="match_parent"
+                                android:layout_height="36dp"
+                                android:gravity="center"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </com.fongmi.android.tv.ui.custom.ProgressLayout>
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rank_cards"
+                        android:layout_width="match_parent"
+                        android:layout_height="270dp"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:overScrollMode="never"
+                        android:paddingStart="12dp"
+                        android:paddingTop="10dp"
+                        android:paddingEnd="12dp"
+                        android:paddingBottom="10dp"
+                        tools:listitem="@layout/adapter_recommend_rank_card" />
+
+                    <LinearLayout android:id="@+id/weekly_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:orientation="vertical" android:visibility="gone">
+                        <LinearLayout style="@style/RecommendSectionHeader">
+                            <TextView style="@style/RecommendSectionTitle" android:text="@string/recommend_weekly" />
+                            <TextView android:id="@+id/weekly_more" style="@style/RecommendSectionMore" />
+                        </LinearLayout>
+                        <androidx.recyclerview.widget.RecyclerView android:id="@+id/weekly_list" style="@style/RecommendPosterRow" tools:listitem="@layout/adapter_recommend" />
+                    </LinearLayout>
+
+                    <LinearLayout android:id="@+id/movie_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:orientation="vertical" android:visibility="gone">
+                        <LinearLayout style="@style/RecommendSectionHeader">
+                            <TextView style="@style/RecommendSectionTitle" android:text="@string/recommend_movie_hot" />
+                            <TextView android:id="@+id/movie_more" style="@style/RecommendSectionMore" />
+                        </LinearLayout>
+                        <androidx.recyclerview.widget.RecyclerView android:id="@+id/movie_list" style="@style/RecommendPosterRow" tools:listitem="@layout/adapter_recommend" />
+                    </LinearLayout>
+
+                    <LinearLayout android:id="@+id/tv_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:orientation="vertical" android:visibility="gone">
+                        <LinearLayout style="@style/RecommendSectionHeader">
+                            <TextView style="@style/RecommendSectionTitle" android:text="@string/recommend_tv_hot" />
+                            <TextView android:id="@+id/tv_more" style="@style/RecommendSectionMore" />
+                        </LinearLayout>
+                        <androidx.recyclerview.widget.RecyclerView android:id="@+id/tv_list" style="@style/RecommendPosterRow" tools:listitem="@layout/adapter_recommend" />
+                    </LinearLayout>
+
+                    <LinearLayout android:id="@+id/animation_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:orientation="vertical" android:visibility="gone">
+                        <LinearLayout style="@style/RecommendSectionHeader">
+                            <TextView style="@style/RecommendSectionTitle" android:text="@string/recommend_animation_hot" />
+                            <TextView android:id="@+id/animation_more" style="@style/RecommendSectionMore" />
+                        </LinearLayout>
+                        <androidx.recyclerview.widget.RecyclerView android:id="@+id/animation_list" style="@style/RecommendPosterRow" tools:listitem="@layout/adapter_recommend" />
+                    </LinearLayout>
+
+                    <LinearLayout android:id="@+id/variety_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:orientation="vertical" android:visibility="gone">
+                        <LinearLayout style="@style/RecommendSectionHeader">
+                            <TextView style="@style/RecommendSectionTitle" android:text="@string/recommend_variety_hot" />
+                            <TextView android:id="@+id/variety_more" style="@style/RecommendSectionMore" />
+                        </LinearLayout>
+                        <androidx.recyclerview.widget.RecyclerView android:id="@+id/variety_list" style="@style/RecommendPosterRow" tools:listitem="@layout/adapter_recommend" />
+                    </LinearLayout>
+
+                    <LinearLayout android:id="@+id/top_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:orientation="vertical" android:visibility="gone">
+                        <LinearLayout style="@style/RecommendSectionHeader">
+                            <TextView style="@style/RecommendSectionTitle" android:text="@string/recommend_top250" />
+                            <TextView android:id="@+id/top_more" style="@style/RecommendSectionMore" />
+                        </LinearLayout>
+                        <androidx.recyclerview.widget.RecyclerView android:id="@+id/top_list" style="@style/RecommendPosterRow" tools:listitem="@layout/adapter_recommend" />
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.core.widget.NestedScrollView>
+
+            <FrameLayout
+                android:id="@+id/search_content"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/screen_background"
+                android:paddingTop="56dp"
+                android:visibility="gone" />
+        </FrameLayout>
+        <com.fongmi.android.tv.ui.custom.LiquidGlassSuggestionPanelView
+            android:id="@+id/search_suggestion_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:elevation="12dp"
+            android:visibility="gone">
+            <com.fongmi.android.tv.ui.custom.CustomRecyclerView
+                android:id="@+id/search_suggestions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:overScrollMode="never"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+                app:maxHeight="272dp" />
+        </com.fongmi.android.tv.ui.custom.LiquidGlassSuggestionPanelView>
+    </FrameLayout>
+</com.fongmi.android.tv.ui.custom.ProgressLayout>
