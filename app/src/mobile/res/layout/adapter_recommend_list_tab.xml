@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="38dp"
+    android:layout_gravity="center_vertical"
+    android:layout_marginEnd="9dp"
+    android:background="@drawable/selector_chip_bg"
+    android:gravity="center"
+    android:minWidth="86dp"
+    android:paddingStart="18dp"
+    android:paddingEnd="18dp"
+    android:textColor="@color/recommend_rank_tab_text"
+    android:textSize="14sp"
+    android:textStyle="bold"
+    tools:text="热门电影" />

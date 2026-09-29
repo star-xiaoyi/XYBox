@@ -9,7 +9,6 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.App;
-import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.ActivityHistoryBinding;
@@ -58,9 +57,9 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
     private void setRecyclerView() {
         mBinding.recycler.setHasFixedSize(true);
         mBinding.recycler.getItemAnimator().setChangeDuration(0);
-        mBinding.recycler.setLayoutManager(new GridLayoutManager(this, Product.getColumn(this)));
+        int columns = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE ? 2 : 1;
+        mBinding.recycler.setLayoutManager(new GridLayoutManager(this, columns));
         mBinding.recycler.setAdapter(mAdapter = new HistoryAdapter(this));
-        mAdapter.setSize(Product.getSpec(getActivity()));
     }
 
     private void getHistory() {

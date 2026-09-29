@@ -10,7 +10,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.History;
-import com.fongmi.android.tv.databinding.AdapterVodBinding;
+import com.fongmi.android.tv.databinding.AdapterHistoryBinding;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.ResUtil;
 
@@ -21,7 +21,6 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
 
     private final OnClickListener mListener;
     private final List<History> mItems;
-    private int width, height;
     private boolean delete;
 
     public HistoryAdapter(OnClickListener listener) {
@@ -36,11 +35,6 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
         void onItemDelete(History item);
 
         boolean onLongClick();
-    }
-
-    public void setSize(int[] size) {
-        this.width = size[0];
-        this.height = size[1];
     }
 
     public boolean isDelete() {
@@ -81,9 +75,7 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        ViewHolder holder = new ViewHolder(AdapterVodBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false));
-        holder.binding.getRoot().getLayoutParams().width = width;
-        holder.binding.getRoot().getLayoutParams().height = height;
+        ViewHolder holder = new ViewHolder(AdapterHistoryBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false));
         return holder;
     }
 
@@ -91,9 +83,16 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         History item = mItems.get(position);
         holder.binding.name.setText(item.getVodName());
-        holder.binding.site.setText(item.getSiteName());
-        holder.binding.site.setVisibility(item.getSiteVisible());
-        holder.binding.remark.setVisibility(delete ? View.GONE : View.VISIBLE);
+        CharSequence time = android.text.format.DateUtils.getRelativeTimeSpanString(item.getCreateTime(), System.currentTimeMillis(), 60000);
+        holder.binding.site.setText(item.getSiteName().isEmpty() ? time : item.getSiteName() + " · " + time);
+        holder.binding.site.setVisibility(View.VISIBLE);
+        holder.binding.remark.setVisibility(View.VISIBLE);
+        long positionMs = Math.max(0, item.getPosition()), durationMs = Math.max(0, item.getDuration());
+        int progress = durationMs > 0 ? (int) Math.min(100, positionMs * 100 / durationMs) : 0;
+        holder.binding.progress.setProgress(progress);
+        String positionText = android.text.format.DateUtils.formatElapsedTime(positionMs / 1000);
+        String durationText = durationMs > 0 ? android.text.format.DateUtils.formatElapsedTime(durationMs / 1000) : "--:--";
+        holder.binding.progressText.setText(positionText + " / " + durationText + (durationMs > 0 ? " · " + progress + "%" : ""));
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
         holder.binding.remark.setText(ResUtil.getString(R.string.vod_last, item.getVodRemarks()));
         ImgUtil.loadVod(item.getVodName(), item.getVodPic(), holder.binding.image);
@@ -110,9 +109,9 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
 
     static class ViewHolder extends RecyclerView.ViewHolder {
 
-        private final AdapterVodBinding binding;
+        private final AdapterHistoryBinding binding;
 
-        ViewHolder(@NonNull AdapterVodBinding binding) {
+        ViewHolder(@NonNull AdapterHistoryBinding binding) {
             super(binding.getRoot());
             this.binding = binding;
         }

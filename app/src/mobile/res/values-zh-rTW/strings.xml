@@ -5,9 +5,39 @@
     <string name="app_history">最近觀看</string>
 
     <!-- Nav -->
+    <string name="nav_recommend">首頁</string>
     <string name="nav_vod">點播</string>
     <string name="nav_live">直播</string>
     <string name="nav_setting">設定</string>
+
+    <!-- 推薦 -->
+    <string name="recommend_title">首頁</string>
+    <string name="recommend_weekly">本週口碑榜</string>
+    <string name="recommend_movie_hot">熱門電影</string>
+    <string name="recommend_tv_hot">熱門劇集</string>
+    <string name="recommend_animation_hot">熱門動漫</string>
+    <string name="recommend_variety_hot">熱門綜藝</string>
+    <string name="recommend_top250">高分經典</string>
+    <string name="recommend_score">豆瓣 %1$.1f</string>
+    <string name="recommend_error">推薦內容載入失敗，請檢查網路後重試</string>
+    <string name="recommend_channel_featured">推薦</string>
+    <string name="recommend_channel_movie">電影</string>
+    <string name="recommend_channel_tv">電視劇</string>
+    <string name="recommend_channel_animation">動漫</string>
+    <string name="recommend_channel_variety">綜藝</string>
+    <string name="recommend_watch_now">立即觀看</string>
+    <string name="recommend_view_all">查看全部  ›</string>
+    <string name="recommend_filter_genre">類型</string>
+    <string name="recommend_filter_country">地區</string>
+    <string name="recommend_filter_year">年代</string>
+    <string name="recommend_filter_rating">評分</string>
+    <string name="recommend_filter_sort">排序</string>
+    <string name="recommend_filter_rating_suffix">分以上</string>
+    <string name="recommend_filter_score_first">評分優先</string>
+    <string name="recommend_filter_time_first">時間優先</string>
+    <string name="recommend_filter_all">全部類型 · 全部地區 · 全部年代</string>
+    <string name="recommend_filter_title">分類篩選</string>
+    <string name="recommend_rank_subtitle">根據豆瓣榜單資料排序</string>
 
     <!-- Vod -->
     <string name="vod_home">推薦</string>

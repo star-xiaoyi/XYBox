@@ -27,7 +27,7 @@ public final class WebDAVCredentialStore {
     }
 
     public static String getPassword() {
-        String encrypted = Prefers.getString(ENCRYPTED_PASSWORD, "");
+        String encrypted = Prefers.getString(LocalProfile.key(ENCRYPTED_PASSWORD), "");
         if (!TextUtils.isEmpty(encrypted)) {
             try {
                 return decrypt(encrypted);
@@ -36,7 +36,7 @@ public final class WebDAVCredentialStore {
             }
         }
 
-        String legacy = Prefers.getString(LEGACY_PASSWORD, "");
+        String legacy = Prefers.getString(LocalProfile.key(LEGACY_PASSWORD), "");
         if (!TextUtils.isEmpty(legacy)) {
             putPassword(legacy);
             return legacy;
@@ -46,17 +46,17 @@ public final class WebDAVCredentialStore {
 
     public static void putPassword(String password) {
         if (TextUtils.isEmpty(password)) {
-            Prefers.put(ENCRYPTED_PASSWORD, "");
-            Prefers.put(LEGACY_PASSWORD, "");
+            Prefers.put(LocalProfile.key(ENCRYPTED_PASSWORD), "");
+            Prefers.put(LocalProfile.key(LEGACY_PASSWORD), "");
             return;
         }
         try {
-            Prefers.put(ENCRYPTED_PASSWORD, encrypt(password));
-            Prefers.put(LEGACY_PASSWORD, "");
+            Prefers.put(LocalProfile.key(ENCRYPTED_PASSWORD), encrypt(password));
+            Prefers.put(LocalProfile.key(LEGACY_PASSWORD), "");
         } catch (Exception e) {
             // Never discard a credential merely because a vendor Keystore is unavailable.
             Logger.e("WebDAV: 加密密码失败，暂时保留兼容存储: " + e.getMessage());
-            Prefers.put(LEGACY_PASSWORD, password);
+            Prefers.put(LocalProfile.key(LEGACY_PASSWORD), password);
         }
     }
 

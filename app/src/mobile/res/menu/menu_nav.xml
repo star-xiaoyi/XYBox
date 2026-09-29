@@ -2,9 +2,15 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
     <item
+        android:id="@+id/recommend"
+        android:icon="@drawable/ic_nav_recommend"
+        android:title="@string/nav_recommend"
+        android:visible="true" />
+
+    <item
         android:id="@+id/vod"
-        android:icon="@drawable/ic_nav_vod"
-        android:title="@string/nav_vod"
+        android:icon="@drawable/ic_nav_discover"
+        android:title="@string/nav_discover"
         android:visible="true" />
 
     <item
@@ -15,8 +21,8 @@
 
     <item
         android:id="@+id/setting"
-        android:icon="@drawable/ic_nav_setting"
-        android:title="@string/nav_setting"
+        android:icon="@drawable/ic_nav_profile"
+        android:title="@string/nav_profile"
         android:visible="true" />
 
 </menu>

@@ -15,6 +15,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -88,6 +92,9 @@ class SettingsGlassHeaderView @JvmOverloads constructor(
     fun interface OnSearchStateChangedListener {
         fun onSearchStateChanged(active: Boolean)
     }
+
+    private var backListener by mutableStateOf<View.OnClickListener?>(null)
+    fun setBackClickListener(listener: View.OnClickListener?) { backListener = listener }
 
     private var searchActiveState by mutableStateOf(false)
     private var queryState by mutableStateOf("")
@@ -149,16 +156,32 @@ class SettingsGlassHeaderView @JvmOverloads constructor(
     @Composable
     private fun CurrentHeaderContent() {
         val light = !isSystemInDarkTheme()
-        val glass = if (light) Color(0xFFF8F8FA).copy(alpha = 0.86f)
-        else Color(0xFF161618).copy(alpha = 0.82f)
+        val glass = Color(context.getColor(R.color.screen_background)).copy(alpha = if (light) 0.86f else 0.82f)
         val headerSurface = glass
         val text = Color(context.getColor(R.color.text_primary))
         val secondary = Color(context.getColor(R.color.text_secondary))
         val frameNanos = remember { mutableLongStateOf(0L) }
-        val backdrop = rememberLayerBackdrop()
         val headerLocation = remember { IntArray(2) }
         val sourceLocation = remember { IntArray(2) }
         val sourceView = backdropViewState
+        val base = Color(context.getColor(R.color.screen_background))
+        val backdrop = rememberLayerBackdrop(onDraw = {
+            frameNanos.longValue
+            drawRect(base)
+            if (sourceView != null && sourceView.isAttachedToWindow && sourceView.isShown) {
+                this@SettingsGlassHeaderView.getLocationInWindow(headerLocation)
+                sourceView.getLocationInWindow(sourceLocation)
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    val saved = native.save()
+                    native.clipRect(0f, 0f, size.width, size.height)
+                    native.translate((sourceLocation[0] - headerLocation[0] - sourceView.scrollX).toFloat(),
+                        (sourceLocation[1] - headerLocation[1] - sourceView.scrollY).toFloat())
+                    sourceView.draw(native)
+                    native.restoreToCount(saved)
+                }
+            }
+        })
         val focusRequester = remember { FocusRequester() }
         val focusManager = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
@@ -178,46 +201,23 @@ class SettingsGlassHeaderView @JvmOverloads constructor(
             }
         }
 
-        Box(
-            Modifier
-                .fillMaxWidth()
-        ) {
-            Canvas(Modifier.matchParentSize().layerBackdrop(backdrop)) {
-                frameNanos.longValue
-                if (sourceView != null && sourceView.isAttachedToWindow) {
-                    this@SettingsGlassHeaderView.getLocationInWindow(headerLocation)
-                    sourceView.getLocationInWindow(sourceLocation)
-                    drawIntoCanvas { canvas ->
-                        val nativeCanvas = canvas.nativeCanvas
-                        val saveCount = nativeCanvas.save()
-                        nativeCanvas.translate(
-                            (sourceLocation[0] - headerLocation[0]).toFloat(),
-                            (sourceLocation[1] - headerLocation[1]).toFloat()
-                        )
-                        sourceView.draw(nativeCanvas)
-                        nativeCanvas.restoreToCount(saveCount)
-                    }
-                }
-            }
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .drawPlainBackdrop(
-                        backdrop = backdrop,
-                        shape = { RoundedRectangle(0.dp) },
-                        effects = {
-                            vibrancy()
-                            blur(8.dp.toPx())
-                            lens(24.dp.toPx(), 24.dp.toPx())
-                        },
-                        onDrawBehind = { frameNanos.longValue },
-                        onDrawSurface = { drawRect(headerSurface) }
-                    )
-            )
+        val statusPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        Box(Modifier.fillMaxWidth().height(statusPadding + 72.dp).clipToBounds()) {
+            Box(Modifier.matchParentSize().layerBackdrop(backdrop))
+            ProgressiveGlassSurface(Modifier.matchParentSize(), backdrop, base, glass, statusPadding + 28.dp, frameNanos)
             Row(
                 Modifier.fillMaxWidth().statusBarsPadding().height(64.dp).padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (backListener != null) {
+                    LiquidButton(onClick = { backListener?.onClick(this@SettingsGlassHeaderView) },
+                        backdrop = backdrop, frameNanos = frameNanos, surfaceColor = glass,
+                        modifier = Modifier.size(36.dp)) {
+                        Image(painterResource(R.drawable.ic_back), stringResource(R.string.back),
+                            colorFilter = ColorFilter.tint(text), modifier = Modifier.size(20.dp))
+                    }
+                    Box(Modifier.size(12.dp))
+                }
                 HeaderMainArea(
                     modifier = Modifier.weight(1f).height(36.dp),
                     active = searchActiveState,
@@ -399,7 +399,7 @@ class SettingsGlassHeaderView @JvmOverloads constructor(
             ) {
                 BasicText(
                     text = stringResource(R.string.nav_setting),
-                    style = TextStyle(color = text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 )
             }
 

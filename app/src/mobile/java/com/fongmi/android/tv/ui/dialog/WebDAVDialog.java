@@ -61,11 +61,17 @@ public class WebDAVDialog {
         dialog = new MaterialAlertDialogBuilder(binding.getRoot().getContext())
             .setTitle("WebDAV 配置")
             .setView(binding.getRoot())
-            .setPositiveButton("保存", this::onPositive)
+            .setPositiveButton("保存", null)
             .setNegativeButton("取消", this::onNegative)
             .create();
-        dialog.getWindow().setDimAmount(0);
+        dialog.getWindow().setDimAmount(0.32f);
+        dialog.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        dialog.getWindow().setGravity(android.view.Gravity.CENTER);
+        dialog.getWindow().setWindowAnimations(0);
         dialog.show();
+        int width = Math.min((int) (fragment.getResources().getDisplayMetrics().widthPixels * 0.9f), com.fongmi.android.tv.utils.ResUtil.dp2px(440));
+        dialog.getWindow().setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> onPositive(dialog, DialogInterface.BUTTON_POSITIVE));
     }
 
     private void initView() {
@@ -74,30 +80,11 @@ public class WebDAVDialog {
         String username = Setting.getWebDAVUsername();
         String password = Setting.getWebDAVPassword();
 
-        // 根据保存的URL判断是哪个服务提供商
         selectedProvider = getProviderIndexByUrl(url);
         binding.providerText.setText(PROVIDERS[selectedProvider]);
-        
-        // 根据选择的服务提供商决定是否显示URL输入框
-        if (selectedProvider == PROVIDERS.length - 1) {
-            // 自定义，显示URL输入框
-            binding.urlInput.setVisibility(View.VISIBLE);
-            binding.urlText.setText(url);
-            if (!TextUtils.isEmpty(url)) {
-                binding.urlText.setSelection(url.length());
-            }
-        } else if (selectedProvider == 0) {
-            // 坚果云，永远隐藏输入框（有预设URL）
-            binding.urlInput.setVisibility(View.GONE);
-        } else {
-            // Nextcloud或ownCloud需要用户输入URL
-            binding.urlInput.setVisibility(View.VISIBLE);
-            binding.urlText.setText(url);
-            if (!TextUtils.isEmpty(url)) {
-                binding.urlText.setSelection(url.length());
-            }
-        }
-
+        binding.urlInput.setVisibility(View.VISIBLE);
+        binding.urlText.setText(url);
+        binding.urlText.setHint("完整同步目录地址，例如 https://example.com/dav/me/");
         binding.usernameText.setText(username);
         binding.passwordText.setText(password);
         showStatus(syncManager.getLastStatus(), true);
@@ -169,21 +156,17 @@ public class WebDAVDialog {
     private void applyProvider(int which) {
         selectedProvider = which;
         binding.providerText.setText(PROVIDERS[which]);
-        if (which == PROVIDERS.length - 1) {
-            // 自定义，显示URL输入框
-            binding.urlInput.setVisibility(View.VISIBLE);
-            binding.urlText.setHint("WebDAV服务器地址（如：https://example.com/webdav）");
-        } else {
-            String providerUrl = getProviderUrl();
-            if (!TextUtils.isEmpty(providerUrl)) {
-                // 有预设URL（如坚果云），隐藏输入框，保存时自动填充
-                binding.urlInput.setVisibility(View.GONE);
-            } else {
-                // Nextcloud或ownCloud需要用户输入URL
-                binding.urlInput.setVisibility(View.VISIBLE);
-                binding.urlText.setHint("请输入" + PROVIDERS[which] + "服务器地址");
-            }
-        }
+        binding.urlInput.setVisibility(View.VISIBLE);
+        if (binding.urlText.getText().toString().trim().isEmpty()
+                && com.fongmi.android.tv.utils.LocalProfile.DEFAULT.equals(com.fongmi.android.tv.utils.LocalProfile.id()))
+            binding.urlText.setText(getProviderUrl());
+    }
+
+    private boolean saveConfiguration(String url, String username, String password) {
+        String error = syncManager.configure(url, username, password);
+        if (error == null) return true;
+        showStatus(error, false);
+        return false;
     }
 
     private void onTestConnection() {
@@ -205,9 +188,7 @@ public class WebDAVDialog {
         }
 
         // 临时保存配置用于测试
-        Setting.putWebDAVUrl(url);
-        Setting.putWebDAVUsername(username);
-        Setting.putWebDAVPassword(password);
+        if (!saveConfiguration(url, username, password)) return;
         
         // 重新加载配置
         syncManager.reloadConfig();
@@ -250,9 +231,7 @@ public class WebDAVDialog {
         }
         
         // 临时保存配置用于同步
-        Setting.putWebDAVUrl(url);
-        Setting.putWebDAVUsername(username);
-        Setting.putWebDAVPassword(password);
+        if (!saveConfiguration(url, username, password)) return;
         syncManager.reloadConfig();
         
         if (!syncManager.isConfigured()) {
@@ -314,19 +293,7 @@ public class WebDAVDialog {
      * 获取服务器URL（根据选择的服务提供商）
      */
     private String getServerUrl() {
-        if (selectedProvider == PROVIDERS.length - 1) {
-            // 自定义，从输入框获取
-            return binding.urlText.getText().toString().trim();
-        } else {
-            // 使用预设URL或从输入框获取（Nextcloud/ownCloud）
-            String providerUrl = getProviderUrl();
-            if (!TextUtils.isEmpty(providerUrl)) {
-                return providerUrl;
-            } else {
-                // Nextcloud或ownCloud需要用户输入
-                return binding.urlText.getText().toString().trim();
-            }
-        }
+        return binding.urlText.getText().toString().trim();
     }
 
     private void onPositive(DialogInterface dialog, int which) {
@@ -349,9 +316,7 @@ public class WebDAVDialog {
         }
 
         // 保存配置（配置了 WebDAV 即自动同步，不需要额外开关）
-        Setting.putWebDAVUrl(url);
-        Setting.putWebDAVUsername(username);
-        Setting.putWebDAVPassword(password);
+        if (!saveConfiguration(url, username, password)) return;
 
         // 重新加载配置
         syncManager.reloadConfig();

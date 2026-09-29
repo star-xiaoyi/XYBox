@@ -64,7 +64,7 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
         fun onGlassContextLongAction()
     }
 
-    private var selectedIdState by mutableIntStateOf(R.id.vod)
+    private var selectedIdState by mutableIntStateOf(R.id.recommend)
     private var liveVisibleState by mutableStateOf(true)
     private var actionState by mutableIntStateOf(ACTION_NONE)
     private var actionVisibleState by mutableStateOf(false)
@@ -122,9 +122,10 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
         }
 
         val items = buildList {
-            add(NavItem(R.id.vod, R.drawable.ic_nav_vod, R.string.nav_vod))
+            add(NavItem(R.id.recommend, R.drawable.ic_nav_recommend, R.string.nav_recommend))
+            add(NavItem(R.id.vod, R.drawable.ic_nav_discover, R.string.nav_discover))
             if (liveVisibleState) add(NavItem(R.id.live, R.drawable.ic_nav_live, R.string.nav_live))
-            add(NavItem(R.id.setting, R.drawable.ic_nav_setting, R.string.nav_setting))
+            add(NavItem(R.id.setting, R.drawable.ic_nav_profile, R.string.nav_profile))
         }
         val light = !isSystemInDarkTheme()
         val contentColor = if (light) Color(0xFF1C1C1E) else Color.White
@@ -173,6 +174,7 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                     .navigationBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 7.dp)
             ) {
+                val tabsWidth = (items.size * 76).dp.coerceAtMost(maxWidth)
                 val tabs: @Composable (Modifier) -> Unit = { tabsModifier ->
                     LiquidBottomTabs(
                         selectedTabIndex = selectedIndex,
@@ -239,13 +241,13 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                             .wrapContentWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        tabs(Modifier.width(228.dp).height(52.dp))
+                        tabs(Modifier.width(tabsWidth).height(52.dp))
                         if (actionVisibleState) Spacer(Modifier.width(8.dp))
                         action(Modifier.size(52.dp))
                     }
                 } else {
                     // 600dp 及以上的平板/横向长屏：胶囊居中，功能键固定在右手侧。
-                    tabs(Modifier.align(Alignment.Center).width(228.dp).height(52.dp))
+                    tabs(Modifier.align(Alignment.Center).width(tabsWidth).height(52.dp))
                     Box(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)

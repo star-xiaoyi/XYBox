@@ -72,3 +72,5 @@ tools/
 .workbuddy
 mapping-archive/
 
+# Documentation
+HANDOFF.md

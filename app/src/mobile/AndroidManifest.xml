@@ -82,6 +82,16 @@
             android:screenOrientation="fullUser" />
 
         <activity
+            android:name=".ui.activity.RecommendListActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:screenOrientation="fullUser" />
+
+        <activity
+            android:name=".ui.activity.RecommendFilterActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:screenOrientation="fullUser" />
+
+        <activity
             android:name=".ui.activity.KeepActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|uiMode"
             android:screenOrientation="fullUser" />

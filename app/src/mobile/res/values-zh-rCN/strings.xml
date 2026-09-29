@@ -5,11 +5,41 @@
     <string name="app_history">最近观看</string>
 
     <!-- Nav -->
+    <string name="nav_recommend">首页</string>
     <string name="nav_home">首页</string>
     <string name="nav_keep">收藏</string>
     <string name="nav_vod">视频</string>
     <string name="nav_live">直播</string>
     <string name="nav_setting">设置</string>
+
+    <!-- 推荐 -->
+    <string name="recommend_title">首页</string>
+    <string name="recommend_weekly">本周口碑榜</string>
+    <string name="recommend_movie_hot">热门电影</string>
+    <string name="recommend_tv_hot">热门剧集</string>
+    <string name="recommend_animation_hot">热门动漫</string>
+    <string name="recommend_variety_hot">热门综艺</string>
+    <string name="recommend_top250">高分经典</string>
+    <string name="recommend_score">豆瓣 %1$.1f</string>
+    <string name="recommend_error">推荐内容加载失败，请检查网络后重试</string>
+    <string name="recommend_channel_featured">推荐</string>
+    <string name="recommend_channel_movie">电影</string>
+    <string name="recommend_channel_tv">电视剧</string>
+    <string name="recommend_channel_animation">动漫</string>
+    <string name="recommend_channel_variety">综艺</string>
+    <string name="recommend_watch_now">立即观看</string>
+    <string name="recommend_view_all">查看全部  ›</string>
+    <string name="recommend_filter_genre">类型</string>
+    <string name="recommend_filter_country">地区</string>
+    <string name="recommend_filter_year">年代</string>
+    <string name="recommend_filter_rating">评分</string>
+    <string name="recommend_filter_sort">排序</string>
+    <string name="recommend_filter_rating_suffix">分以上</string>
+    <string name="recommend_filter_score_first">评分优先</string>
+    <string name="recommend_filter_time_first">时间优先</string>
+    <string name="recommend_filter_all">全部类型 · 全部地区 · 全部年代</string>
+    <string name="recommend_filter_title">分类筛选</string>
+    <string name="recommend_rank_subtitle">根据豆瓣榜单数据排序</string>
 
     <!-- Vod -->
     <string name="vod_home">推荐</string>

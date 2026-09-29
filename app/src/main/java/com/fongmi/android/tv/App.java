@@ -56,7 +56,9 @@ public class App extends Application {
     private final Runnable syncTask;
     private final Runnable webdavSyncTask;
     private boolean appJustLaunched;
-    private boolean webdavForegroundSyncPending;
+    private volatile boolean webdavForegroundSyncPending;
+    private volatile boolean webdavForegroundSyncRunning;
+    private int webdavForegroundGeneration;
     private volatile int foregroundActivityCount;
 
     public App() {
@@ -174,7 +176,11 @@ public class App extends Application {
 
             @Override
             public void onActivityStarted(@NonNull Activity activity) {
-                if (foregroundActivityCount == 0) webdavForegroundSyncPending = true;
+                if (foregroundActivityCount == 0) {
+                    webdavForegroundSyncRunning = false;
+                    webdavForegroundSyncPending = WebDAVSyncManager.get().isAutoSyncEnabled();
+                    webdavForegroundGeneration++;
+                }
                 foregroundActivityCount++;
                 if (activity != activity()) setActivity(activity);
             }
@@ -308,6 +314,10 @@ public class App extends Application {
         });
     }
 
+    public static boolean isAwaitingForegroundSync() {
+        return get().webdavForegroundSyncPending || get().webdavForegroundSyncRunning;
+    }
+
     private void checkWebDAVAutoSync() {
         removeCallbacks(webdavSyncTask);
         WebDAVSyncManager manager = WebDAVSyncManager.get();
@@ -315,8 +325,17 @@ public class App extends Application {
         if (webdavForegroundSyncPending) {
             // 冷启动或回到前台：无条件拉一次云端，保证能看到其他设备的最新变化
             webdavForegroundSyncPending = false;
-            execute(manager::syncNow);
-        } else {
+            webdavForegroundSyncRunning = true;
+            int generation = webdavForegroundGeneration;
+            execute(() -> {
+                WebDAVSyncManager.SyncResult result = manager.syncOnForeground();
+                post(() -> {
+                    if (generation != webdavForegroundGeneration) return;
+                    webdavForegroundSyncRunning = false;
+                    EventBus.getDefault().post(new com.fongmi.android.tv.event.ForegroundSyncEvent(result.success));
+                });
+            });
+        } else if (!webdavForegroundSyncRunning) {
             execute(manager::performAutoSync);
         }
         post(webdavSyncTask, manager.getAutoSyncIntervalMillis());

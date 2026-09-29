@@ -538,19 +538,19 @@ public class Setting {
 
     // WebDAV同步配置
     public static String getWebDAVUrl() {
-        return Prefers.getString("webdav_url", "");
+        return Prefers.getString(com.fongmi.android.tv.utils.LocalProfile.key("webdav_url"), "");
     }
 
     public static void putWebDAVUrl(String url) {
-        Prefers.put("webdav_url", url);
+        Prefers.put(com.fongmi.android.tv.utils.LocalProfile.key("webdav_url"), url);
     }
 
     public static String getWebDAVUsername() {
-        return Prefers.getString("webdav_username", "");
+        return Prefers.getString(com.fongmi.android.tv.utils.LocalProfile.key("webdav_username"), "");
     }
 
     public static void putWebDAVUsername(String username) {
-        Prefers.put("webdav_username", username);
+        Prefers.put(com.fongmi.android.tv.utils.LocalProfile.key("webdav_username"), username);
     }
 
     public static String getWebDAVPassword() {
@@ -562,27 +562,27 @@ public class Setting {
     }
 
     public static String getWebDAVSyncMode() {
-        return Prefers.getString("webdav_sync_mode", "ACCOUNT"); // 默认账号模式
+        return Prefers.getString(com.fongmi.android.tv.utils.LocalProfile.key("webdav_sync_mode"), "ACCOUNT"); // 默认账号模式
     }
 
     public static void putWebDAVSyncMode(String mode) {
-        Prefers.put("webdav_sync_mode", mode);
+        Prefers.put(com.fongmi.android.tv.utils.LocalProfile.key("webdav_sync_mode"), mode);
     }
 
     public static String getWebDAVSyncCode() {
-        return Prefers.getString("webdav_sync_code", "");
+        return Prefers.getString(com.fongmi.android.tv.utils.LocalProfile.key("webdav_sync_code"), "");
     }
 
     public static void putWebDAVSyncCode(String code) {
-        Prefers.put("webdav_sync_code", code);
+        Prefers.put(com.fongmi.android.tv.utils.LocalProfile.key("webdav_sync_code"), code);
     }
 
     public static String getWebDAVPublicUrl() {
-        return Prefers.getString("webdav_public_url", "");
+        return Prefers.getString(com.fongmi.android.tv.utils.LocalProfile.key("webdav_public_url"), "");
     }
 
     public static void putWebDAVPublicUrl(String url) {
-        Prefers.put("webdav_public_url", url);
+        Prefers.put(com.fongmi.android.tv.utils.LocalProfile.key("webdav_public_url"), url);
     }
 
     /**
@@ -596,14 +596,14 @@ public class Setting {
     }
 
     public static void putWebDAVAutoSync(boolean autoSync) {
-        Prefers.put("webdav_auto_sync", autoSync);
+        Prefers.put(com.fongmi.android.tv.utils.LocalProfile.key("webdav_auto_sync"), autoSync);
     }
 
     public static int getWebDAVSyncInterval() {
-        return Prefers.getInt("webdav_sync_interval", 60); // 默认60分钟
+        return Prefers.getInt(com.fongmi.android.tv.utils.LocalProfile.key("webdav_sync_interval"), 60); // 默认60分钟
     }
 
     public static void putWebDAVSyncInterval(int minutes) {
-        Prefers.put("webdav_sync_interval", minutes);
+        Prefers.put(com.fongmi.android.tv.utils.LocalProfile.key("webdav_sync_interval"), minutes);
     }
 }

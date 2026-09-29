@@ -5,11 +5,41 @@
     <string name="app_history">History</string>
 
     <!-- Nav -->
+    <string name="nav_recommend">Home</string>
     <string name="nav_home">Home</string>
     <string name="nav_keep">Favorite</string>
     <string name="nav_vod">Video</string>
     <string name="nav_live">Live</string>
     <string name="nav_setting">Setting</string>
+
+    <!-- Recommend -->
+    <string name="recommend_title">Home</string>
+    <string name="recommend_weekly">Weekly acclaim chart</string>
+    <string name="recommend_movie_hot">Popular movies</string>
+    <string name="recommend_tv_hot">Popular series</string>
+    <string name="recommend_animation_hot">Popular animation</string>
+    <string name="recommend_variety_hot">Popular variety</string>
+    <string name="recommend_top250">Highly rated classics</string>
+    <string name="recommend_score">Douban %1$.1f</string>
+    <string name="recommend_error">Could not load recommendations. Check your network and retry.</string>
+    <string name="recommend_channel_featured">Featured</string>
+    <string name="recommend_channel_movie">Movies</string>
+    <string name="recommend_channel_tv">Series</string>
+    <string name="recommend_channel_animation">Animation</string>
+    <string name="recommend_channel_variety">Variety</string>
+    <string name="recommend_watch_now">Watch now</string>
+    <string name="recommend_view_all">View all  ›</string>
+    <string name="recommend_filter_genre">Genre</string>
+    <string name="recommend_filter_country">Region</string>
+    <string name="recommend_filter_year">Year</string>
+    <string name="recommend_filter_rating">Rating</string>
+    <string name="recommend_filter_sort">Sort</string>
+    <string name="recommend_filter_rating_suffix">+ rating</string>
+    <string name="recommend_filter_score_first">Rating first</string>
+    <string name="recommend_filter_time_first">Newest first</string>
+    <string name="recommend_filter_all">All genres · All regions · All years</string>
+    <string name="recommend_filter_title">Browse by category</string>
+    <string name="recommend_rank_subtitle">Ranked from Douban chart data</string>
 
     <!-- Vod -->
     <string name="vod_home">Home</string>
@@ -222,4 +252,6 @@ Make sure both are on the same Wi-Fi</string>
     <string name="quality_smooth">Smooth</string>
     <string name="quality_hd">HD</string>
     <string name="quality_full_hd">Full HD</string>
+    <string name="nav_profile">我的</string>
+    <string name="nav_discover">发现</string>
 </resources>

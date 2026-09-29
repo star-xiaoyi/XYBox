@@ -40,6 +40,7 @@ import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.FragmentStateManager;
 import com.fongmi.android.tv.ui.custom.LiquidGlassNavigationView;
+import com.fongmi.android.tv.ui.fragment.RecommendFragment;
 import com.fongmi.android.tv.ui.fragment.SettingFragment;
 import com.fongmi.android.tv.ui.fragment.VodFragment;
 import com.fongmi.android.tv.utils.CastManager;
@@ -56,6 +57,9 @@ import org.greenrobot.eventbus.ThreadMode;
 public class HomeActivity extends BaseActivity implements NavigationBarView.OnItemSelectedListener, LiquidGlassNavigationView.Listener {
 
     private static final String STATE_POSITION = "home_position";
+    private static final int POSITION_RECOMMEND = 0;
+    private static final int POSITION_VOD = 1;
+    private static final int POSITION_SETTING = 2;
     private FragmentStateManager mManager;
     private ActivityHomeBinding mBinding;
     private int mTopInset;
@@ -93,9 +97,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         setNavigation();
         mBinding.glassNavigation.setBackdropView(mBinding.container);
         applyNavigationMode();
-        mBinding.navigation.setSelectedItemId(currentPosition == 1 ? R.id.setting : R.id.vod);
-        mBinding.glassNavigation.setSelectedItemId(currentPosition == 1 ? R.id.setting : R.id.vod);
-        setSettingsChrome(currentPosition == 1);
+        int itemId = getNavigationItemId(currentPosition);
+        mBinding.navigation.setSelectedItemId(itemId);
+        mBinding.glassNavigation.setSelectedItemId(itemId);
+        setSettingsChrome(currentPosition == POSITION_SETTING);
         // 上次没跑完的离线缓存在这里续上，放到界面可见之后再拉前台服务，避免后台启动被系统拒绝
         App.execute(() -> DownloadManager.get().restore());
     }
@@ -127,9 +132,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     private void applyContainerPadding() {
         if (mBinding == null) return;
         boolean navVisible = mBinding.navigation.getVisibility() == View.VISIBLE || mBinding.glassNavigation.getVisibility() == View.VISIBLE;
-        // 设置页自己的顶部组件会读取状态栏安全区域，让背景真正延伸到系统栏下方。
-        // 其他首页页面仍由容器统一避让，避免改变现有布局。
-        int top = currentPosition == 1 ? 0 : mTopInset;
+        // 首页和设置页在自己的顶栏内避让系统图标，背景可连续延伸到状态栏。
+        int top = currentPosition == POSITION_SETTING || currentPosition == POSITION_RECOMMEND ? 0 : mTopInset;
         // 玻璃底栏模式本来就是让内容铺到系统手势条后面；搜索时隐藏底栏也继续保持这种沉浸，
         // 不再额外垫一整条导航栏保护区。传统底栏模式仍保留原来的安全内边距。
         int bottom = navVisible || glassNavigationEnabled ? 0 : mBottomInset;
@@ -159,12 +163,13 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mManager = new FragmentStateManager(mBinding.container, getSupportFragmentManager()) {
             @Override
             public Fragment getItem(int position) {
-                if (position == 0) return VodFragment.newInstance();
-                if (position == 1) return SettingFragment.newInstance();
+                if (position == POSITION_RECOMMEND) return RecommendFragment.newInstance();
+                if (position == POSITION_VOD) return new com.fongmi.android.tv.ui.fragment.DiscoverFragment();
+                if (position == POSITION_SETTING) return new com.fongmi.android.tv.ui.fragment.ProfileFragment();
                 return null;
             }
         };
-        if (savedInstanceState == null) mManager.change(0);
+        if (savedInstanceState == null) mManager.change(POSITION_RECOMMEND);
     }
 
     private void initConfig() {
@@ -206,6 +211,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void setNavigation() {
+        mBinding.navigation.getMenu().findItem(R.id.recommend).setVisible(true);
         mBinding.navigation.getMenu().findItem(R.id.vod).setVisible(true);
         mBinding.navigation.getMenu().findItem(R.id.setting).setVisible(true);
         boolean liveVisible = LiveConfig.hasUrl() && !Setting.isLiveTabVisible();
@@ -227,14 +233,14 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     public void change(int position) {
-        if (position != 0) {
+        if (position != POSITION_VOD) {
             VodFragment fragment = getVodFragment();
             if (fragment != null) fragment.dismissFilterPanel();
         }
         currentPosition = position;
-        setSettingsChrome(position == 1);
+        setSettingsChrome(position == POSITION_SETTING);
         mManager.change(position);
-        int itemId = position == 1 ? R.id.setting : R.id.vod;
+        int itemId = getNavigationItemId(position);
         mBinding.glassNavigation.setSelectedItemId(itemId);
         updateGlassActionForCurrentPage();
         refreshBackHandling();
@@ -261,7 +267,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     public void setBottomNavigationVisible(boolean visible) {
         if (mBinding == null) return;
-        boolean show = visible || currentPosition == 1;
+        boolean show = visible || currentPosition == POSITION_SETTING;
         bottomNavigationVisible = show;
         updateNavigationVisibility();
         refreshBackHandling();
@@ -310,33 +316,28 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     public void setGlassAction(int action, boolean visible) {
         if (mBinding == null) return;
-        // 首页内容是异步加载的：切到设置页后，迟到的首页结果仍可能尝试把动作键
-        // 改成“筛选”。设置页激活期间只接受它自己的搜索状态，避免图标与点击功能错位。
-        if (currentPosition == 1) {
-            SettingFragment fragment = mManager == null ? null : (SettingFragment) mManager.getFragment(1);
-            action = fragment != null && fragment.isSearchActive()
-                    ? LiquidGlassNavigationView.ACTION_CLOSE
-                    : LiquidGlassNavigationView.ACTION_SEARCH;
-            visible = true;
-        }
-        mBinding.glassNavigation.setAction(action, visible && glassNavigationEnabled);
+        // 暂时隐藏底栏旁的独立动作圆钮，只保留悬浮导航胶囊。
+        mBinding.glassNavigation.setAction(LiquidGlassNavigationView.ACTION_NONE, false);
     }
 
     private void updateGlassActionForCurrentPage() {
-        if (!glassNavigationEnabled || mManager == null) return;
-        if (currentPosition == 1) {
-            SettingFragment fragment = (SettingFragment) mManager.getFragment(1);
-            boolean searching = fragment != null && fragment.isSearchActive();
-            setGlassAction(searching ? LiquidGlassNavigationView.ACTION_CLOSE : LiquidGlassNavigationView.ACTION_SEARCH, true);
-        } else {
-            VodFragment fragment = getVodFragment();
-            if (fragment == null) setGlassAction(LiquidGlassNavigationView.ACTION_NONE, false);
-            else fragment.syncGlassAction();
-        }
+        if (!glassNavigationEnabled) return;
+        setGlassAction(LiquidGlassNavigationView.ACTION_NONE, false);
     }
 
     private VodFragment getVodFragment() {
-        return mManager == null ? null : (VodFragment) mManager.getFragment(0);
+        Fragment page = mManager == null ? null : mManager.getFragment(POSITION_VOD);
+        return page instanceof VodFragment ? (VodFragment) page : null;
+    }
+
+    private RecommendFragment getRecommendFragment() {
+        return mManager == null ? null : (RecommendFragment) mManager.getFragment(POSITION_RECOMMEND);
+    }
+
+    private int getNavigationItemId(int position) {
+        if (position == POSITION_VOD) return R.id.vod;
+        if (position == POSITION_SETTING) return R.id.setting;
+        return R.id.recommend;
     }
 
     @Override
@@ -354,12 +355,16 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
         if (mBinding.navigation.getSelectedItemId() == item.getItemId()) return false;
+        if (item.getItemId() == R.id.recommend) {
+            change(POSITION_RECOMMEND);
+            return true;
+        }
         if (item.getItemId() == R.id.setting) {
-            change(1);
+            change(POSITION_SETTING);
             return true;
         }
         if (item.getItemId() == R.id.vod) {
-            change(0);
+            change(POSITION_VOD);
             return true;
         }
         if (item.getItemId() == R.id.live) {
@@ -379,25 +384,29 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
             else openLive();
             return;
         }
-        if (itemId == R.id.setting && currentPosition != 1) {
+        if (itemId == R.id.recommend && currentPosition != POSITION_RECOMMEND) {
+            mBinding.navigation.setOnItemSelectedListener(null);
+            mBinding.navigation.setSelectedItemId(R.id.recommend);
+            mBinding.navigation.setOnItemSelectedListener(this);
+            change(POSITION_RECOMMEND);
+        } else if (itemId == R.id.setting && currentPosition != POSITION_SETTING) {
             mBinding.navigation.setOnItemSelectedListener(null);
             mBinding.navigation.setSelectedItemId(R.id.setting);
             mBinding.navigation.setOnItemSelectedListener(this);
-            change(1);
-        } else if (itemId == R.id.vod && currentPosition != 0) {
+            change(POSITION_SETTING);
+        } else if (itemId == R.id.vod && currentPosition != POSITION_VOD) {
             mBinding.navigation.setOnItemSelectedListener(null);
             mBinding.navigation.setSelectedItemId(R.id.vod);
             mBinding.navigation.setOnItemSelectedListener(this);
-            change(0);
+            change(POSITION_VOD);
         }
     }
 
     @Override
     public void onGlassContextAction() {
-        if (currentPosition == 1) {
-            SettingFragment fragment = (SettingFragment) mManager.getFragment(1);
-            if (fragment != null) fragment.toggleSearch();
-        } else {
+        if (currentPosition == POSITION_SETTING) {
+            ProfileSettingsActivity.start(this);
+        } else if (currentPosition == POSITION_VOD) {
             VodFragment fragment = getVodFragment();
             if (fragment != null) fragment.performGlassAction();
         }
@@ -405,7 +414,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     public void onGlassContextLongAction() {
-        if (currentPosition != 0) return;
+        if (currentPosition != POSITION_VOD) return;
         VodFragment fragment = getVodFragment();
         if (fragment != null) fragment.performGlassLongAction();
     }
@@ -434,20 +443,35 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     protected boolean shouldInterceptBack() {
         if (mBinding == null || mManager == null) return false;
         if (!mBinding.navigation.getMenu().findItem(R.id.vod).isVisible()) return true;
-        if (mManager.isVisible(1)) return true;
-        VodFragment fragment = getVodFragment();
-        return fragment != null && fragment.hasBackState();
+        if (mManager.isVisible(POSITION_SETTING)) return true;
+        if (mManager.isVisible(POSITION_VOD)) {
+            VodFragment fragment = getVodFragment();
+            return true;
+        }
+        if (mManager.isVisible(POSITION_RECOMMEND)) {
+            RecommendFragment fragment = getRecommendFragment();
+            return fragment != null && fragment.hasBackState();
+        }
+        return false;
+    }
+
+    @Override
+    protected boolean shouldAnimatePredictiveBack() {
+        RecommendFragment fragment = getRecommendFragment();
+        if (mManager != null && mManager.isVisible(POSITION_RECOMMEND)
+                && fragment != null && fragment.isEditingSearch()) return false;
+        return super.shouldAnimatePredictiveBack();
     }
 
     @Override
     protected void onBackPress() {
         if (!mBinding.navigation.getMenu().findItem(R.id.vod).isVisible()) {
             setNavigation();
-        } else if (mManager.isVisible(1)) {
-            SettingFragment fragment = (SettingFragment) mManager.getFragment(1);
-            if (fragment != null && fragment.closeSearchIfActive()) return;
-            mBinding.navigation.setSelectedItemId(R.id.vod);
-        } else if (mManager.canBack(0)) {
+        } else if (mManager.isVisible(POSITION_SETTING)) {
+            mBinding.navigation.setSelectedItemId(R.id.recommend);
+        } else if (mManager.isVisible(POSITION_VOD)) {
+            mBinding.navigation.setSelectedItemId(R.id.recommend);
+        } else if (mManager.isVisible(POSITION_RECOMMEND) && mManager.canBack(POSITION_RECOMMEND)) {
             super.onBackPress();
         }
     }

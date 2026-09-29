@@ -23,11 +23,16 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@Entity
+@Entity(primaryKeys = {"accountId", "key"})
 public class History {
+    @NonNull
+    @androidx.room.ColumnInfo(name = "accountId")
+    private transient String accountId = com.fongmi.android.tv.utils.LocalProfile.id();
+    @NonNull public String getAccountId() { return accountId; }
+    public void setAccountId(@NonNull String value) { accountId = value; }
+
 
     @NonNull
-    @PrimaryKey
     @SerializedName("key")
     private String key;
     @SerializedName("vodPic")
@@ -40,6 +45,17 @@ public class History {
     private String vodRemarks;
     @SerializedName("episodeUrl")
     private String episodeUrl;
+    @SerializedName("episodeCount")
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    private int episodeCount;
+    @SerializedName("episodeNumber")
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    private int episodeNumber;
+
+    public int getEpisodeCount() { return episodeCount; }
+    public void setEpisodeCount(int value) { episodeCount = value; }
+    public int getEpisodeNumber() { return episodeNumber; }
+    public void setEpisodeNumber(int value) { episodeNumber = value; }
     @SerializedName("revSort")
     private boolean revSort;
     @SerializedName("revPlay")
@@ -300,6 +316,22 @@ public class History {
         return save(false);
     }
 
+    /** 保存不可变的播放快照；云端已写入较新版本时，拒绝旧播放器内存覆盖。 */
+    public boolean savePlayback(long knownVersion) {
+        boolean[] written = {false};
+        AppDatabase.get().runInTransaction(() -> {
+            List<History> records = AppDatabase.get().getHistoryDao().findByNameForAccount(getAccountId(), getCid(), getVodName());
+            for (History current : records) {
+                if (!com.fongmi.android.tv.utils.PlaybackProgressPolicy.canWrite(knownVersion, current.getCreateTime())) return;
+            }
+            merge(records, false);
+            AppDatabase.get().getHistoryDao().insertOrUpdate(this);
+            written[0] = true;
+        });
+        if (written[0] && getAccountId().equals(com.fongmi.android.tv.utils.LocalProfile.id())) com.fongmi.android.tv.utils.WebDAVSyncManager.get().requestProgressSync();
+        return written[0];
+    }
+
     /** 播放进度更新：本地照常落库，云端按节流上传。 */
     public void updateProgress() {
         try {
@@ -313,7 +345,7 @@ public class History {
     }
 
     private History save(boolean progressOnly) {
-        boolean isNew = AppDatabase.get().getHistoryDao().find(getCid(), getKey()) == null;
+        boolean isNew = AppDatabase.get().getHistoryDao().findForAccount(getAccountId(), getCid(), getKey()) == null;
         AppDatabase.get().getHistoryDao().insertOrUpdate(this);
         com.fongmi.android.tv.utils.WebDAVSyncManager manager = com.fongmi.android.tv.utils.WebDAVSyncManager.get();
         if (progressOnly && !isNew) manager.requestProgressSync();
@@ -323,13 +355,13 @@ public class History {
 
     public History delete() {
         com.fongmi.android.tv.utils.WebDAVSyncManager.get().markHistoryDeleted(this);
-        AppDatabase.get().getHistoryDao().delete(VodConfig.getCid(), getKey());
+        AppDatabase.get().getHistoryDao().deleteForAccount(getAccountId(), getCid(), getKey());
         AppDatabase.get().getTrackDao().delete(getKey());
         return this;
     }
 
     public List<History> find() {
-        return AppDatabase.get().getHistoryDao().findByName(VodConfig.getCid(), getVodName());
+        return AppDatabase.get().getHistoryDao().findByNameForAccount(getAccountId(), getCid(), getVodName());
     }
 
     public void findEpisode(List<Flag> flags) {
