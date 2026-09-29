@@ -11,7 +11,7 @@
         android:id="@+id/vod"
         android:icon="@drawable/ic_nav_discover"
         android:title="@string/nav_discover"
-        android:visible="true" />
+        android:visible="false" />
 
     <item
         android:id="@+id/live"

@@ -164,11 +164,12 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
         if (bold) view.setTypeface(null, Typeface.BOLD); return view;
     }
     private TextView libraryItem(LinearLayout parent, String title, int icon, int halo, Runnable action) {
-        LinearLayout tile = row(); tile.setPadding(dp(4), dp(4), dp(4), dp(4));
+        LinearLayout tile = row(); tile.setGravity(Gravity.CENTER); tile.setPadding(dp(4), dp(4), dp(4), dp(4));
+        LinearLayout group = row(); tile.addView(group,new LinearLayout.LayoutParams(-2,-2));
         ImageView image = new ImageView(requireContext()); image.setImageResource(icon);
         image.setPadding(dp(8),dp(8),dp(8),dp(8)); image.setBackground(rounded(night() ? (halo & 0x00FFFFFF) | 0x30000000 : halo, 22));
-        tile.addView(image, new LinearLayout.LayoutParams(dp(36), dp(36)));
-        LinearLayout labels = column(); LinearLayout.LayoutParams labelsParams = new LinearLayout.LayoutParams(0, -2, 1); labelsParams.setMarginStart(dp(6)); tile.addView(labels, labelsParams);
+        group.addView(image, new LinearLayout.LayoutParams(dp(32), dp(32)));
+        LinearLayout labels = column(); LinearLayout.LayoutParams labelsParams = new LinearLayout.LayoutParams(-2, -2); labelsParams.setMarginStart(dp(4)); group.addView(labels, labelsParams);
         TextView label = text(title, 10, false, true); label.setSingleLine(true); label.setGravity(Gravity.CENTER); labels.addView(label,new LinearLayout.LayoutParams(-1,-2));
         TextView count = text("0", 21, true, false); count.setGravity(Gravity.CENTER); labels.addView(count,new LinearLayout.LayoutParams(-1,-2));
         parent.addView(tile, new LinearLayout.LayoutParams(0, -2, 1)); tile.setOnClickListener(v -> action.run()); return count;
