@@ -105,11 +105,6 @@
         </activity>
 
         <activity
-            android:name=".ui.activity.CollectActivity"
-            android:screenOrientation="fullUser"
-            android:windowSoftInputMode="adjustPan" />
-
-        <activity
             android:name=".ui.activity.FileActivity"
             android:screenOrientation="fullUser" />
 

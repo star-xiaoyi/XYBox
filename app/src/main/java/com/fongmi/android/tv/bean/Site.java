@@ -33,6 +33,12 @@ import okhttp3.Headers;
 @Entity
 public class Site implements Parcelable {
 
+    /** 自动搜源时需避开的网盘站点；只按完整提示词判断，避免误伤普通资源站。 */
+    private static final String[] CLOUD_DRIVE_HINTS = {
+            "网盘", "云盘", "盘搜", "盘她", "盘他", "四盘", "夸父", "夸克",
+            "阿里云", "阿里盘", "百度盘", "天翼盘", "迅雷盘", "115盘", "uc盘", "cloud drive"
+    };
+
     @NonNull
     @PrimaryKey
     @SerializedName("key")
@@ -313,6 +319,13 @@ public class Site implements Parcelable {
 
     public boolean isQuickSearch() {
         return getQuickSearch() == 1;
+    }
+
+    /** 搜索或取播放地址时可能拉起网盘登录二维码。手动进站仍不受影响。 */
+    public boolean isCloudDrive() {
+        String value = Trans.t2s(getName()).toLowerCase(java.util.Locale.ROOT);
+        for (String hint : CLOUD_DRIVE_HINTS) if (value.contains(hint)) return true;
+        return false;
     }
 
     public boolean isEmpty() {

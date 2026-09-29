@@ -147,7 +147,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     @Override
     public void onItemClick(Keep item) {
         Config config = Config.find(item.getCid());
-        if (config == null) CollectActivity.start(this, item.getVodName());
+        if (config == null) VideoActivity.find(this, item.getVodName(), item.getVodPic(), null);
         else if (item.getCid() != VodConfig.getCid()) loadConfig(config, item);
         else VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
     }

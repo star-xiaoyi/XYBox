@@ -70,11 +70,30 @@
 
     <!-- Detail -->
     <string name="detail_flag">Source</string>
+    <string name="detail_flag_short">Lines</string>
     <string name="detail_more">More</string>
     <string name="detail_episode">Episodes</string>
     <string name="detail_quality">Quality</string>
     <string name="detail_content">Summary</string>
     <string name="detail_search">Searching <xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_source">Sources</string>
+    <string name="detail_play_source">Playback source</string>
+    <string name="detail_switch_source">Switch</string>
+    <string name="detail_related">Related</string>
+
+    <!-- Aggregated search and source speed test -->
+    <string name="search_progress">Searching %1$d/%2$d</string>
+    <string name="search_actor">Cast: %s</string>
+    <string name="search_source_count">%d sources</string>
+    <string name="source_hint_testing">Testing source speed…</string>
+    <string name="source_hint_sorted">Sorted by measured speed</string>
+    <string name="source_playing">Playing</string>
+    <string name="source_broken">Unavailable</string>
+    <string name="source_testing">Testing…</string>
+    <string name="source_timeout">Timed out</string>
+    <string name="source_fail">Failed</string>
+    <string name="source_skip">Not tested</string>
+    <string name="source_idle">Candidate</string>
 
     <!-- Device -->
     <string name="device_select">Cast to device</string>

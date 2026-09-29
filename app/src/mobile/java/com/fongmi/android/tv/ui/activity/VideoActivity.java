@@ -74,6 +74,7 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Setting;
+import com.fongmi.android.tv.api.Douban;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.CastMember;
 import com.fongmi.android.tv.bean.CastVideo;
@@ -105,12 +106,18 @@ import com.fongmi.android.tv.player.exo.ExoUtil;
 import com.fongmi.android.tv.player.exo.PlaybackCache;
 import com.fongmi.android.tv.player.exo.TrackNameProvider;
 import com.fongmi.android.tv.player.Source;
+import com.fongmi.android.tv.search.GroupCache;
+import com.fongmi.android.tv.search.SearchTask;
+import com.fongmi.android.tv.search.TitleKey;
+import com.fongmi.android.tv.search.VodGroup;
+import com.fongmi.android.tv.search.VodSource;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.ui.adapter.EpisodeAdapter;
 import com.fongmi.android.tv.ui.adapter.FlagAdapter;
 import com.fongmi.android.tv.ui.adapter.ParseAdapter;
 import com.fongmi.android.tv.ui.adapter.QualityAdapter;
-import com.fongmi.android.tv.ui.adapter.QuickAdapter;
+import com.fongmi.android.tv.ui.adapter.RecommendAdapter;
+import com.fongmi.android.tv.ui.adapter.SourceAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.base.ViewType;
 import com.fongmi.android.tv.ui.custom.CustomKeyDownVod;
@@ -153,17 +160,15 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class VideoActivity extends BaseActivity implements Clock.Callback, CustomKeyDownVod.Listener, CustomSeekView.ScrubListener, PreviewPlayer.Callback, TrackDialog.Listener, ControlDialog.Listener, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, CastManager.Listener {
+public class VideoActivity extends BaseActivity implements Clock.Callback, CustomKeyDownVod.Listener, CustomSeekView.ScrubListener, PreviewPlayer.Callback, TrackDialog.Listener, ControlDialog.Listener, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, SourceAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, CastManager.Listener {
 
     /** 长按倍速那对箭头走完一个来回的毫秒数，也就是没锁定时的最快速度。 */
     private static final int SPEED_CYCLE = 700;
@@ -193,11 +198,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private ViewGroup.LayoutParams mFrameParams;
     private Observer<Result> mObserveDetail;
     private Observer<Result> mObservePlayer;
-    private Observer<Result> mObserveSearch;
     private EpisodeAdapter mEpisodeAdapter;
     private QualityAdapter mQualityAdapter;
     private ControlDialog mControlDialog;
-    private QuickAdapter mQuickAdapter;
+    private SourceAdapter mSourceAdapter;
+    private RecommendAdapter mRelatedAdapter;
     private ParseAdapter mParseAdapter;
     private CustomKeyDownVod mKeyDown;
     private PreviewPlayer mPreview;
@@ -222,11 +227,21 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private float mSpeedProgress;
     private float mSpeedPhase;
     private long mSpeedTime;
-    private ExecutorService mExecutor;
+    private SearchTask mSourceTask;
+    /** 用户是否明确点了某个片源；自动流程绝不进入只有网盘线路的源。 */
+    private boolean mManualSourceSelection;
+    private int mRatingGeneration;
+    private String mRatingKey = "";
+    private List<String> mDoubanGenres = new ArrayList<>();
+    /** 片源比对的目标：规整后的片名、年份、片种，详情加载后以详情为准。 */
+    private String mTargetKey = "";
+    private int mTargetYear;
+    private int mTargetKind;
+    /** 有目标年份时，开搜后这个时刻之前自动选源只认年份对得上的。 */
+    private long mStrictUntil;
     private SiteViewModel mViewModel;
     private FlagAdapter mFlagAdapter;
     private List<Dialog> mDialogs;
-    private List<String> mBroken;
     private History mHistory;
     /** 当前选中的剧集已经真正进入可播放状态，避免失败片源覆盖或合并掉旧记录。 */
     private boolean mHistoryPlaybackConfirmed;
@@ -239,6 +254,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean redirect;
     private boolean rotate;
     private boolean castExpanded;
+    private static final int DETAIL_EPISODE = 0;
+    private static final int DETAIL_SOURCE = 1;
+    private static final int DETAIL_FLAG = 2;
+    private int mDetailPanel = DETAIL_EPISODE;
     /** 投屏中电视是否已经放到本集末尾，避免自动切下一集被轮询触发多次。 */
     private boolean castEnded;
     /**
@@ -266,6 +285,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private Runnable mR3;
     private Runnable mR4;
     private Runnable mR5;
+    private Runnable mR6;
     private Runnable mHideGestureFeedback;
     private Clock mClock;
     private String tag;
@@ -318,8 +338,37 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         return Objects.toString(getIntent().getStringExtra("offline_group"), Download.buildGroupKey(getName()));
     }
 
-    public static void collect(Activity activity, String key, String id, String name, String pic) {
-        start(activity, key, id, name, pic, null, true);
+    /**
+     * 从搜索结果进来：整组同名片源交给详情页，先播排在最前的那个，其余的列在"片源"里。
+     */
+    public static void group(Activity activity, VodGroup group) {
+        Vod vod = group.best().getVod();
+        Intent intent = new Intent(activity, VideoActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.putExtra("group", GroupCache.put(group));
+        intent.putExtra("name", vod.getVodName());
+        intent.putExtra("pic", vod.getVodPic().isEmpty() ? group.getPic() : vod.getVodPic());
+        intent.putExtra("key", vod.getSiteKey());
+        intent.putExtra("id", vod.getVodId());
+        activity.startActivity(intent);
+    }
+
+    /**
+     * 只知道片名（首页推荐、豆瓣榜单、配置已删的收藏）：进来后按片名搜全部站点，
+     * 挑同名同年、接口最快的源直接播。year 可以为空，有的话用来区分同名翻拍。
+     */
+    public static void find(Activity activity, String name, String pic, String year) {
+        find(activity, name, pic, year, 0);
+    }
+
+    public static void find(Activity activity, String name, String pic, String year, double rating) {
+        Intent intent = new Intent(activity, VideoActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.putExtra("year", year);
+        intent.putExtra("name", name);
+        intent.putExtra("pic", pic);
+        intent.putExtra("rating", rating);
+        intent.putExtra("key", "");
+        intent.putExtra("id", "msearch:" + name);
+        activity.startActivity(intent);
     }
 
     public static void start(Activity activity, String url) {
@@ -335,12 +384,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     public static void start(Activity activity, String key, String id, String name, String pic, String mark) {
-        start(activity, key, id, name, pic, mark, false);
-    }
-
-    public static void start(Activity activity, String key, String id, String name, String pic, String mark, boolean collect) {
         Intent intent = new Intent(activity, VideoActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        intent.putExtra("collect", collect);
         intent.putExtra("mark", mark);
         intent.putExtra("name", name);
         intent.putExtra("pic", pic);
@@ -393,8 +437,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         return Setting.getReset() == 1;
     }
 
-    private boolean isFromCollect() {
-        return getIntent().getBooleanExtra("collect", false);
+    private String getYear() {
+        return Objects.toString(getIntent().getStringExtra("year"), "");
+    }
+
+    private String getGroupToken() {
+        return getIntent().getStringExtra("group");
     }
 
     private boolean isAutoRotate() {
@@ -425,8 +473,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         String id = Objects.toString(intent.getStringExtra("id"), "");
         if (TextUtils.isEmpty(id) || id.equals(getId())) return;
         mBinding.swipeLayout.setRefreshing(true);
+        // putExtras 只覆盖不删除：新入口没带的片源组和年份不能沿用上一部片的
+        GroupCache.remove(getGroupToken());
+        getIntent().removeExtra("group");
+        getIntent().removeExtra("year");
         getIntent().putExtras(intent);
-        stopSearch();
+        resetSources();
         setOrient();
         checkId();
     }
@@ -442,19 +494,18 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.swipeLayout.setEnabled(false);
         mObserveDetail = this::setDetail;
         mObservePlayer = this::setPlayer;
-        mObserveSearch = this::setSearch;
         mPlayers = Players.create(this);
         mPlaybackCache = new PlaybackCache(percent -> mBinding.control.seek.setSessionCachedPercent(percent));
         mCacheWarmup = this::startPlaybackCache;
         mDialogs = new ArrayList<>();
-        mBroken = new ArrayList<>();
         mClock = Clock.create();
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         mR1 = this::hideControl;
         mR2 = this::setTraffic;
         mR3 = this::setOrient;
         mR4 = this::showEmpty;
-        mR5 = () -> initSearch(mBinding.name.getText().toString(), false);
+        mR5 = () -> startSourceSearch(false);
+        mR6 = this::checkAutoSwitch;
         mPiP = new PiP();
         checkDanmakuImg();
         setRecyclerView();
@@ -618,6 +669,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.download.setOnClickListener(view -> onDownload());
         mBinding.content.setOnClickListener(view -> onContent());
         mBinding.reverse.setOnClickListener(view -> onReverse());
+        mBinding.episodeTab.setOnClickListener(view -> setDetailPanel(DETAIL_EPISODE));
+        mBinding.sourceTab.setOnClickListener(view -> setDetailPanel(DETAIL_SOURCE));
+        mBinding.flagTab.setOnClickListener(view -> setDetailPanel(DETAIL_FLAG));
         mBinding.name.setOnLongClickListener(view -> onChange());
         mBinding.content.setOnLongClickListener(view -> onCopy());
         mBinding.control.cast.setOnClickListener(view -> onCast());
@@ -671,9 +725,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.flag.setItemAnimator(null);
         mBinding.flag.addItemDecoration(new SpaceItemDecoration(8));
         mBinding.flag.setAdapter(mFlagAdapter = new FlagAdapter(this));
-        mBinding.quick.setHasFixedSize(true);
-        mBinding.quick.addItemDecoration(new SpaceItemDecoration(8));
-        mBinding.quick.setAdapter(mQuickAdapter = new QuickAdapter(this));
+        mBinding.sourceList.setItemAnimator(null);
+        mBinding.sourceList.addItemDecoration(new SpaceItemDecoration(8));
+        mBinding.sourceList.setAdapter(mSourceAdapter = new SourceAdapter(this));
+        mBinding.related.setHasFixedSize(true);
+        mBinding.related.setItemAnimator(null);
+        mBinding.related.setAdapter(mRelatedAdapter = new RecommendAdapter(item -> VideoActivity.find(this, item.getTitle(), item.getPic(), item.getYear(), item.getRating())));
         mBinding.episode.setHasFixedSize(true);
         mBinding.episode.setItemAnimator(null);
         mBinding.episode.addItemDecoration(new SpaceItemDecoration(8));
@@ -716,7 +773,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mViewModel = new ViewModelProvider(this).get(SiteViewModel.class);
         mViewModel.result.observeForever(mObserveDetail);
         mViewModel.player.observeForever(mObservePlayer);
-        mViewModel.search.observeForever(mObserveSearch);
         mViewModel.episode.observe(this, episode -> {
             onItemClick(episode);
             hideSheet();
@@ -725,7 +781,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void checkId() {
         if (getId().startsWith("push://")) getIntent().putExtra("key", "push_agent").putExtra("id", getId().substring(7));
-        if (getId().isEmpty() || getId().startsWith("msearch:")) setEmpty(false);
+        setTarget(getName(), getYear(), "");
+        initSources();
+        if (getId().isEmpty() || getId().startsWith("msearch:")) setEmpty();
         else getDetail();
     }
 
@@ -757,7 +815,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         Vod offline = result.getList().isEmpty() ? getOfflineVod() : null;
         // 站源拉不到详情（多半是断网）而本地有缓存时，直接用缓存把页面撑起来
         if (offline != null) setDetail(offline);
-        else if (result.getList().isEmpty()) setEmpty(result.hasMsg());
+        else if (result.getList().isEmpty()) setEmpty();
         else setDetail(result.getList().get(0));
         // 只在有错误或重要消息时显示提示
         if (result.hasMsg() && result.getList().isEmpty()) {
@@ -765,15 +823,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         }
     }
 
-    private void setEmpty(boolean finish) {
-        // 自动换源详情在代理网络下失败时不能关闭已经打开的播放页。
-        // 原来的 finish 参数直接结束 Activity，正是“缓冲一下退回首页并刷新”的一条路径。
-        if (isFromCollect()) {
-            finish();
-        } else if (getName().isEmpty()) {
+    /**
+     * 详情拉不到（站点挂了、只给了片名）时换到别的源。
+     * 以前从搜索结果进来会直接关掉页面，现在手上有整组片源，挨个换下去就是了。
+     */
+    private void setEmpty() {
+        if (getName().isEmpty()) {
             showEmpty();
         } else {
             mBinding.name.setText(getName());
+            loadDoubanDetails(getName(), getYear());
             App.post(mR4, 10000);
             checkSearch(false);
         }
@@ -783,16 +842,22 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         showError(getString(R.string.error_detail));
         mBinding.swipeLayout.setEnabled(true);
         mBinding.progressLayout.showEmpty();
-        stopSearch();
     }
 
     private void setDetail(Vod item) {
+        prioritizePlayableFlags(item);
+        if (!isOffline() && !mManualSourceSelection && hasOnlyCloudFlags(item)) {
+            skipCloudSource();
+            return;
+        }
         mCurrentVod = item;  // 保存当前视频对象
         mBinding.swipeLayout.setEnabled(false);
         mBinding.progressLayout.showContent();
+        mDetailPanel = DETAIL_EPISODE;
         mBinding.video.setTag(item.getVodPic(getPic()));
         mBinding.name.setText(item.getVodName(getName()));
         mBinding.name.playOnce();
+        loadDoubanDetails(item.getVodName(getName()), item.getVodYear().isEmpty() ? getYear() : item.getVodYear());
         mBinding.poster.setContentDescription(item.getVodName(getName()));
         ImgUtil.rect(item.getVodName(getName()), item.getVodPic(getPic()), mBinding.poster);
         setText(mBinding.content, 0, Html.fromHtml(item.getVodContent()).toString());
@@ -802,14 +867,38 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         addOfflineFlag(item);
         mFlagAdapter.addAll(item.getVodFlags());
         setMeta(item);
-        setTags(item);
+        setTags(mDoubanGenres);
         setArtwork(item.getVodPic());
         App.removeCallbacks(mR4);
+        setTarget(item.getVodName(getName()), item.getVodYear().isEmpty() ? getYear() : item.getVodYear(), item.getTypeName());
+        setCurrentSource(item);
         checkHistory(item);
         checkFlag(item);
         checkOffline();
         checkKeepImg();
         checkQuick();
+        mManualSourceSelection = false;
+    }
+
+    /** 普通线路排前、网盘线路沉底；手动点网盘线路仍然保留可用。 */
+    private void prioritizePlayableFlags(Vod item) {
+        item.getVodFlags().sort((left, right) -> Boolean.compare(left.isCloudDrive(), right.isCloudDrive()));
+    }
+
+    private boolean hasOnlyCloudFlags(Vod item) {
+        if (item.getVodFlags().isEmpty()) return false;
+        for (Flag flag : item.getVodFlags()) if (!flag.isCloudDrive()) return false;
+        return true;
+    }
+
+    /** 当前站点只有网盘线路时不请求播放地址，直接继续找下一个普通源。 */
+    private void skipCloudSource() {
+        VodSource current = mSourceAdapter.getCurrent();
+        if (current != null) current.setBroken(true);
+        mManualSourceSelection = false;
+        if (nextSite()) return;
+        if (mSourceTask != null && !mSourceTask.isFinished()) setInitAuto(true);
+        else startSourceSearch(true);
     }
     
     /**
@@ -949,14 +1038,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.metaScroll.setVisibility(parts.isEmpty() ? View.INVISIBLE : View.VISIBLE);
     }
 
-    /**
-     * 类型标签：把站源的分类字符串按常见分隔符拆开，逐个塞成灰色胶囊。
-     */
-    private void setTags(Vod item) {
+    /** 类型标签只采用豆瓣条目返回的 genres，避免站源分类混入线路名和采集站自定义标签。 */
+    private void setTags(List<String> doubanGenres) {
         mBinding.tags.removeAllViews();
-        String type = item.getTypeName().trim();
         List<String> tags = new ArrayList<>();
-        if (!type.isEmpty()) for (String tag : type.split("[,，/、|]")) if (!tag.trim().isEmpty() && !tags.contains(tag.trim())) tags.add(tag.trim());
+        if (doubanGenres != null) for (String tag : doubanGenres) if (!tag.trim().isEmpty() && !tags.contains(tag.trim())) tags.add(tag.trim());
         for (String tag : tags) {
             TextView view = new TextView(this);
             view.setText(tag);
@@ -1010,6 +1096,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.flag.scrollToPosition(mFlagAdapter.getPosition());
         setEpisodeAdapter(item.getEpisodes());
         setQualityVisible(false);
+        updateDetailPanels();
         return seamless(item, autoSwitch, previousPosition);
     }
 
@@ -1035,9 +1122,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     @Override
-    public void onItemClick(Vod item) {
+    public void onItemClick(VodSource item) {
+        if (mSourceAdapter.isCurrent(item)) return;
         setAutoMode(false);
-        getDetail(item);
+        switchSource(item, false);
     }
 
     @Override
@@ -1063,6 +1151,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         markCached(items);
         mEpisodeAdapter.addAll(items);
         setDownloadVisible(!items.isEmpty());
+        updateDetailPanels();
     }
 
     /** 当前这部剧的缓存聚合键就是片名，和观看记录一样跨源合并。 */
@@ -1418,7 +1507,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (isFullscreen()) {
             exitFullscreen();
         } else {
-            stopSearch();
+            stopSourceSearch();
             super.onBackPress();
         }
     }
@@ -2315,13 +2404,22 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void checkFlag(Vod item) {
         boolean empty = item.getVodFlags().isEmpty();
-        mBinding.flag.setVisibility(empty ? View.GONE : View.VISIBLE);
         if (empty) {
             ErrorEvent.flag(tag);
         } else {
-            onItemClick(mHistory.getFlag());
+            Flag preferred = mFlagAdapter.find(mHistory.getVodFlag());
+            if (preferred == null || preferred.isCloudDrive()) {
+                preferred = null;
+                for (Flag flag : item.getVodFlags()) {
+                    if (flag.isCloudDrive()) continue;
+                    preferred = flag;
+                    break;
+                }
+            }
+            onItemClick(preferred == null ? item.getVodFlags().get(0) : preferred);
             if (mHistory.isRevSort()) reverseEpisode(true);
         }
+        updateDetailPanels();
     }
 
     private void checkHistory(Vod item) {
@@ -2659,81 +2757,245 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void checkFlag() {
-        int position = isGone(mBinding.flag) ? -1 : mFlagAdapter.getPosition();
+        int position = mFlagAdapter.isEmpty() ? -1 : mFlagAdapter.getPosition();
         if (position == mFlagAdapter.getItemCount() - 1) checkSearch(false);
         else nextFlag(position);
     }
 
+    // ==================== 片源 ====================
+    //
+    // 同一部片在各站点的资源。从搜索结果进来时整组源已经在手上；从观看记录、收藏、首页推荐
+    // 进来时，详情加载完再按片名搜一遍，只收同名同年的。排在前面的几个源在后台实测速度，
+    // 播放失败自动换源、用户手动挑源都按这个顺序来。
+
     /**
-     * 播放失败时的兜底：列表里已经有别的源就直接换过去。
-     * 现在详情页一进来就会主动搜，所以这里基本都走 nextSite 分支。
+     * 播放失败或详情拉不到时的兜底：列表里有能换的源就直接换；还在搜就等下一个源到了再换；
+     * 都没有就按片名重新搜一遍。
      */
     private void checkSearch(boolean force) {
-        if (mQuickAdapter.isEmpty()) initSearch(mBinding.name.getText().toString(), true);
-        else nextSite();
+        if (nextSite()) return;
+        if (mSourceTask != null && !mSourceTask.isFinished()) setInitAuto(true);
+        else startSourceSearch(true);
     }
 
-    /**
-     * 详情加载完主动搜一遍别的站点，把结果留在页面上供用户自己换源。
-     * 用 auto=false，否则 setSearch 会立刻 nextSite 把结果消费掉，列表永远是空的。
-     */
+    /** 详情加载完：没有现成片源组时，延后一秒按片名补搜其他普通站点。 */
     private void checkQuick() {
-        if (!mQuickAdapter.isEmpty() || mExecutor != null) return;
-        App.post(mR5, 1000);
+        if (mSourceTask != null) return;
+        if (GroupCache.get(getGroupToken()) == null) App.post(mR5, 1000);
     }
 
-    private void initSearch(String keyword, boolean auto) {
-        stopSearch();
-        setAutoMode(auto);
+    /** 从搜索结果页带过来的整组片源。 */
+    private void initSources() {
+        VodGroup group = GroupCache.get(getGroupToken());
+        if (group != null) mSourceAdapter.addAll(group.getSources());
+        VodSource current = mSourceAdapter.find(getKey(), getId());
+        if (current != null) mSourceAdapter.setCurrent(current);
+        updateSourceView();
+    }
+
+    /** 换了一部片（通知栏、投屏接收等从外部再次打开详情页）：清掉上一部片的片源。 */
+    private void resetSources() {
+        stopSourceSearch();
+        mSourceAdapter.clear();
+        mCurrentVod = null;
+        mManualSourceSelection = false;
+        setInitAuto(false);
+        updateSourceView();
+    }
+
+    private void setTarget(String name, String year, String type) {
+        mTargetKey = TitleKey.normalize(name);
+        mTargetYear = TitleKey.year(year);
+        mTargetKind = TitleKey.kind(type);
+    }
+
+    private void loadDoubanDetails(String name, String year) {
+        String key = TitleKey.normalize(name) + "#" + TitleKey.year(year);
+        if (key.equals(mRatingKey)) return;
+        mRatingKey = key;
+        int generation = ++mRatingGeneration;
+        mDoubanGenres = new ArrayList<>();
+        mRelatedAdapter.setItems(new ArrayList<>());
+        mBinding.relatedSection.setVisibility(View.GONE);
+        double provided = getIntent().getDoubleExtra("rating", 0);
+        boolean sameTitle = TitleKey.normalize(name).equals(TitleKey.normalize(getName()));
+        if (provided > 0 && sameTitle) showDoubanRating(provided);
+        else mBinding.ratingLayout.setVisibility(View.GONE);
+        App.execute(() -> {
+            Douban.Subject subject = null;
+            List<Douban.Item> related = new ArrayList<>();
+            try {
+                subject = Douban.subject(name, year);
+                related = Douban.related(subject.getId(), 12);
+            } catch (Exception e) {
+                Logger.e("DoubanDetail", e);
+            }
+            Douban.Subject result = subject;
+            List<Douban.Item> recommendations = related;
+            App.post(() -> {
+                if (isFinishing() || isDestroyed() || generation != mRatingGeneration) return;
+                if (result != null && result.getRating() > 0) showDoubanRating(result.getRating());
+                if (result != null) {
+                    mDoubanGenres = result.getGenres();
+                    setTags(mDoubanGenres);
+                    if (mBinding.content.getText().toString().trim().isEmpty() && !result.getIntro().isEmpty()) {
+                        setText(mBinding.content, 0, result.getIntro());
+                        updateContentExpand();
+                        mBinding.contentLayout.setVisibility(View.VISIBLE);
+                    }
+                }
+                mRelatedAdapter.setItems(recommendations);
+                mBinding.relatedSection.setVisibility(recommendations.isEmpty() ? View.GONE : View.VISIBLE);
+            });
+        });
+    }
+
+    private void showDoubanRating(double rating) {
+        mBinding.rating.setText(String.format(Locale.ROOT, "%.1f", rating));
+        mBinding.ratingLayout.setVisibility(View.VISIBLE);
+    }
+
+    /** 同名（规整后）、年份相差不超过一年、片种不冲突，才算同一部片。续集和翻拍不收。 */
+    private boolean isTarget(Vod item) {
+        if (mTargetKey.isEmpty() || !mTargetKey.equals(TitleKey.normalize(item.getVodName()))) return false;
+        return TitleKey.sameYear(mTargetYear, TitleKey.year(item.getVodYear())) && TitleKey.sameKind(mTargetKind, TitleKey.kind(item.getTypeName()));
+    }
+
+    /** 当前播放的源也放进列表并高亮。从观看记录进来时列表里原本没有它。 */
+    private void setCurrentSource(Vod item) {
+        if (getSite().isEmpty()) return;
+        VodSource current = mSourceAdapter.find(getKey(), getId());
+        if (current == null) {
+            Vod vod = new Vod();
+            vod.setVodId(getId());
+            vod.setVodName(item.getVodName(getName()));
+            vod.setVodPic(item.getVodPic());
+            vod.setVodYear(item.getVodYear());
+            vod.setTypeName(item.getTypeName());
+            vod.setVodRemarks(item.getVodRemarks());
+            vod.setSite(getSite());
+            mSourceAdapter.add(current = new VodSource(vod, 0));
+        }
+        mSourceAdapter.setCurrent(current);
+        updateSourceView();
+    }
+
+    /** 按片名搜全部站点，同名同年的收进片源列表。auto 为 true 时第一个合适的源一到就切过去。 */
+    private void startSourceSearch(boolean auto) {
+        stopSourceSearch();
         setInitAuto(auto);
-        startSearch(keyword);
-    }
-
-    private boolean isPass(Site item) {
-        if (isAutoMode() && !item.isChangeable()) return false;
-        return item.isSearchable();
-    }
-
-    private void startSearch(String keyword) {
-        mQuickAdapter.clear();
+        mStrictUntil = SystemClock.elapsedRealtime() + 2500;
         List<Site> sites = new ArrayList<>();
-        mExecutor = Executors.newFixedThreadPool(20);
-        for (Site item : VodConfig.get().getSites()) if (isPass(item)) sites.add(item);
-        for (Site site : sites) mExecutor.execute(() -> search(site, keyword));
+        for (Site site : VodConfig.get().getSites()) if (site.isSearchable() && !site.isCloudDrive()) sites.add(site);
+        mSourceTask = SearchTask.start(sites, mBinding.name.getText().toString(), false, new SearchTask.Callback() {
+            @Override
+            public void onResult(List<Vod> items, long cost) {
+                addSources(items, cost);
+            }
+
+            @Override
+            public void onFinish() {
+                onSourceSearchFinish();
+            }
+        });
+        App.post(mR6, 2500);
     }
 
-    private void stopSearch() {
-        App.removeCallbacks(mR5);
-        if (mExecutor == null) return;
-        mExecutor.shutdownNow();
-        mExecutor = null;
+    private void stopSourceSearch() {
+        App.removeCallbacks(mR5, mR6);
+        if (mSourceTask != null) mSourceTask.cancel();
+        mSourceTask = null;
     }
 
-    private void search(Site site, String keyword) {
-        try {
-            mViewModel.searchContent(site, keyword, true);
-        } catch (Throwable ignored) {
+    private void addSources(List<Vod> items, long cost) {
+        List<VodSource> sources = new ArrayList<>();
+        for (Vod item : items) {
+            if (item.isFolder() || !isTarget(item) || mSourceAdapter.contains(item.getSiteKey(), item.getVodId())) continue;
+            boolean duplicate = false;
+            for (VodSource source : sources) duplicate |= source.same(item.getSiteKey(), item.getVodId());
+            if (!duplicate) sources.add(new VodSource(item, cost));
+        }
+        if (sources.isEmpty()) return;
+        mSourceAdapter.addAll(sources);
+        updateSourceView();
+        checkAutoSwitch();
+    }
+
+    private void onSourceSearchFinish() {
+        checkAutoSwitch();
+        // 只有片名、搜完一个能播的源都没有：别让转圈一直转下去
+        if (isInitAuto() && mCurrentVod == null && mSourceAdapter.next(0) == null) {
+            App.removeCallbacks(mR4);
+            showEmpty();
         }
     }
 
-    private void setSearch(Result result) {
-        List<Vod> items = result.getList();
-        Iterator<Vod> iterator = items.iterator();
-        while (iterator.hasNext()) if (mismatch(iterator.next())) iterator.remove();
-        mBinding.quick.setVisibility(View.VISIBLE);
-        mBinding.quickText.setVisibility(View.VISIBLE);
-        mQuickAdapter.addAll(items);
-        if (isInitAuto()) nextSite();
-        if (items.isEmpty()) return;
-        App.removeCallbacks(mR4);
+    /** 自动选源。有目标年份时开搜后 2.5 秒内只认年份对得上的，免得同名的老版本抢先。 */
+    private void checkAutoSwitch() {
+        if (!isInitAuto()) return;
+        boolean strict = mTargetYear > 0 && mSourceTask != null && !mSourceTask.isFinished() && SystemClock.elapsedRealtime() < mStrictUntil;
+        VodSource next = mSourceAdapter.next(strict ? mTargetYear : 0);
+        if (next != null) switchSource(next, true);
     }
 
-    private boolean mismatch(Vod item) {
-        if (getId().equals(item.getVodId())) return true;
-        if (mBroken.contains(item.getVodId())) return true;
-        String keyword = mBinding.name.getText().toString();
-        if (isAutoMode()) return !item.getVodName().equals(keyword);
-        else return !item.getVodName().contains(keyword);
+    private boolean nextSite() {
+        VodSource next = mSourceAdapter.next(0);
+        if (next == null) return false;
+        switchSource(next, true);
+        return true;
+    }
+
+    /** 切到另一个源。auto 是播放失败自动换的：当前源记为播挂过，之后自动换源不再选它。 */
+    private void switchSource(VodSource next, boolean auto) {
+        VodSource current = mSourceAdapter.getCurrent();
+        if (auto && current != null) current.setBroken(true);
+        if (auto) Notify.show(getString(R.string.play_switch_site, next.getSiteName()));
+        mManualSourceSelection = !auto;
+        setInitAuto(false);
+        mSourceAdapter.setCurrent(next);
+        mBinding.sourceList.scrollToPosition(0);
+        updateSourceView();
+        getDetail(next.getVod());
+    }
+
+    private void updateSourceView() {
+        updateDetailPanels();
+    }
+
+    private void setDetailPanel(int panel) {
+        if (panel == DETAIL_SOURCE && mSourceAdapter.getItemCount() == 0) return;
+        if (panel == DETAIL_FLAG && mFlagAdapter.isEmpty()) return;
+        mDetailPanel = panel;
+        updateDetailPanels();
+    }
+
+    private void updateDetailPanels() {
+        if (mBinding == null || mEpisodeAdapter == null || mSourceAdapter == null || mFlagAdapter == null) return;
+        boolean hasEpisodes = !mEpisodeAdapter.isEmpty();
+        boolean hasSources = mSourceAdapter.getItemCount() > 0;
+        boolean hasFlags = !mFlagAdapter.isEmpty();
+        if (mDetailPanel == DETAIL_SOURCE && !hasSources) mDetailPanel = DETAIL_EPISODE;
+        if (mDetailPanel == DETAIL_FLAG && !hasFlags) mDetailPanel = DETAIL_EPISODE;
+
+        boolean episodes = mDetailPanel == DETAIL_EPISODE;
+        boolean sources = mDetailPanel == DETAIL_SOURCE;
+        boolean flags = mDetailPanel == DETAIL_FLAG;
+        mBinding.episodeTab.setActivated(episodes);
+        mBinding.sourceTab.setActivated(sources);
+        mBinding.flagTab.setActivated(flags);
+        mBinding.episodeTab.setTextColor(getColor(episodes ? R.color.text_primary : R.color.text_secondary));
+        mBinding.sourceTab.setTextColor(getColor(sources ? R.color.text_primary : R.color.text_secondary));
+        mBinding.flagTab.setTextColor(getColor(flags ? R.color.text_primary : R.color.text_secondary));
+        mBinding.sourceTab.setEnabled(hasSources);
+        mBinding.flagTab.setEnabled(hasFlags);
+        mBinding.sourceTab.setAlpha(hasSources ? (sources ? 1f : 0.72f) : 0.32f);
+        mBinding.flagTab.setAlpha(hasFlags ? (flags ? 1f : 0.72f) : 0.32f);
+
+        mBinding.episode.setVisibility(episodes && hasEpisodes ? View.VISIBLE : View.GONE);
+        mBinding.sourceOptions.setVisibility(episodes ? View.GONE : View.VISIBLE);
+        mBinding.sourceList.setVisibility(sources ? View.VISIBLE : View.GONE);
+        mBinding.flag.setVisibility(flags ? View.VISIBLE : View.GONE);
+        mBinding.episodeActions.setVisibility(episodes ? View.VISIBLE : View.GONE);
     }
 
     private void nextParse(int position) {
@@ -2746,16 +3008,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         Flag flag = mFlagAdapter.get(position + 1);
         Notify.show(getString(R.string.play_switch_flag, flag.getFlag()));
         if (!selectFlag(flag, true)) checkFlag();
-    }
-
-    private void nextSite() {
-        if (mQuickAdapter.isEmpty()) return;
-        Vod item = mQuickAdapter.get(0);
-        Notify.show(getString(R.string.play_switch_site, item.getSiteName()));
-        mQuickAdapter.remove(0);
-        mBroken.add(getId());
-        setInitAuto(false);
-        getDetail(item);
     }
 
     private void onPaused() {
@@ -3804,15 +4056,18 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         } else if (isVisible(mBinding.control.getRoot())) {
             hideControl();
         } else if (!isLock()) {
-            stopSearch();
+            stopSourceSearch();
             super.onBackPress();
         }
     }
 
     @Override
     protected void onDestroy() {
+        mRatingGeneration++;
         super.onDestroy();
-        stopSearch();
+        stopSourceSearch();
+        // 横竖屏之外的配置变化会重建页面，重建后还要靠它找回片源组，只在真正关闭时清掉
+        if (isFinishing()) GroupCache.remove(getGroupToken());
         // 只摘监听不断投屏：退出播放页时电视该继续放，常驻通知里还能暂停和退出投屏
         CastManager.get().removeListener(this);
         mPlayers.release();
@@ -3823,11 +4078,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         RefreshEvent.history();
         PlaybackService.stop();
         mHandler.removeCallbacksAndMessages(null);
-        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5, mCacheWarmup, mShowBufferingProgress);
+        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5, mR6, mCacheWarmup, mShowBufferingProgress);
         EventBus.getDefault().unregister(this);
         mViewModel.result.removeObserver(mObserveDetail);
         mViewModel.player.removeObserver(mObservePlayer);
-        mViewModel.search.removeObserver(mObserveSearch);
         stopTimeBatteryUpdates();
     }
 }

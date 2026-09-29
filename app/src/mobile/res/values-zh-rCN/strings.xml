@@ -70,11 +70,30 @@
 
     <!-- Detail -->
     <string name="detail_flag">播放线路</string>
+    <string name="detail_flag_short">线路</string>
     <string name="detail_more">更多</string>
     <string name="detail_episode">剧集</string>
     <string name="detail_quality">画质</string>
     <string name="detail_content">简介</string>
     <string name="detail_search">快搜"<xliff:g name="name">%s</xliff:g>"</string>
+    <string name="detail_source">片源</string>
+    <string name="detail_play_source">播放来源</string>
+    <string name="detail_switch_source">切换</string>
+    <string name="detail_related">相关推荐</string>
+
+    <!-- 聚合搜索与片源测速 -->
+    <string name="search_progress">正在搜索 %1$d/%2$d</string>
+    <string name="search_actor">主演：%s</string>
+    <string name="search_source_count">%d 个源</string>
+    <string name="source_hint_testing">正在测试片源速度…</string>
+    <string name="source_hint_sorted">已按实测速度排序</string>
+    <string name="source_playing">播放中</string>
+    <string name="source_broken">已失效</string>
+    <string name="source_testing">测速中…</string>
+    <string name="source_timeout">超时</string>
+    <string name="source_fail">失败</string>
+    <string name="source_skip">不测速</string>
+    <string name="source_idle">候选</string>
 
     <!-- Device -->
     <string name="device_select">投屏到设备</string>

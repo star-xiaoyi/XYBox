@@ -126,15 +126,7 @@ public class SiteViewModel extends ViewModel {
             Site site = VodConfig.get().getSite(key);
             if (DOWNLOAD_KEY.equals(key)) {
                 return offlineDetail(id);
-            } else if (site.getType() == 3) {
-                Spider spider = site.recent().spider();
-                String detailContent = spider.detailContent(Arrays.asList(id));
-                SpiderDebug.log(detailContent);
-                Result result = Result.fromJson(detailContent);
-                if (!result.getList().isEmpty()) result.getList().get(0).setVodFlags();
-                if (!result.getList().isEmpty()) Source.get().parse(result.getList().get(0).getVodFlags());
-                return result;
-            } else if (site.isEmpty() && "push_agent".equals(key)) {
+            } else if (site.getType() != 3 && site.isEmpty() && "push_agent".equals(key)) {
                 Vod vod = new Vod();
                 vod.setVodId(id);
                 vod.setVodName(id);
@@ -143,17 +135,37 @@ public class SiteViewModel extends ViewModel {
                 Source.get().parse(vod.getVodFlags());
                 return Result.vod(vod);
             } else {
-                ArrayMap<String, String> params = new ArrayMap<>();
-                params.put("ac", site.getType() == 0 ? "videolist" : "detail");
-                params.put("ids", id);
-                String detailContent = call(site, params);
-                SpiderDebug.log(detailContent);
-                Result result = Result.fromType(site.getType(), detailContent);
-                if (!result.getList().isEmpty()) result.getList().get(0).setVodFlags();
+                Result result = detail(site, id, true);
                 if (!result.getList().isEmpty()) Source.get().parse(result.getList().get(0).getVodFlags());
                 return result;
             }
         });
+    }
+
+    /**
+     * 阻塞式取详情，只拆出线路和剧集，不展开磁力、油管这类剧集。
+     * <p>
+     * recent 为 false 时不改写 JarLoader 的 recent：测速和补简介会在后台并行请求别的站点，
+     * 把 recent 切走的话，正在播放的那个站点的代理地址会被路由到错误的 JAR。
+     */
+    public static Result detail(Site site, String id, boolean recent) throws Exception {
+        if (site.getType() == 3) {
+            Spider spider = recent ? site.recent().spider() : site.spider();
+            String detailContent = spider.detailContent(Arrays.asList(id));
+            SpiderDebug.log(detailContent);
+            Result result = Result.fromJson(detailContent);
+            if (!result.getList().isEmpty()) result.getList().get(0).setVodFlags();
+            return result;
+        } else {
+            ArrayMap<String, String> params = new ArrayMap<>();
+            params.put("ac", site.getType() == 0 ? "videolist" : "detail");
+            params.put("ids", id);
+            String detailContent = call(site, params);
+            SpiderDebug.log(detailContent);
+            Result result = Result.fromType(site.getType(), detailContent);
+            if (!result.getList().isEmpty()) result.getList().get(0).setVodFlags();
+            return result;
+        }
     }
 
     public void playerContent(String key, String flag, String id) {
@@ -218,6 +230,29 @@ public class SiteViewModel extends ViewModel {
             SpiderDebug.log(result.toString());
             return bindProxyJar(result, site);
         }
+    }
+
+    /**
+     * 测速用的取播放地址。和 {@link #getPlayer} 的区别：不改 recent，也不经过 Source.fetch——
+     * 那一步会让磁力、P2P 提取器拉起下载引擎，测速只看原始地址，需要解析的交给调用方跳过。
+     */
+    public static Result probePlayer(Site site, String flag, String id) throws Exception {
+        Result result;
+        if (site.getType() == 3) {
+            result = Result.fromJson(site.spider().playerContent(flag, id, VodConfig.get().getFlags()));
+        } else if (site.getType() == 4) {
+            ArrayMap<String, String> params = new ArrayMap<>();
+            params.put("play", id);
+            params.put("flag", flag);
+            result = Result.fromJson(call(site, params));
+        } else {
+            result = new Result();
+            result.setUrl(Url.create().add(id));
+            result.setPlayUrl(site.getPlayUrl());
+            result.setParse(Sniffer.isVideoFormat(id) && result.getPlayUrl().isEmpty() ? 0 : 1);
+        }
+        result.setHeader(site.getHeader());
+        return bindProxyJar(result, site);
     }
 
     /**
@@ -293,20 +328,28 @@ public class SiteViewModel extends ViewModel {
     }
 
     public void searchContent(Site site, String keyword, boolean quick) throws Throwable {
+        Result result = search(site, keyword, quick);
+        if (!result.getList().isEmpty()) this.search.postValue(result);
+    }
+
+    /** 阻塞式搜索单个站点，返回的每一条都已绑定站点。聚合搜索在自己的线程池里直接调它。 */
+    public static Result search(Site site, String keyword, boolean quick) throws Throwable {
+        if (quick && !site.isQuickSearch()) return Result.empty();
+        Result result;
         if (site.getType() == 3) {
-            if (quick && !site.isQuickSearch()) return;
             String searchContent = site.spider().searchContent(Trans.t2s(keyword), quick);
             SpiderDebug.log(site.getName() + "," + searchContent);
-            post(site, Result.fromJson(searchContent));
+            result = Result.fromJson(searchContent);
         } else {
-            if (quick && !site.isQuickSearch()) return;
             ArrayMap<String, String> params = new ArrayMap<>();
             params.put("wd", Trans.t2s(keyword));
             params.put("quick", String.valueOf(quick));
             String searchContent = call(site, params);
             SpiderDebug.log(site.getName() + "," + searchContent);
-            post(site, fetchPic(site, Result.fromType(site.getType(), searchContent)));
+            result = fetchPic(site, Result.fromType(site.getType(), searchContent));
         }
+        for (Vod vod : result.getList()) vod.setSite(site);
+        return result;
     }
 
     public void searchContent(Site site, String keyword, String page) {
@@ -340,7 +383,7 @@ public class SiteViewModel extends ViewModel {
         return result;
     }
 
-    private Result fetchPic(Site site, Result result) throws Exception {
+    private static Result fetchPic(Site site, Result result) throws Exception {
         if (site.getType() > 2 || result.getList().isEmpty() || !result.getList().get(0).getVodPic().isEmpty()) return result;
         ArrayList<String> ids = new ArrayList<>();
         if (site.getCategories().isEmpty()) for (Vod item : result.getList()) ids.add(item.getVodId());
@@ -353,12 +396,6 @@ public class SiteViewModel extends ViewModel {
         result.setList(Result.fromType(site.getType(), response.body().string()).getList());
         response.close();
         return result;
-    }
-
-    private void post(Site site, Result result) {
-        if (result.getList().isEmpty()) return;
-        for (Vod vod : result.getList()) vod.setSite(site);
-        this.search.postValue(result);
     }
 
     private void execute(MutableLiveData<Result> result, String tag, Callable<Result> callable) {

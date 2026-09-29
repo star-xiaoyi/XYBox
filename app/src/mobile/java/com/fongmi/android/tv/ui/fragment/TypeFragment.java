@@ -26,7 +26,6 @@ import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.FragmentTypeBinding;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.utils.Util;
-import com.fongmi.android.tv.ui.activity.CollectActivity;
 import com.fongmi.android.tv.ui.activity.VideoActivity;
 import com.fongmi.android.tv.ui.adapter.VodAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
@@ -277,8 +276,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
             getVideo(item.getVodId(), "1");
         } else {
             if (getSite().isIndex()) {
-                if (getParentFragment() instanceof VodFragment) ((VodFragment) getParentFragment()).searchFromHome(item.getVodName());
-                else CollectActivity.start(getActivity(), item.getVodName());
+                VideoActivity.find(getActivity(), item.getVodName(), item.getVodPic(), item.getVodYear());
             } else {
                 VideoActivity.start(getActivity(), getKey(), item.getVodId(), item.getVodName(), item.getVodPic(), isFolder() ? item.getVodName() : null);
             }
@@ -287,8 +285,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
 
     @Override
     public boolean onLongClick(Vod item) {
-        CollectActivity.start(getActivity(), item.getVodName());
-        return true;
+        return false;
     }
 
     @Override
@@ -301,7 +298,8 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     }
 
     public boolean hasBackStack() {
-        return !mPages.isEmpty();
+        // Fragment 已挂到 FragmentManager、但视图还没创建时，首页切页也会查询返回键状态。
+        return mPages != null && !mPages.isEmpty();
     }
 
     private void notifyBackStateChanged() {

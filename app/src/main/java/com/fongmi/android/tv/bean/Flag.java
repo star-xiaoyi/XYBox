@@ -21,6 +21,13 @@ import java.util.Locale;
 
 public class Flag implements Parcelable {
 
+    private static final String[] CLOUD_HINTS = {
+            "网盘", "云盘", "盘搜", "夸克", "夸父", "百度盘", "百度云", "阿里盘", "阿里云",
+            "天翼盘", "天翼云", "迅雷盘", "迅雷云", "115盘", "uc盘", "uc云", "转存",
+            "pan.baidu.com", "pan.quark.cn", "drive.uc.cn", "aliyundrive", "alipan.com",
+            "cloud.189.cn", "115.com", "pan.xunlei.com", "xunlei", "quark"
+    };
+
     @Attribute(name = "flag", required = false)
     @SerializedName("flag")
     private String flag;
@@ -69,6 +76,22 @@ public class Flag implements Parcelable {
 
     public List<Episode> getEpisodes() {
         return episodes;
+    }
+
+    /** 线路级网盘识别：普通聚合站也可能把网盘线路混在详情里，不能只看站点名。 */
+    public boolean isCloudDrive() {
+        if (hasCloudHint(getFlag()) || hasCloudHint(getShow())) return true;
+        for (Episode episode : getEpisodes()) {
+            if (hasCloudHint(episode.getName()) || hasCloudHint(episode.getDesc()) || hasCloudHint(episode.getUrl())) return true;
+        }
+        return false;
+    }
+
+    private static boolean hasCloudHint(String text) {
+        if (TextUtils.isEmpty(text)) return false;
+        String value = text.toLowerCase(Locale.ROOT);
+        for (String hint : CLOUD_HINTS) if (value.contains(hint)) return true;
+        return false;
     }
 
     public boolean isActivated() {
