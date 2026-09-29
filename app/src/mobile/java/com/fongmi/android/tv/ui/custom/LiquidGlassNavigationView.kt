@@ -123,7 +123,6 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
 
         val items = buildList {
             add(NavItem(R.id.recommend, R.drawable.ic_nav_recommend, R.string.nav_recommend))
-            add(NavItem(R.id.vod, R.drawable.ic_nav_discover, R.string.nav_discover))
             if (liveVisibleState) add(NavItem(R.id.live, R.drawable.ic_nav_live, R.string.nav_live))
             add(NavItem(R.id.setting, R.drawable.ic_nav_profile, R.string.nav_profile))
         }

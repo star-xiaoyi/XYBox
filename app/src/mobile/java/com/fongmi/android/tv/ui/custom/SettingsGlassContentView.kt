@@ -132,7 +132,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
         @ColorInt val accentColor: Int = 0xFFFFCC00.toInt(),
         val historyVisible: Boolean = true,
         val liveTabVisible: Boolean = false,
-        val liquidGlassNavigation: Boolean = false,
+        val liquidGlassNavigation: Boolean = true,
         val incognito: Boolean = false,
         val doh: String = "",
         val proxy: String = "",

@@ -477,7 +477,7 @@ public class Setting {
     }
 
     public static boolean isLiquidGlassNavigation() {
-        return Prefers.getBoolean("liquid_glass_navigation", false);
+        return Prefers.getBoolean("liquid_glass_navigation", true);
     }
 
     public static void putLiquidGlassNavigation(boolean enabled) {
@@ -485,7 +485,7 @@ public class Setting {
     }
 
     public static boolean isPredictiveBackEnabled() {
-        return Prefers.getBoolean("predictive_back", false);
+        return Prefers.getBoolean("predictive_back", true);
     }
 
     public static void putPredictiveBackEnabled(boolean enabled) {

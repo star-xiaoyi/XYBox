@@ -169,7 +169,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
                 return null;
             }
         };
-        if (savedInstanceState == null) mManager.change(POSITION_RECOMMEND);
+        if (savedInstanceState == null || currentPosition == POSITION_VOD) {
+            currentPosition = POSITION_RECOMMEND;
+            mManager.change(POSITION_RECOMMEND);
+        }
     }
 
     private void initConfig() {
@@ -212,7 +215,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     private void setNavigation() {
         mBinding.navigation.getMenu().findItem(R.id.recommend).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.vod).setVisible(true);
+        mBinding.navigation.getMenu().findItem(R.id.vod).setVisible(false);
         mBinding.navigation.getMenu().findItem(R.id.setting).setVisible(true);
         boolean liveVisible = LiveConfig.hasUrl() && !Setting.isLiveTabVisible();
         mBinding.navigation.getMenu().findItem(R.id.live).setVisible(liveVisible);
