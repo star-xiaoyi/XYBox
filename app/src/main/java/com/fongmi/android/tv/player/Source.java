@@ -77,6 +77,11 @@ public class Source {
         }
     }
 
+    /** 这个地址会不会被磁力、P2P 之类的提取器接管。测速要绕开它们，否则会拉起下载引擎。 */
+    public boolean isExtract(String url) {
+        return getExtractor(url) != null;
+    }
+
     public String fetch(Result result) throws Exception {
         String url = result.getUrl().v();
         Extractor extractor = getExtractor(url);

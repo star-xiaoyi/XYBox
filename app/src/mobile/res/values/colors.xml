@@ -34,5 +34,8 @@
     <color name="accent_blue">#FF0A84FF</color>
     <color name="accent_green">#FF30D158</color>
     <color name="accent_purple">#FFBF5AF2</color>
+    <color name="source_fast">@color/accent_green</color>
+    <color name="source_medium">@color/accent_yellow</color>
+    <color name="source_slow">@color/download_error_text</color>
 
 </resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 搜索结果里的更新状态小标签：比详情页的类型标签更紧凑 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/surface_secondary" />
+    <corners android:radius="6dp" />
+    <padding
+        android:bottom="3dp"
+        android:left="6dp"
+        android:right="6dp"
+        android:top="3dp" />
+</shape>

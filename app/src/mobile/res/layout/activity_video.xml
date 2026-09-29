@@ -165,10 +165,11 @@
                 <LinearLayout
                     android:id="@+id/detail_header"
                     android:layout_width="match_parent"
-                    android:layout_height="120dp"
+                    android:layout_height="wrap_content"
                     android:layout_marginStart="16dp"
                     android:layout_marginEnd="16dp"
                     android:baselineAligned="false"
+                    android:minHeight="120dp"
                     android:orientation="horizontal">
 
                     <com.google.android.material.imageview.ShapeableImageView
@@ -182,18 +183,20 @@
 
                     <LinearLayout
                         android:layout_width="0dp"
-                        android:layout_height="108dp"
+                        android:layout_height="wrap_content"
                         android:layout_marginStart="12dp"
                         android:layout_weight="1"
+                        android:minHeight="108dp"
                         android:orientation="vertical"
                         android:paddingTop="4dp"
                         android:paddingBottom="4dp">
 
-                            <!-- 标题 + 豆瓣评分（评分暂无数据源，默认隐藏） -->
+                            <!-- 标题 + 豆瓣评分；匹配成功后在标题行最右侧显示。 -->
                             <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:baselineAligned="false"
+                                android:gravity="center_vertical"
                                 android:orientation="horizontal">
 
                                 <com.fongmi.android.tv.ui.custom.OneShotMarqueeTextView
@@ -225,20 +228,17 @@
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:textColor="@color/text_primary"
-                                        android:textSize="26sp"
+                                        android:textSize="21sp"
                                         android:textStyle="bold"
                                         tools:text="9.2" />
 
                                     <TextView
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
-                                        android:drawablePadding="2dp"
                                         android:gravity="center_vertical"
                                         android:text="@string/detail_rating"
                                         android:textColor="@color/text_secondary"
-                                        android:textSize="11sp"
-                                        app:drawableEndCompat="@drawable/ic_detail_chevron"
-                                        app:drawableTint="@color/text_secondary" />
+                                        android:textSize="9sp" />
 
                                 </LinearLayout>
 
@@ -345,32 +345,6 @@
 
                     </FrameLayout>
 
-                    <!-- 播放线路 -->
-                    <TextView
-                        android:id="@+id/flag_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_marginTop="20dp"
-                        android:layout_marginEnd="16dp"
-                        android:text="@string/detail_flag"
-                        android:textColor="@color/text_primary"
-                        android:textSize="15sp"
-                        android:textStyle="bold" />
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/flag"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:clipChildren="false"
-                        android:clipToPadding="false"
-                        android:orientation="horizontal"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
-                        android:scrollbars="none"
-                        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-
                     <!-- 画质 -->
                     <TextView
                         android:id="@+id/quality_text"
@@ -401,7 +375,7 @@
                         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
                         tools:visibility="visible" />
 
-                    <!-- 剧集 -->
+                    <!-- 剧集、片源和线路共用一行切换，默认只展示剧集。 -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -411,55 +385,140 @@
                         android:gravity="center_vertical">
 
                         <TextView
+                            android:id="@+id/episode_tab"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:paddingEnd="8dp"
                             android:text="@string/detail_episode"
                             android:textColor="@color/text_primary"
                             android:textSize="15sp"
                             android:textStyle="bold" />
 
-                        <ImageView
-                            android:id="@+id/reverse"
-                            android:layout_width="18dp"
-                            android:layout_height="18dp"
-                            android:layout_marginStart="8dp"
-                            android:src="@drawable/ic_detail_reverse_plain"
-                            android:tint="@color/text_secondary"
-                            android:visibility="gone"
-                            tools:visibility="visible" />
+                        <TextView
+                            android:id="@+id/source_tab"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:paddingStart="8dp"
+                            android:paddingEnd="8dp"
+                            android:text="@string/detail_source"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/flag_tab"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:paddingStart="8dp"
+                            android:paddingEnd="8dp"
+                            android:text="@string/detail_flag_short"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
 
                         <View
                             android:layout_width="0dp"
                             android:layout_height="0dp"
                             android:layout_weight="1" />
 
-                        <TextView
-                            android:id="@+id/download"
+                        <LinearLayout
+                            android:id="@+id/episode_actions"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginEnd="16dp"
-                            android:drawablePadding="3dp"
                             android:gravity="center_vertical"
-                            android:text="@string/download_entry"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
+                            android:orientation="horizontal">
+
+                            <ImageView
+                                android:id="@+id/reverse"
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
+                                android:src="@drawable/ic_detail_reverse_plain"
+                                android:tint="@color/text_secondary"
+                                android:visibility="gone"
+                                tools:visibility="visible" />
+
+                            <TextView
+                                android:id="@+id/download"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="12dp"
+                                android:layout_marginEnd="16dp"
+                                android:drawablePadding="3dp"
+                                android:gravity="center_vertical"
+                                android:text="@string/download_entry"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:visibility="gone"
+                                app:drawableStartCompat="@drawable/ic_detail_download"
+                                app:drawableTint="@color/text_secondary"
+                                tools:visibility="visible" />
+
+                            <TextView
+                                android:id="@+id/more"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:drawablePadding="2dp"
+                                android:gravity="center_vertical"
+                                android:text="@string/detail_more"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:visibility="gone"
+                                app:drawableEndCompat="@drawable/ic_detail_chevron"
+                                app:drawableTint="@color/text_secondary"
+                                tools:visibility="visible" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/source_options"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/source_list"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:clipChildren="false"
+                            android:clipToPadding="false"
+                            android:nestedScrollingEnabled="false"
+                            android:orientation="horizontal"
+                            android:paddingStart="16dp"
+                            android:paddingEnd="16dp"
+                            android:scrollbars="none"
                             android:visibility="gone"
-                            app:drawableStartCompat="@drawable/ic_detail_download"
-                            app:drawableTint="@color/text_secondary"
+                            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+                            tools:listitem="@layout/adapter_source"
                             tools:visibility="visible" />
 
-                        <TextView
-                            android:id="@+id/more"
-                            android:layout_width="wrap_content"
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/flag"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:drawablePadding="2dp"
-                            android:gravity="center_vertical"
-                            android:text="@string/detail_more"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
+                            android:layout_marginTop="10dp"
+                            android:clipChildren="false"
+                            android:clipToPadding="false"
+                            android:orientation="horizontal"
+                            android:paddingStart="16dp"
+                            android:paddingEnd="16dp"
+                            android:scrollbars="none"
                             android:visibility="gone"
-                            app:drawableEndCompat="@drawable/ic_detail_chevron"
-                            app:drawableTint="@color/text_secondary"
+                            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
                             tools:visibility="visible" />
 
                     </LinearLayout>
@@ -534,37 +593,41 @@
 
                     </LinearLayout>
 
-                    <!-- 其他站点资源 -->
-                    <TextView
-                        android:id="@+id/quick_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_marginTop="20dp"
-                        android:layout_marginEnd="16dp"
-                        android:text="@string/detail_quick"
-                        android:textColor="@color/text_primary"
-                        android:textSize="15sp"
-                        android:textStyle="bold"
-                        android:visibility="gone"
-                        tools:visibility="visible" />
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/quick"
+                    <LinearLayout
+                        android:id="@+id/related_section"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:clipChildren="false"
-                        android:clipToPadding="false"
-                        android:nestedScrollingEnabled="false"
-                        android:orientation="horizontal"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
-                        android:scrollbars="none"
+                        android:layout_marginTop="20dp"
+                        android:orientation="vertical"
                         android:visibility="gone"
-                        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-                        tools:listitem="@layout/adapter_quick"
-                        tools:visibility="visible" />
+                        tools:visibility="visible">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="16dp"
+                            android:layout_marginEnd="16dp"
+                            android:text="@string/detail_related"
+                            android:textColor="@color/text_primary"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/related"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:clipChildren="false"
+                            android:clipToPadding="false"
+                            android:nestedScrollingEnabled="false"
+                            android:orientation="horizontal"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="10dp"
+                            android:scrollbars="none"
+                            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+                            tools:listitem="@layout/adapter_recommend" />
+
+                    </LinearLayout>
 
 
                     </LinearLayout>

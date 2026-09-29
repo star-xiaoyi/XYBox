@@ -650,13 +650,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     }
 
     private void onSearchAction(View view) {
-        HomeSearchFragment fragment = getHomeSearchFragment();
-        if (mSearchResultsVisible && mSearchViewReady && !mSearchEditing && fragment != null) {
-            fragment.toggleView();
-            updateSearchActionIcon(fragment);
-        } else {
-            submitHomeSearch();
-        }
+        submitHomeSearch();
     }
 
     private void submitHomeSearch() {
@@ -683,12 +677,6 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         } else {
             fragment.search(keyword);
         }
-    }
-
-    public void searchFromHome(String keyword) {
-        if (mBinding == null || TextUtils.isEmpty(keyword)) return;
-        mBinding.headerBar.setQuery(keyword);
-        submitHomeSearch();
     }
 
     private void showSearchContent() {
@@ -736,8 +724,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         hideSearchSuggestions();
         mBinding.headerBar.clearSearchFocus();
         if (mSearchResultsVisible) {
-            HomeSearchFragment fragment = getHomeSearchFragment();
-            if (mSearchViewReady && fragment != null) updateSearchActionIcon(fragment);
+            mBinding.headerBar.setSearchIcon(R.drawable.ic_action_search);
         } else {
             setBottomNavigationVisible(true);
             setSearchHeaderExpanded(false);
@@ -848,12 +835,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
     public void onHomeSearchResultsReady() {
         if (mBinding == null || !mSearchResultsVisible) return;
         mSearchViewReady = true;
-        HomeSearchFragment fragment = getHomeSearchFragment();
-        if (fragment != null) updateSearchActionIcon(fragment);
-    }
-
-    private void updateSearchActionIcon(HomeSearchFragment fragment) {
-        mBinding.headerBar.setSearchIcon(fragment.isGrid() ? R.drawable.ic_action_list : R.drawable.ic_action_grid);
+        mBinding.headerBar.setSearchIcon(R.drawable.ic_action_search);
     }
 
     private void onHistory(View view) {
