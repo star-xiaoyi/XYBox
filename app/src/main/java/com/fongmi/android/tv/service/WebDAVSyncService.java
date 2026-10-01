@@ -106,8 +106,8 @@ public class WebDAVSyncService extends Service {
         Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
         PendingIntent contentIntent = launch == null ? null : PendingIntent.getActivity(
                 this, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification_small)
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(com.fongmi.android.tv.utils.NotificationSmallIcon.get(this))
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText("正在同步观看记录")
                 .setContentIntent(contentIntent)
@@ -117,6 +117,8 @@ public class WebDAVSyncService extends Service {
                 .setOnlyAlertOnce(true)
                 .setShowWhen(false)
                 .build();
+        com.fongmi.android.tv.utils.NotificationIconDiagnostics.record(this, "sync", notification);
+        return notification;
     }
 
     private void createNotificationChannel() {

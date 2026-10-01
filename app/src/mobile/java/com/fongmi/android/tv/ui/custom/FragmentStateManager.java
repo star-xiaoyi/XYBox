@@ -26,7 +26,7 @@ public abstract class FragmentStateManager {
         if (fragment == null) ft.add(container.getId(), fragment = getItem(position), getTag(position));
         else ft.show(fragment);
         Fragment current = fm.getPrimaryNavigationFragment();
-        if (current != null) ft.hide(current);
+        if (current != null && current != fragment) ft.hide(current);
         ft.setPrimaryNavigationFragment(fragment);
         ft.setReorderingAllowed(true);
         ft.commitNowAllowingStateLoss();

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_find">AI 找片</string>
+    <string name="ai_new_conversation">新对话</string>
+    <string name="ai_settings">AI 设置</string>
+    <string name="ai_settings_summary">DeepSeek 密钥与语音找片</string>
+</resources>

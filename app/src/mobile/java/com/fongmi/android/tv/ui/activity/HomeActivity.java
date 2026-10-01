@@ -8,6 +8,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Gravity;
+import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
 
 import androidx.annotation.NonNull;
@@ -69,6 +72,14 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     private int windowWidthDp;
     private boolean bottomNavigationVisible = true;
     private boolean glassNavigationEnabled;
+    private com.fongmi.android.tv.ai.VoiceHoldController aiVoice;
+    private final com.fongmi.android.tv.ai.AiOrbDrawable aiOrb = new com.fongmi.android.tv.ai.AiOrbDrawable();
+    private boolean aiRecording;
+    private boolean aiThinking;
+    private FrameLayout aiNavigationHost;
+    private View aiNavigationBackdrop;
+    private boolean navigationDisposed;
+    private final Runnable navigationUpdate = this::applyNavigationVisibility;
 
     @Override
     protected ViewBinding getBinding() {
@@ -83,6 +94,13 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void initView(Bundle savedInstanceState) {
+        aiVoice = new com.fongmi.android.tv.ai.VoiceHoldController(this, text -> {
+            mBinding.navigation.setSelectedItemId(R.id.vod);
+            Fragment fragment = mManager.getFragment(POSITION_VOD);
+            if (fragment instanceof com.fongmi.android.tv.ui.fragment.DiscoverFragment)
+                ((com.fongmi.android.tv.ui.fragment.DiscoverFragment) fragment).acceptVoice(text);
+            return kotlin.Unit.INSTANCE;
+        });
         // 确保通知渠道已创建
         com.fongmi.android.tv.utils.Notify.createChannel();
 
@@ -90,12 +108,23 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         orientation = getResources().getConfiguration().orientation;
         windowWidthDp = ResUtil.getWindowWidthDp(this);
         currentPosition = savedInstanceState == null ? 0 : savedInstanceState.getInt(STATE_POSITION, 0);
+        bottomNavigationVisible = true;
+        if (currentPosition == POSITION_VOD) getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         // Updater.create().release().start(this); // 移除自动检查更新，只在点击版本号时检查
         initFragment(savedInstanceState);
         Server.get().start();
         initConfig();
         setNavigation();
         mBinding.glassNavigation.setBackdropView(mBinding.container);
+        View.OnLayoutChangeListener navLayout = (v, l, t, r, b, ol, ot, or, ob) -> {
+            if (b - t != ob - ot) com.github.catvod.utils.Logger.d("AiNavigation phase=layout view=" + v.getClass().getSimpleName()
+                    + " measuredHeight=" + (b - t) + " windowHeight=" + mBinding.getRoot().getHeight()
+                    + " reservedHeight=" + getBottomNavigationHeight());
+            if (mManager != null && mManager.getFragment(POSITION_VOD) instanceof com.fongmi.android.tv.ui.fragment.DiscoverFragment)
+                ((com.fongmi.android.tv.ui.fragment.DiscoverFragment) mManager.getFragment(POSITION_VOD)).updateNavigationHeight(getBottomNavigationHeight());
+        };
+        mBinding.glassNavigation.addOnLayoutChangeListener(navLayout);
+        mBinding.navigation.addOnLayoutChangeListener(navLayout);
         applyNavigationMode();
         int itemId = getNavigationItemId(currentPosition);
         mBinding.navigation.setSelectedItemId(itemId);
@@ -114,6 +143,9 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             mTopInset = bars.top;
             mBottomInset = bars.bottom;
+            mBinding.glassNavigation.setBottomInsetPixels(mBottomInset);
+            if (mManager != null && mManager.getFragment(POSITION_VOD) instanceof com.fongmi.android.tv.ui.fragment.DiscoverFragment)
+                ((com.fongmi.android.tv.ui.fragment.DiscoverFragment) mManager.getFragment(POSITION_VOD)).updateSystemInsets(mTopInset, mBottomInset);
             RelativeLayout.LayoutParams statusParams = (RelativeLayout.LayoutParams) mBinding.statusScrim.getLayoutParams();
             if (statusParams.height != mTopInset) {
                 statusParams.height = mTopInset;
@@ -133,10 +165,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         if (mBinding == null) return;
         boolean navVisible = mBinding.navigation.getVisibility() == View.VISIBLE || mBinding.glassNavigation.getVisibility() == View.VISIBLE;
         // 首页和设置页在自己的顶栏内避让系统图标，背景可连续延伸到状态栏。
-        int top = currentPosition == POSITION_SETTING || currentPosition == POSITION_RECOMMEND ? 0 : mTopInset;
+        int top = 0; // Each mobile page owns its status-bar inset.
         // 玻璃底栏模式本来就是让内容铺到系统手势条后面；搜索时隐藏底栏也继续保持这种沉浸，
         // 不再额外垫一整条导航栏保护区。传统底栏模式仍保留原来的安全内边距。
-        int bottom = navVisible || glassNavigationEnabled ? 0 : mBottomInset;
+        int bottom = currentPosition == POSITION_VOD || navVisible || glassNavigationEnabled ? 0 : mBottomInset;
         mBinding.container.setPadding(0, top, 0, bottom);
     }
 
@@ -144,6 +176,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     protected void initEvent() {
         mBinding.navigation.setOnItemSelectedListener(this);
         mBinding.navigation.findViewById(R.id.live).setOnLongClickListener(this::addShortcut);
+        mBinding.navigation.findViewById(R.id.vod).setOnTouchListener((view, event) ->
+                currentPosition != POSITION_VOD && aiVoice.touch(view, event));
         mBinding.glassNavigation.setListener(this);
     }
 
@@ -169,7 +203,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
                 return null;
             }
         };
-        if (savedInstanceState == null || currentPosition == POSITION_VOD) {
+        if (savedInstanceState == null) {
             currentPosition = POSITION_RECOMMEND;
             mManager.change(POSITION_RECOMMEND);
         }
@@ -215,7 +249,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     private void setNavigation() {
         mBinding.navigation.getMenu().findItem(R.id.recommend).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.vod).setVisible(false);
+        mBinding.navigation.getMenu().findItem(R.id.vod).setVisible(true);
+        mBinding.navigation.getMenu().findItem(R.id.vod).setIcon(aiOrb);
         mBinding.navigation.getMenu().findItem(R.id.setting).setVisible(true);
         boolean liveVisible = LiveConfig.hasUrl() && !Setting.isLiveTabVisible();
         mBinding.navigation.getMenu().findItem(R.id.live).setVisible(liveVisible);
@@ -236,13 +271,30 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     public void change(int position) {
+        if (position != POSITION_VOD) setAiThinking(false);
+        if (currentPosition == POSITION_VOD && position != POSITION_VOD) {
+            getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
+            ((android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(mBinding.container.getWindowToken(), 0);
+        }
+        if (position == POSITION_VOD) getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+        currentPosition = position;
+        bottomNavigationVisible = true;
+        updateNavigationVisibility();
         if (position != POSITION_VOD) {
             VodFragment fragment = getVodFragment();
             if (fragment != null) fragment.dismissFilterPanel();
         }
-        currentPosition = position;
         setSettingsChrome(position == POSITION_SETTING);
         mManager.change(position);
+        if (position == POSITION_VOD && mManager.getFragment(position) instanceof com.fongmi.android.tv.ui.fragment.DiscoverFragment) {
+            com.fongmi.android.tv.ui.fragment.DiscoverFragment page =
+                    (com.fongmi.android.tv.ui.fragment.DiscoverFragment) mManager.getFragment(position);
+            page.onPageSelected();
+            mBinding.container.post(() -> {
+                if (currentPosition != POSITION_VOD || isFinishing() || isDestroyed()) return;
+                page.updateNavigationHeight(getBottomNavigationHeight());
+            });
+        }
         int itemId = getNavigationItemId(position);
         mBinding.glassNavigation.setSelectedItemId(itemId);
         updateGlassActionForCurrentPage();
@@ -270,23 +322,94 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     public void setBottomNavigationVisible(boolean visible) {
         if (mBinding == null) return;
-        boolean show = visible || currentPosition == POSITION_SETTING;
+        boolean show = visible || currentPosition == POSITION_SETTING || currentPosition == POSITION_VOD;
         bottomNavigationVisible = show;
         updateNavigationVisibility();
         refreshBackHandling();
     }
 
     private void updateNavigationVisibility() {
+        if (mBinding == null || navigationDisposed) return;
+        // AndroidView.factory can register its host from inside RelativeLayout.onMeasure.
+        // That measure pass still holds the old sorted child array. Reparenting now would
+        // replace a cached child's RelativeLayout.LayoutParams with FrameLayout.LayoutParams.
+        // Coalesce updates and read the latest page/host only after the traversal returns.
+        mBinding.getRoot().removeCallbacks(navigationUpdate);
+        mBinding.getRoot().post(navigationUpdate);
+    }
+
+    private void applyNavigationVisibility() {
+        if (mBinding == null || navigationDisposed || isFinishing() || isDestroyed()) return;
+        if (mBinding.getRoot().isInLayout()) {
+            mBinding.getRoot().post(navigationUpdate);
+            return;
+        }
+        placeNavigation();
         boolean showLegacy = bottomNavigationVisible && !glassNavigationEnabled;
         boolean showGlass = bottomNavigationVisible && glassNavigationEnabled;
         mBinding.navigation.setVisibility(showLegacy ? View.VISIBLE : View.GONE);
         mBinding.glassNavigation.setVisibility(showGlass ? View.VISIBLE : View.GONE);
         RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBinding.container.getLayoutParams();
         params.removeRule(RelativeLayout.ABOVE);
-        if (showLegacy) params.addRule(RelativeLayout.ABOVE, R.id.navigation);
+        if (showLegacy && currentPosition != POSITION_VOD) params.addRule(RelativeLayout.ABOVE, R.id.navigation);
         mBinding.container.setLayoutParams(params);
         applyContainerPadding();
         mBinding.glassNavigation.setRenderingEnabled(showGlass);
+        aiOrb.setRunning(showLegacy);
+    }
+
+    public int getBottomNavigationHeight() {
+        View nav = glassNavigationEnabled ? mBinding.glassNavigation : mBinding.navigation;
+        int measured = nav.getHeight();
+        // Before layout, use the real capsule dimensions (52dp + 7dp padding on each side).
+        // A transient/stale full-window measurement must never consume the conversation viewport.
+        return measured > 0 && measured <= ResUtil.dp2px(120) + mBottomInset
+                ? measured : ResUtil.dp2px(glassNavigationEnabled ? 66 : 56) + mBottomInset;
+    }
+
+    public void registerAiNavigationHost(FrameLayout host, View backdrop) {
+        if (navigationDisposed) return;
+        aiNavigationHost = host;
+        aiNavigationBackdrop = backdrop;
+        updateNavigationVisibility();
+    }
+
+    public void releaseAiNavigationHost(FrameLayout host) {
+        if (aiNavigationHost != host) return;
+        aiNavigationHost = null;
+        aiNavigationBackdrop = null;
+        if (!isDestroyed()) updateNavigationVisibility();
+    }
+
+    private void placeNavigation() {
+        if (mBinding == null) return;
+        boolean inAiCard = currentPosition == POSITION_VOD && aiNavigationHost != null;
+        ViewGroup target = inAiCard ? aiNavigationHost : mBinding.getRoot();
+        for (View nav : new View[]{mBinding.navigation, mBinding.glassNavigation}) {
+            if (nav.getParent() != target) {
+                if (nav.getParent() instanceof ViewGroup) ((ViewGroup) nav.getParent()).removeView(nav);
+                if (inAiCard) {
+                    target.addView(nav, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+                } else {
+                    RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT);
+                    params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+                    target.addView(nav, target.indexOfChild(mBinding.statusScrim), params);
+                }
+                com.github.catvod.utils.Logger.d("AiNavigation phase=reparent inAiCard=" + inAiCard
+                        + " view=" + nav.getClass().getSimpleName() + " parent=" + target.getClass().getSimpleName()
+                        + " params=" + nav.getLayoutParams().getClass().getName() + " deferred=true");
+            }
+            nav.animate().cancel();
+            nav.setAlpha(1f);
+            nav.setTranslationX(0f);
+            nav.setTranslationY(0f);
+            nav.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        }
+        mBinding.glassNavigation.setVoiceGestureEnabled(currentPosition != POSITION_VOD);
+        // The sampling source excludes the navigation itself, avoiding recursive page capture.
+        mBinding.glassNavigation.setBackdropView(inAiCard ? aiNavigationBackdrop : mBinding.container);
     }
 
     private void applyNavigationMode() {
@@ -307,6 +430,9 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     public boolean isGlassNavigationEnabled() {
         return glassNavigationEnabled;
     }
+
+    public int getSystemBarTopInset() { return mTopInset; }
+    public int getSystemBarBottomInset() { return mBottomInset; }
 
     public void setFilterOverlayVisible(boolean visible) {
         if (mBinding == null) return;
@@ -335,6 +461,44 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     private RecommendFragment getRecommendFragment() {
         return mManager == null ? null : (RecommendFragment) mManager.getFragment(POSITION_RECOMMEND);
+    }
+
+    public void searchFromAi(String keyword) {
+        searchFromAi(keyword, "");
+    }
+
+    public void searchFromAi(String keyword, String year) {
+        mBinding.navigation.setSelectedItemId(R.id.recommend);
+        mBinding.container.post(() -> {
+            RecommendFragment fragment = getRecommendFragment();
+            if (fragment != null) fragment.searchKeyword(keyword, year);
+        });
+    }
+
+    public boolean onAiVoiceTouch(View view, android.view.MotionEvent event) {
+        return aiVoice.touch(view, event);
+    }
+
+    public void onAiVoiceLongPress(View view, float x, float y) {
+        aiVoice.startHold(view, x, y);
+    }
+
+    public void setAiRecording(boolean recording) {
+        aiRecording = recording;
+        updateAiFace();
+    }
+
+    public void setAiThinking(boolean thinking) { aiThinking = thinking; updateAiFace(); }
+
+    private void updateAiFace() {
+        int mode = aiRecording ? 1 : aiThinking ? 2 : 0;
+        aiOrb.setMode(mode);
+        if (mBinding != null) mBinding.glassNavigation.setAiMode(mode);
+    }
+
+    @Override
+    public boolean onGlassAiTouch(View view, android.view.MotionEvent event) {
+        return currentPosition != POSITION_VOD && onAiVoiceTouch(view, event);
     }
 
     private int getNavigationItemId(int position) {
@@ -460,6 +624,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected boolean shouldAnimatePredictiveBack() {
+        if (mManager != null && mManager.isVisible(POSITION_VOD)) return false;
         RecommendFragment fragment = getRecommendFragment();
         if (mManager != null && mManager.isVisible(POSITION_RECOMMEND)
                 && fragment != null && fragment.isEditingSearch()) return false;
@@ -473,6 +638,9 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         } else if (mManager.isVisible(POSITION_SETTING)) {
             mBinding.navigation.setSelectedItemId(R.id.recommend);
         } else if (mManager.isVisible(POSITION_VOD)) {
+            Fragment page = mManager.getFragment(POSITION_VOD);
+            if (page instanceof com.fongmi.android.tv.ui.fragment.DiscoverFragment
+                    && ((com.fongmi.android.tv.ui.fragment.DiscoverFragment) page).closeHistoryIfOpen()) return;
             mBinding.navigation.setSelectedItemId(R.id.recommend);
         } else if (mManager.isVisible(POSITION_RECOMMEND) && mManager.canBack(POSITION_RECOMMEND)) {
             super.onBackPress();
@@ -487,12 +655,17 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void onPause() {
+        aiOrb.setRunning(false);
+        if (aiVoice != null) aiVoice.cancel();
         if (mBinding != null) mBinding.glassNavigation.setRenderingEnabled(false);
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        navigationDisposed = true;
+        if (mBinding != null) mBinding.getRoot().removeCallbacks(navigationUpdate);
+        if (aiVoice != null) aiVoice.destroy();
         if (mBinding != null) {
             mBinding.glassNavigation.setRenderingEnabled(false);
             mBinding.glassNavigation.setBackdropView(null);

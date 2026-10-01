@@ -39,6 +39,7 @@ public class SearchTask {
     private final Runnable timeout;
     private final int total;
     private volatile boolean cancelled;
+    private int delivered;
 
     public static SearchTask start(List<Site> sites, String keyword, boolean quick, Callback callback) {
         return new SearchTask(sites, keyword, quick, callback);
@@ -64,12 +65,18 @@ public class SearchTask {
         } catch (Throwable ignored) {
         }
         long cost = SystemClock.elapsedRealtime() - start;
-        boolean last = pending.decrementAndGet() == 0;
+        pending.decrementAndGet();
         List<Vod> result = items;
         App.post(() -> {
             if (cancelled) return;
             if (!result.isEmpty()) callback.onResult(result, cost);
-            if (last) finish();
+            delivered++;
+            if (delivered == total && !cancelled) {
+                // The UI timeout may have fired earlier. Deliver the actual completion as well,
+                // so a unique title can be opened after every late result has been accounted for.
+                if (finished.get()) callback.onFinish();
+                else finish();
+            }
         });
     }
 
@@ -84,7 +91,7 @@ public class SearchTask {
     }
 
     public int getDone() {
-        return total - pending.get();
+        return delivered;
     }
 
     public boolean isFinished() {

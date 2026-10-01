@@ -21,7 +21,7 @@
             <FrameLayout
                 android:id="@+id/rank_header"
                 android:layout_width="match_parent"
-                android:layout_height="190dp">
+                android:layout_height="280dp">
 
                 <ImageView
                     android:id="@+id/rank_hero"
@@ -39,21 +39,21 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom"
-                    android:gravity="center"
+                    android:gravity="start"
                     android:orientation="vertical"
                     android:paddingStart="24dp"
                     android:paddingEnd="24dp"
-                    android:paddingBottom="24dp">
+                    android:paddingBottom="48dp">
 
                     <TextView
                         android:id="@+id/rank_title"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:ellipsize="end"
-                        android:gravity="center"
+                        android:gravity="start"
                         android:maxLines="1"
                         android:textColor="@android:color/white"
-                        android:textSize="27sp"
+                        android:textSize="28sp"
                         android:textStyle="bold"
                         tools:text="电视剧热播榜" />
 
@@ -62,7 +62,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:gravity="center"
+                        android:gravity="start"
                         android:text="@string/recommend_rank_subtitle"
                         android:textColor="#CCFFFFFF"
                         android:textSize="13sp" />
@@ -71,14 +71,18 @@
 
             </FrameLayout>
 
-            <androidx.recyclerview.widget.RecyclerView
+            <com.fongmi.android.tv.ui.custom.RankFilterView
                 android:id="@+id/rank_tabs"
                 android:layout_width="match_parent"
-                android:layout_height="58dp"
+                android:layout_height="64dp"
+                android:layout_marginTop="-24dp"
+                android:background="@drawable/shape_rank_filter_surface"
                 android:clipToPadding="false"
                 android:overScrollMode="never"
                 android:paddingStart="14dp"
-                android:paddingEnd="14dp" />
+                android:paddingEnd="14dp"
+                android:paddingTop="16dp"
+                android:paddingBottom="12dp" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/recycler"

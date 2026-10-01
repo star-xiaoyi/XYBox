@@ -6,6 +6,9 @@ import android.content.res.Configuration;
 import android.os.Bundle;
 
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
@@ -69,7 +72,19 @@ public class RecommendListActivity extends BaseActivity implements RecommendAdap
         mBinding.toolbar.setTitle("");
         mBinding.toolbar.setPrimaryActionVisible(false);
         mBinding.toolbar.setSecondaryActionVisible(false);
-        mBinding.toolbar.attachContent(mBinding.content, mBinding.recycler);
+        mBinding.toolbar.setProgressiveSurfaceVisible(false);
+        // The hero extends behind the glass header; only the bottom needs a content inset.
+        mBinding.toolbar.attachContent(mBinding.content, mBinding.content, false);
+        ViewCompat.setOnApplyWindowInsetsListener(mBinding.rankHeader, (view, insets) -> {
+            int top = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;
+            int height = top + Math.round(248 * getResources().getDisplayMetrics().density);
+            if (view.getLayoutParams().height != height) {
+                view.getLayoutParams().height = height;
+                view.requestLayout();
+            }
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(mBinding.rankHeader);
         mBinding.rankTabs.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
         mBinding.rankTabs.setAdapter(mTabAdapter = new RecommendListTabAdapter(titles, mSelected, this::selectCollection));
         mBinding.rankTabs.setItemAnimator(null);
@@ -87,6 +102,9 @@ public class RecommendListActivity extends BaseActivity implements RecommendAdap
 
     private void load() {
         int generation = ++mGeneration;
+        boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+        WindowCompat.getInsetsController(getWindow(), mBinding.getRoot()).setAppearanceLightStatusBars(!night);
         mBinding.content.setEmpty(getString(R.string.recommend_error), view -> load());
         mBinding.content.showProgress();
         App.execute(() -> {
@@ -105,6 +123,7 @@ public class RecommendListActivity extends BaseActivity implements RecommendAdap
         if (items.isEmpty()) {
             mBinding.content.showEmpty();
         } else {
+            WindowCompat.getInsetsController(getWindow(), mBinding.getRoot()).setAppearanceLightStatusBars(false);
             mAdapter.setItems(items);
             ImgUtil.rect(items.get(0).getTitle(), items.get(0).getPic(), mBinding.rankHero);
             mBinding.content.showContent();

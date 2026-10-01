@@ -258,7 +258,7 @@ class HomeGlassHeaderView @JvmOverloads constructor(
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // 底部的渐变区仅绘制，不挡住下方内容的点击或滑动。
         if (brandModeState && event.actionMasked == MotionEvent.ACTION_DOWN &&
-            (event.y < statusBarInsetState || event.y >= statusBarInsetState + 56 * resources.displayMetrics.density)) return false
+            (event.y < statusBarInsetState || event.y >= statusBarInsetState + MainPageHeaderStyle.rowHeight.value * resources.displayMetrics.density)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             parent?.requestDisallowInterceptTouchEvent(true)
         }
@@ -327,7 +327,7 @@ class HomeGlassHeaderView @JvmOverloads constructor(
         val statusPadding = with(LocalDensity.current) {
             (if (brandModeState) statusBarInsetState else 0).toDp()
         }
-        val headerHeight = statusPadding + if (categoryModeState) 140.dp else if (!brandModeState) 56.dp else if (compactState) 60.dp else 76.dp
+        val headerHeight = statusPadding + if (categoryModeState) 140.dp else if (!brandModeState) 56.dp else 72.dp
         val fadeStartDp = statusPadding + if (categoryModeState) 96.dp else if (compactState) 24.dp else 28.dp
         Box(Modifier.fillMaxWidth().height(headerHeight).clipToBounds()) {
             Box(Modifier.matchParentSize().layerBackdrop(backdrop))
@@ -339,14 +339,16 @@ class HomeGlassHeaderView @JvmOverloads constructor(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = statusPadding)
-                    .height(56.dp)
-                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 4.dp),
+                    .height(if (brandModeState) MainPageHeaderStyle.rowHeight else 56.dp)
+                    .then(if (brandModeState) Modifier.padding(horizontal = MainPageHeaderStyle.horizontalPadding)
+                        else Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 4.dp)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (brandModeState) {
                     BasicText(
                         text = brandTitleState,
-                        style = TextStyle(color = text, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold),
+                        style = TextStyle(color = text, fontSize = MainPageHeaderStyle.brandTitleSize,
+                            fontWeight = MainPageHeaderStyle.titleWeight),
                         maxLines = 1
                     )
                 } else if (expandedState) {
@@ -538,7 +540,7 @@ class HomeGlassHeaderView @JvmOverloads constructor(
     ) {
         if (brandModeState) {
             Box(
-                Modifier.size(36.dp)
+                Modifier.size(MainPageHeaderStyle.buttonSize)
                     .drawBackdrop(
                         backdrop = backdrop, shape = { Capsule() },
                         effects = { blur(8.dp.toPx()) },
@@ -549,7 +551,7 @@ class HomeGlassHeaderView @JvmOverloads constructor(
             ) {
                 Image(
                     painter = painterResource(icon), contentDescription = description,
-                    colorFilter = ColorFilter.tint(tint), modifier = Modifier.size(20.dp)
+                    colorFilter = ColorFilter.tint(tint), modifier = Modifier.size(MainPageHeaderStyle.iconSize)
                 )
             }
             return

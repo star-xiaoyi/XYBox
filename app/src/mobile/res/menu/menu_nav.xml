@@ -10,8 +10,8 @@
     <item
         android:id="@+id/vod"
         android:icon="@drawable/ic_nav_discover"
-        android:title="@string/nav_discover"
-        android:visible="false" />
+        android:title="@string/ai_find"
+        android:visible="true" />
 
     <item
         android:id="@+id/live"

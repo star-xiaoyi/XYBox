@@ -31,8 +31,8 @@ android {
         // versionCode 规则：(major*1000 + minor*100 + patch) * 10 + (beta 用序号 N，正式用 9)
         // 例：0.3.2-beta1=3021，0.3.2-beta2=3022，0.3.2 正式=3029，下一个 0.3.3-beta1=3031。
         // 正式版的尾数 9 保证它高于同版本的所有 beta，用户才能从 beta 直接覆盖安装到正式版。
-        versionCode 40899
-        versionName "0.4.8"
+        versionCode 50099
+        versionName "0.5.0"
         ndk { abiFilters "arm64-v8a" }
         // GitHub Token (可选，用于提高API请求限制)
         def githubToken = project.findProperty("GITHUB_TOKEN") ?: ""
@@ -80,6 +80,8 @@ android {
             exclude 'META-INF/versions/9/OSGI-INF/MANIFEST.MF'
         }
         jniLibs {
+            // Kotlin uses only JNI + ONNX Runtime; neither depends on these C/C++ entry points.
+            excludes += ['**/libsherpa-onnx-c-api.so', '**/libsherpa-onnx-cxx-api.so']
             // 解决重复的JNI库问题，只保留第一个找到的
             pickFirsts += [
                 '**/libavcodec.so',
@@ -118,7 +120,7 @@ androidComponents {
 }
 
 dependencies {
-    implementation fileTree(dir: "libs", include: ["*.aar"])
+    implementation fileTree(dir: "libs", include: ["*.aar"], exclude: ["sherpa-onnx-*.aar"])
     implementation project(':catvod')
     // implementation project(':chaquo') // 移除Python支持减少8-10MB体积
     implementation project(':quickjs')

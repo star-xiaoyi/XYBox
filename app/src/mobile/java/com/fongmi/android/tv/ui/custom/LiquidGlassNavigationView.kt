@@ -3,7 +3,11 @@ package com.fongmi.android.tv.ui.custom
 import android.content.Context
 import android.util.AttributeSet
 import android.view.View
-import androidx.compose.foundation.Canvas
+import android.view.MotionEvent
+import android.graphics.Matrix
+import android.graphics.RectF
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -33,11 +37,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.ImageView
+import com.fongmi.android.tv.ai.AiOrbDrawable
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.AbstractComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -62,6 +72,7 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
         fun onGlassNavigationSelected(itemId: Int)
         fun onGlassContextAction()
         fun onGlassContextLongAction()
+        fun onGlassAiTouch(view: View, event: MotionEvent): Boolean
     }
 
     private var selectedIdState by mutableIntStateOf(R.id.recommend)
@@ -72,6 +83,49 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
     private var backdropViewState by mutableStateOf<View?>(null)
     private var renderingEnabledState by mutableStateOf(false)
     private var listener: Listener? = null
+    private var aiModeState by mutableIntStateOf(0)
+    private var bottomInsetState by mutableIntStateOf(0)
+    fun setBottomInsetPixels(bottom: Int) { bottomInsetState = bottom.coerceAtLeast(0) }
+    fun setAiMode(mode: Int) { aiModeState = mode }
+    private val aiBounds = RectF()
+    private val sourceTransform = Matrix()
+    private val navigationTransform = Matrix()
+    private val samplingTransform = Matrix()
+    private var aiGesture = false
+    private var voiceGestureEnabled = true
+
+    fun setVoiceGestureEnabled(enabled: Boolean) {
+        if (voiceGestureEnabled == enabled) return
+        voiceGestureEnabled = enabled
+        aiGesture = false
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (!voiceGestureEnabled) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+            val handled = super.dispatchTouchEvent(event)
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
+                parent?.requestDisallowInterceptTouchEvent(false)
+            return handled
+        }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            val location = IntArray(2)
+            getLocationInWindow(location)
+            aiGesture = aiBounds.contains(event.x + location[0], event.y + location[1])
+        }
+        if (aiGesture) {
+            val handled = listener?.onGlassAiTouch(this, event) ?: false
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) aiGesture = false
+            return handled
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        listener?.onGlassNavigationSelected(R.id.vod)
+        return true
+    }
 
     init {
         isClickable = false
@@ -107,13 +161,49 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
         renderingEnabledState = enabled
     }
 
+    // Build both transforms in the same View root. Window-coordinate deltas already contain
+    // the AI card's scale, so translating a local canvas by those deltas applies it twice.
+    private fun localToRoot(view: View, result: Matrix) {
+        val parent = view.parent as? View
+        if (parent != null) {
+            localToRoot(parent, result)
+            result.preTranslate(-parent.scrollX.toFloat(), -parent.scrollY.toFloat())
+        }
+        result.preTranslate(view.left.toFloat(), view.top.toFloat())
+        if (!view.matrix.isIdentity) result.preConcat(view.matrix)
+    }
+
+    private fun sourceToNavigation(source: View): Boolean {
+        sourceTransform.reset()
+        navigationTransform.reset()
+        localToRoot(source, sourceTransform)
+        localToRoot(this, navigationTransform)
+        if (!navigationTransform.invert(samplingTransform)) return false
+        samplingTransform.preConcat(sourceTransform)
+        return true
+    }
+
     @Composable
     override fun Content() {
         val sourceView = backdropViewState
         val frameNanos = remember { mutableLongStateOf(0L) }
-        val backdrop = rememberLayerBackdrop()
-        val navLocation = remember { IntArray(2) }
-        val sourceLocation = remember { IntArray(2) }
+        val backdrop = rememberLayerBackdrop(onDraw = {
+            frameNanos.longValue
+            if (sourceView != null && sourceView.isAttachedToWindow && sourceView.isShown &&
+                sourceToNavigation(sourceView)) {
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    val saved = native.save()
+                    try {
+                        native.clipRect(0f, 0f, size.width, size.height)
+                        native.concat(samplingTransform)
+                        sourceView.draw(native)
+                    } finally {
+                        native.restoreToCount(saved)
+                    }
+                }
+            }
+        })
 
         LaunchedEffect(renderingEnabledState, sourceView) {
             while (renderingEnabledState && sourceView != null) {
@@ -123,6 +213,7 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
 
         val items = buildList {
             add(NavItem(R.id.recommend, R.drawable.ic_nav_recommend, R.string.nav_recommend))
+            add(NavItem(R.id.vod, R.drawable.ic_nav_discover, R.string.ai_find))
             if (liveVisibleState) add(NavItem(R.id.live, R.drawable.ic_nav_live, R.string.nav_live))
             add(NavItem(R.id.setting, R.drawable.ic_nav_profile, R.string.nav_profile))
         }
@@ -136,7 +227,7 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
         val selectedIndex = items.indexOfFirst { it.id == selectedIdState }.coerceAtLeast(0)
         // 宽屏下动作键靠右单独摆放：它的底部距离是“导航栏 + 7dp”，
         // 右侧却只有 12dp。补上两者的差值，让含小白条安全区的两边视觉距离一致。
-        val navigationBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val navigationBarBottomPadding = with(LocalDensity.current) { bottomInsetState.toDp() }
         val wideActionEndPadding = (navigationBarBottomPadding + 7.dp - 12.dp).coerceAtLeast(0.dp)
 
         Box(
@@ -145,32 +236,14 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                 .wrapContentHeight(),
             contentAlignment = Alignment.BottomCenter
         ) {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .layerBackdrop(backdrop)
-            ) {
-                frameNanos.longValue
-                if (sourceView != null && sourceView.isAttachedToWindow) {
-                    this@LiquidGlassNavigationView.getLocationInWindow(navLocation)
-                    sourceView.getLocationInWindow(sourceLocation)
-                    drawIntoCanvas { canvas ->
-                        val nativeCanvas = canvas.nativeCanvas
-                        val saveCount = nativeCanvas.save()
-                        nativeCanvas.translate(
-                            (sourceLocation[0] - navLocation[0]).toFloat(),
-                            (sourceLocation[1] - navLocation[1]).toFloat()
-                        )
-                        sourceView.draw(nativeCanvas)
-                        nativeCanvas.restoreToCount(saveCount)
-                    }
-                }
-            }
+            // layerBackdrop draws its content on screen AND records it. Keep visible content
+            // empty; the source page is recorded only by onDraw, never as a rectangular copy.
+            Box(Modifier.matchParentSize().clipToBounds().layerBackdrop(backdrop))
 
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
+                    .padding(bottom = navigationBarBottomPadding)
                     .padding(horizontal = 12.dp, vertical = 7.dp)
             ) {
                 val tabsWidth = (items.size * 76).dp.coerceAtMost(maxWidth)
@@ -190,12 +263,24 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                         items.forEach { item ->
                             LiquidBottomTab(
                                 onClick = { listener?.onGlassNavigationSelected(item.id) },
-                                modifier = Modifier.semantics {
+                                modifier = Modifier.onGloballyPositioned { coordinates ->
+                                    if (item.id == R.id.vod) {
+                                        val bounds = coordinates.boundsInWindow()
+                                        aiBounds.set(bounds.left, bounds.top, bounds.right, bounds.bottom)
+                                    }
+                                }.semantics {
                                     role = Role.Tab
                                     contentDescription = context.getString(item.label)
                                 }
                             ) {
-                                Image(
+                                if (item.id == R.id.vod) AndroidView(
+                                    factory = { ImageView(it).apply { setImageDrawable(AiOrbDrawable()) } },
+                                    modifier = Modifier.size(24.dp),
+                                    update = { (it.drawable as AiOrbDrawable).apply {
+                                        setTint(contentColor.toArgb()); setMode(aiModeState); setRunning(renderingEnabledState)
+                                    } }, onReset = null,
+                                    onRelease = { (it.drawable as AiOrbDrawable).setRunning(false) }
+                                ) else Image(
                                     painter = painterResource(item.icon),
                                     contentDescription = null,
                                     modifier = Modifier.size(22.dp),
