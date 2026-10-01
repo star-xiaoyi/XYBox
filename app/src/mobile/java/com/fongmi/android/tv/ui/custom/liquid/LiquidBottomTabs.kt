@@ -48,7 +48,6 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.Capsule
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
@@ -157,6 +156,7 @@ internal fun LiquidBottomTabs(
                 .drawBackdrop(
                     backdrop = backdrop,
                     shape = { Capsule() },
+                    shadow = null,
                     effects = {
                         vibrancy()
                         blur(8.dp.toPx())
@@ -192,6 +192,7 @@ internal fun LiquidBottomTabs(
                     .drawBackdrop(
                         backdrop = backdrop,
                         shape = { Capsule() },
+                        shadow = null,
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
                             vibrancy()
@@ -240,9 +241,7 @@ internal fun LiquidBottomTabs(
                     highlight = {
                         Highlight.Default.copy(alpha = dampedDragAnimation.pressProgress)
                     },
-                    shadow = {
-                        Shadow(alpha = dampedDragAnimation.pressProgress)
-                    },
+                    shadow = null,
                     innerShadow = {
                         val progress = dampedDragAnimation.pressProgress
                         InnerShadow(radius = 8.dp * progress, alpha = progress)

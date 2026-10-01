@@ -76,8 +76,13 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
     private var profileStyleState by mutableStateOf(false)
     fun setProfileStyle(enabled: Boolean) { profileStyleState = enabled }
     private var backVisibleState by mutableStateOf(true)
+    private var explicitTopInset by mutableStateOf<Int?>(null)
+    fun setTopInsetPixels(top: Int) { explicitTopInset = top }
     fun setBackVisible(visible: Boolean) { backVisibleState = visible }
     private var immersiveBottom = false
+    private var progressiveSurfaceVisibleState by mutableStateOf(true)
+
+    fun setProgressiveSurfaceVisible(visible: Boolean) { progressiveSurfaceVisibleState = visible }
 
     fun setImmersiveBottom(enabled: Boolean) { immersiveBottom = enabled }
 
@@ -139,6 +144,13 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
     fun setSecondaryActionIcon(@DrawableRes icon: Int) {
         secondaryIconState = icon
     }
+    fun setSecondaryAction(@DrawableRes icon: Int, @StringRes description: Int) {
+        secondaryIconState = icon
+        secondaryDescriptionState = context.getString(description)
+    }
+
+    fun setBackdropView(view: View?) { backdropViewState = view }
+    fun setRenderingEnabled(enabled: Boolean) { renderingEnabledState = enabled }
 
     fun setSecondaryActionVisible(visible: Boolean) {
         secondaryVisibleState = visible
@@ -151,7 +163,8 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
     /**
      * 让内容层铺在顶栏后面供玻璃实时采样，并为实际列表补足状态栏、顶栏和导航栏内边距。
      */
-    fun attachContent(backdropView: View, scrollContent: View) {
+    @JvmOverloads
+    fun attachContent(backdropView: View, scrollContent: View, insetTop: Boolean = true) {
         backdropViewState = backdropView
         renderingEnabledState = true
         val start = scrollContent.paddingLeft
@@ -160,7 +173,8 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
         val contentTop = (72 * resources.displayMetrics.density).toInt()
         ViewCompat.setOnApplyWindowInsetsListener(scrollContent) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(start, bars.top + contentTop, end, (if (immersiveBottom) 0 else bars.bottom) + bottom)
+            if (profileStyleState) explicitTopInset = bars.top
+            view.setPadding(start, if (insetTop) bars.top + contentTop else 0, end, (if (immersiveBottom) 0 else bars.bottom) + bottom)
             // 同时限定 Android View 的实际高度，避免取样画布因父布局约束占满屏幕。
             val headerHeight = bars.top + (72 * resources.displayMetrics.density + 0.5f).toInt()
             layoutParams?.let { params ->
@@ -223,17 +237,20 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
             }
         }
 
-        val statusPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val statusPadding = explicitTopInset?.let { (it / resources.displayMetrics.density).dp }
+            ?: WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         val base = background
         Box(Modifier.fillMaxWidth().height(statusPadding + 72.dp).clipToBounds()) {
             Box(Modifier.matchParentSize().layerBackdrop(backdrop))
-            ProgressiveGlassSurface(Modifier.matchParentSize(), backdrop, base, glass, statusPadding + 28.dp, frameNanos)
+            if (progressiveSurfaceVisibleState) {
+                ProgressiveGlassSurface(Modifier.matchParentSize(), backdrop, base, glass, statusPadding + 28.dp, frameNanos)
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding()
-                    .height(64.dp)
-                    .padding(horizontal = 16.dp),
+                    .padding(top = statusPadding)
+                    .height(MainPageHeaderStyle.rowHeight)
+                    .padding(horizontal = MainPageHeaderStyle.horizontalPadding),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (backVisibleState) ToolbarAction(
@@ -247,7 +264,7 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
                     onClick = { backClickListener?.onClick(this@SecondaryGlassToolbarView) }
                 )
 
-                Box(Modifier.weight(1f).padding(start = 12.dp)) {
+                Box(Modifier.weight(1f).padding(start = if (profileStyleState && !backVisibleState) 0.dp else 12.dp)) {
                     Row(
                         Modifier.clickable(enabled = titleClickListenerState != null, role = Role.Button) {
                             titleClickListenerState?.onClick(this@SecondaryGlassToolbarView)
@@ -259,7 +276,9 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
                             modifier = Modifier.weight(1f, fill = false),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            style = TextStyle(color = text, fontSize = 22.sp, fontWeight = if (profileStyleState) FontWeight.ExtraBold else FontWeight.Bold)
+                            style = TextStyle(color = text,
+                                fontSize = if (profileStyleState) MainPageHeaderStyle.titleSize else 22.sp,
+                                fontWeight = if (profileStyleState) MainPageHeaderStyle.titleWeight else FontWeight.Bold)
                         )
                         if (titleClickListenerState != null) {
                             Image(
@@ -318,13 +337,13 @@ class SecondaryGlassToolbarView @JvmOverloads constructor(
             frameNanos = frameNanos,
             surfaceColor = glass,
             dragResponse = 0.42f,
-            modifier = Modifier.size(36.dp).alpha(if (enabled) 1f else 0.45f)
+            modifier = Modifier.size(MainPageHeaderStyle.buttonSize).alpha(if (enabled) 1f else 0.45f)
         ) {
             Image(
                 painter = painterResource(icon),
                 contentDescription = description,
                 colorFilter = ColorFilter.tint(tint),
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(MainPageHeaderStyle.iconSize)
             )
         }
     }

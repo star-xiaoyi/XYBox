@@ -32,6 +32,8 @@ import com.fongmi.android.tv.player.Players;
 import com.fongmi.android.tv.receiver.ActionReceiver;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.NotificationIconDiagnostics;
+import com.fongmi.android.tv.utils.NotificationSmallIcon;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -120,7 +122,7 @@ public class PlaybackService extends Service {
         builder.setShowWhen(false);
         builder.setContentTitle(getTitle());
         builder.setContentText(getArtist());
-        builder.setSmallIcon(R.drawable.ic_notification_small);
+        builder.setSmallIcon(NotificationSmallIcon.get(this));
         builder.setCategory(NotificationCompat.CATEGORY_TRANSPORT);
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         if (nonNull()) builder.setContentIntent(player.getSession().getController().getSessionActivity());
@@ -137,7 +139,9 @@ public class PlaybackService extends Service {
         Bitmap artwork = getArtwork();
         if (artwork != null && !artwork.isRecycled()) builder.setLargeIcon(artwork);
         loadArtwork();
-        return builder.build();
+        Notification notification = builder.build();
+        NotificationIconDiagnostics.record(this, "playback", notification);
+        return notification;
     }
 
     private RemoteViews createRemoteViews(int layout, boolean expanded) {

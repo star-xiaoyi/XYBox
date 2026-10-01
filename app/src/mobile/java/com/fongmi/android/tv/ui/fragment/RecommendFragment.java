@@ -100,7 +100,7 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
     private int mGeneration;
     private int mPending;
     private int mSelectedChannel;
-    private boolean mHeroRendered;
+    private boolean mHeroDirty = true;
     private boolean mRanksDirty = true;
     private boolean mSearchVisible;
     private int mStatusBarInset;
@@ -145,7 +145,7 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
         mBinding.headerBar.setExpanded(false);
         mBinding.headerBar.clearSearchFocus();
         ViewCompat.setOnApplyWindowInsetsListener(mBinding.contentContainer, (view, insets) -> {
-            mStatusBarInset = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+            mStatusBarInset = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;
             mBinding.headerBar.setStatusBarInset(mStatusBarInset);
             applyContentInsets();
             return insets;
@@ -210,6 +210,7 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
             public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
                 if (newState == RecyclerView.SCROLL_STATE_DRAGGING) mHandler.removeCallbacks(mAutoAdvance);
                 if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    if (mHeroDirty && mSelectedChannel == 0) mBinding.heroList.post(() -> renderChannel());
                     applyHeroMotion();
                     scheduleAutoAdvance();
                 }
@@ -316,7 +317,7 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
         if (mExecutor != null) mExecutor.shutdownNow();
         mExecutor = Executors.newFixedThreadPool(3);
         mPending = COLLECTIONS.length;
-        mHeroRendered = false;
+        mHeroDirty = true;
         for (int i = 0; i < mData.length; i++) {
             mData[i] = null;
             mAdapters[i].setItems(Collections.emptyList());
@@ -351,6 +352,7 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
     }
 
     private void setData(int index, List<Douban.Item> items) {
+        mHeroDirty = true;
         mRanksDirty = true;
         mData[index] = items;
         mAdapters[index].setItems(items);
@@ -375,11 +377,12 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
         mBinding.categoryBlur.setVisibility(View.GONE);
         mBinding.categoryBlur.setBackdropView(featured ? null : mBinding.categoryGrid);
         mBinding.categoryHeader.setElevation(featured ? 0 : dp(9));
-        mBinding.heroContainer.setVisibility(featured ? View.VISIBLE : View.GONE);
+        mBinding.heroContainer.setVisibility(featured && mHeroAdapter.getLogicalCount() > 0 ? View.VISIBLE : View.GONE);
         mBinding.categoryResults.setVisibility(featured ? View.GONE : View.VISIBLE);
         mBinding.scroll.setPadding(0, 0, 0, featured ? dp(92) : 0);
         applyContentInsets();
-        if (featured && mPending == 0 && !mHeroRendered) renderFeaturedHero();
+        // Populate the hero from the same first response that reveals the ranking cards.
+        if (featured && mHeroDirty && mBinding.heroList.getScrollState() == RecyclerView.SCROLL_STATE_IDLE) renderFeaturedHero();
         renderRankCards();
 
         if (!featured || anyVisible || !rankGroups().isEmpty()) mBinding.progressLayout.showContent();
@@ -388,6 +391,8 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
     }
 
     private void renderFeaturedHero() {
+        View snap = mHeroSnap.findSnapView(mBinding.heroList.getLayoutManager());
+        Douban.Item current = snap == null ? null : mHeroAdapter.get(mBinding.heroList.getChildAdapterPosition(snap));
         List<Douban.Item> mixed = new ArrayList<>();
         int[] order = {MOVIE, TV, ANIMATION, VARIETY, TOP, WEEKLY};
         for (int round = 0; round < 2; round++) {
@@ -397,7 +402,13 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
                 if (mixed.size() >= 10) break;
             }
         }
-        mHeroRendered = true;
+        mHeroDirty = false;
+        // A later collection must not replace the poster the user is currently viewing.
+        if (current != null && !mixed.isEmpty()) {
+            boolean retained = false;
+            for (Douban.Item item : mixed) if (item.getId().equals(current.getId())) retained = true;
+            if (!retained) { if (mixed.size() >= 10) mixed.remove(mixed.size() - 1); mixed.add(current); }
+        }
         if (mHotKeywords.isEmpty()) for (Douban.Item item : mixed) mHotKeywords.add(item.getTitle());
         if (mSuggestedKeyword.isEmpty() && !mixed.isEmpty()) {
             mSuggestedKeyword = mixed.get(0).getTitle();
@@ -406,9 +417,11 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
         mHeroAdapter.setItems(mixed);
         mBinding.heroContainer.setVisibility(mixed.isEmpty() ? View.GONE : View.VISIBLE);
         if (!mixed.isEmpty()) {
-            mBinding.heroList.scrollToPosition(mHeroAdapter.getStartPosition());
-            mBinding.heroContainer.setAlpha(0f);
-            mBinding.heroContainer.animate().alpha(1f).setDuration(360).start();
+            int selected = 0;
+            if (current != null) for (int i = 0; i < mixed.size(); i++) if (mixed.get(i).getId().equals(current.getId())) selected = i;
+            mBinding.heroList.scrollToPosition(mHeroAdapter.getStartPosition() + selected);
+            mBinding.heroContainer.animate().cancel();
+            mBinding.heroContainer.setAlpha(1f);
             mBinding.heroList.post(this::applyHeroMotion);
             scheduleAutoAdvance();
         }
@@ -667,7 +680,21 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
         mBinding.searchSuggestionPanel.setLayoutParams(params);
     }
 
+    public void searchKeyword(String keyword) {
+        searchKeyword(keyword, "");
+    }
+
+    public void searchKeyword(String keyword, String year) {
+        if (mBinding == null || keyword == null || keyword.trim().isEmpty()) return;
+        mBinding.headerBar.setQuery(keyword.trim());
+        submitSearch(year);
+    }
+
     private void submitSearch() {
+        submitSearch("");
+    }
+
+    private void submitSearch(String year) {
         if (mBinding == null) return;
         String keyword = mBinding.headerBar.getQuery().trim();
         if (keyword.isEmpty()) keyword = mSuggestedKeyword;
@@ -687,9 +714,9 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
         setBottomNavigationVisible(false);
         HomeSearchFragment fragment = getSearchFragment();
         if (fragment == null) {
-            fragment = HomeSearchFragment.newInstance(keyword);
+            fragment = HomeSearchFragment.newInstance(keyword, year);
             getChildFragmentManager().beginTransaction().replace(mBinding.searchContent.getId(), fragment, "recommend_search").commitNowAllowingStateLoss();
-        } else fragment.search(keyword);
+        } else fragment.search(keyword, year);
     }
 
     private void closeSearch() {

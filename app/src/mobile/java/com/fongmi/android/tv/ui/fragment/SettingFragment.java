@@ -186,6 +186,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
             case SettingsGlassContentView.ACTION_LIVE_HISTORY: onLiveHistory(null); break;
             case SettingsGlassContentView.ACTION_PLAYER: onPlayer(null); break;
             case SettingsGlassContentView.ACTION_OPERATION: onOperation(null); break;
+            case SettingsGlassContentView.ACTION_AI: com.fongmi.android.tv.ui.activity.AiSettingsActivity.start(requireActivity()); break;
             case SettingsGlassContentView.ACTION_SYNC: onSyncSettings(null); break;
             case SettingsGlassContentView.ACTION_CACHE: onCache(null); break;
             case SettingsGlassContentView.ACTION_LOG:

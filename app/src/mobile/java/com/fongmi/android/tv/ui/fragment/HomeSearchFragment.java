@@ -24,6 +24,8 @@ import com.fongmi.android.tv.search.SearchTask;
 import com.fongmi.android.tv.search.VodGroup;
 import com.fongmi.android.tv.search.VodGrouper;
 import com.fongmi.android.tv.search.VodSource;
+import com.fongmi.android.tv.search.TitleKey;
+import com.fongmi.android.tv.search.FuzzyTitle;
 import com.fongmi.android.tv.ui.activity.FolderActivity;
 import com.fongmi.android.tv.ui.activity.VideoActivity;
 import com.fongmi.android.tv.ui.adapter.SearchGroupAdapter;
@@ -45,6 +47,7 @@ import java.util.concurrent.Executors;
 public class HomeSearchFragment extends BaseFragment implements SearchTask.Callback, SearchGroupAdapter.OnClickListener {
 
     private static final String ARG_KEYWORD = "keyword";
+    private static final String ARG_TARGET_YEAR = "target_year";
     /** 已经搜到同名的片就不用再等，这个时间一到就展示。 */
     private static final long SHOW_EXACT = 1200;
     /** 没有同名的也最多等这么久，再久用户会以为卡住了。 */
@@ -59,11 +62,21 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
     private long mStartTime;
     private int mGeneration;
     private boolean mShown;
+    private boolean mAutoOpened;
+    private int mTargetYear;
+    private boolean mFuzzy;
+    private List<String> mFallbacks;
+    private int mFallbackIndex;
 
     public static HomeSearchFragment newInstance(String keyword) {
+        return newInstance(keyword, "");
+    }
+
+    public static HomeSearchFragment newInstance(String keyword, String year) {
         HomeSearchFragment fragment = new HomeSearchFragment();
         Bundle args = new Bundle();
         args.putString(ARG_KEYWORD, keyword);
+        args.putString(ARG_TARGET_YEAR, year);
         fragment.setArguments(args);
         return fragment;
     }
@@ -81,7 +94,7 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
         mBinding.recycler.setItemAnimator(null);
         mBinding.recycler.setAdapter(mAdapter = new SearchGroupAdapter(this));
         String keyword = getKeyword();
-        if (!TextUtils.isEmpty(keyword)) search(keyword);
+        if (!TextUtils.isEmpty(keyword)) search(keyword, getArguments().getString(ARG_TARGET_YEAR, ""));
     }
 
     private String getKeyword() {
@@ -89,11 +102,22 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
     }
 
     public void search(String keyword) {
+        search(keyword, "");
+    }
+
+    public void search(String keyword, String year) {
         if (mBinding == null || TextUtils.isEmpty(keyword)) return;
         getArguments().putString(ARG_KEYWORD, keyword);
+        getArguments().putString(ARG_TARGET_YEAR, year);
+        mTargetYear = TitleKey.year(year);
+        com.github.catvod.utils.Logger.d("AiSearch phase=start title=" + keyword + " year=" + mTargetYear);
         stopSearch();
         mGeneration++;
         mShown = false;
+        mAutoOpened = false;
+        mFuzzy = false;
+        mFallbackIndex = 0;
+        mFallbacks = FuzzyTitle.queries(keyword);
         mAdapter.clear();
         mGrouper = new VodGrouper(keyword);
         mStartTime = SystemClock.elapsedRealtime();
@@ -123,24 +147,75 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
 
     @Override
     public void onResult(List<Vod> items, long cost) {
-        if (mBinding == null) return;
+        if (mBinding == null || mAutoOpened) return;
         List<VodGroup> added = new ArrayList<>();
         Set<VodGroup> updated = new LinkedHashSet<>();
         mGrouper.add(items, cost, added, updated);
         if (mShown) {
+            if (mFuzzy) {
+                mBinding.emptyLayout.getRoot().setVisibility(View.GONE);
+                mAdapter.setItems(ranked());
+            } else {
             mAdapter.addAll(added);
             mAdapter.update(updated);
+            }
         } else {
             checkShow();
         }
         updateStatus();
+        if (!mFuzzy && mTargetYear > 0) tryOpenExact(true);
     }
 
     @Override
     public void onFinish() {
-        if (mBinding == null) return;
+        if (mBinding == null || mAutoOpened) return;
         updateStatus();
         checkShow();
+        com.github.catvod.utils.Logger.d("AiSearch phase=finished elapsedMs=" + (SystemClock.elapsedRealtime() - mStartTime) + " groups=" + mGrouper.sorted().size());
+        if (!mFuzzy && mTask != null && mTask.getDone() == mTask.getTotal()) tryOpenExact(false);
+        if (!mAutoOpened && !mGrouper.hasExact() && mFallbackIndex < mFallbacks.size()) {
+            String fallback = mFallbacks.get(mFallbackIndex++);
+            mTask.cancel();
+            mFuzzy = true;
+            mTask = SearchTask.start(getSites(), fallback, false, this);
+            updateStatus();
+        }
+    }
+
+    private List<VodGroup> ranked() {
+        List<VodGroup> items = mGrouper.sorted();
+        if (mFuzzy) items.sort((a, b) -> Double.compare(
+                FuzzyTitle.similarity(TitleKey.normalize(b.getName()), TitleKey.normalize(getKeyword())),
+                FuzzyTitle.similarity(TitleKey.normalize(a.getName()), TitleKey.normalize(getKeyword()))));
+        return items;
+    }
+
+    private void tryOpenExact(boolean requireYear) {
+        if (mAutoOpened || !isResumed() || getView() == null || !getView().isShown()) return;
+        VodGroup match = null;
+        for (VodGroup group : mGrouper.sorted()) {
+            if (group.isFolder() || group.getTier() != 0) continue;
+            boolean yearMatched = false, yearConflict = false;
+            for (VodSource source : group.getSources()) {
+                int year = TitleKey.year(source.getVod().getVodYear());
+                if (mTargetYear > 0 && year == mTargetYear) yearMatched = true;
+                if (mTargetYear > 0 && year != 0 && year != mTargetYear) yearConflict = true;
+            }
+            if (yearConflict || (requireYear && !yearMatched)) continue;
+            if (match != null) return;
+            match = group;
+        }
+        if (match == null) return;
+        int knownYear = 0;
+        for (VodSource source : match.getSources()) {
+            int year = TitleKey.year(source.getVod().getVodYear());
+            if (knownYear != 0 && year != 0 && knownYear != year) return;
+            if (year != 0) knownYear = year;
+        }
+        mAutoOpened = true;
+        com.github.catvod.utils.Logger.d("AiSearch phase=open title=" + match.getName() + " year=" + mTargetYear + " elapsedMs=" + (SystemClock.elapsedRealtime() - mStartTime));
+        stopSearch();
+        onItemClick(match);
     }
 
     private void checkShow() {
@@ -157,7 +232,7 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
     private void showResult() {
         mShown = true;
         App.removeCallbacks(mShowCheck);
-        mAdapter.setItems(mGrouper.sorted());
+        mAdapter.setItems(ranked());
         mBinding.searchProgress.getRoot().setVisibility(View.GONE);
         mBinding.emptyLayout.getRoot().setVisibility(View.GONE);
     }
@@ -173,8 +248,9 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
 
     private void updateStatus() {
         boolean searching = mTask != null && !mTask.isFinished() && mTask.getTotal() > 0;
-        mBinding.status.setVisibility(searching ? View.VISIBLE : View.GONE);
-        if (searching) mBinding.status.setText(getString(R.string.search_progress, mTask.getDone(), mTask.getTotal()));
+        mBinding.status.setVisibility(searching || (mFuzzy && !mGrouper.isEmpty()) ? View.VISIBLE : View.GONE);
+        if (searching) mBinding.status.setText((mFuzzy ? "模糊搜索 · " : "") + getString(R.string.search_progress, mTask.getDone(), mTask.getTotal()));
+        else if (mFuzzy && !mGrouper.isEmpty()) mBinding.status.setText("模糊匹配结果，请选择影片");
     }
 
     @Override
@@ -217,6 +293,9 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
     public void onResume() {
         super.onResume();
         if (mTask != null) mTask.resume();
+        if (mTask == null || mFuzzy || mAutoOpened) return;
+        if (mTask.getDone() == mTask.getTotal()) tryOpenExact(false);
+        else if (mTargetYear > 0) tryOpenExact(true);
     }
 
     @Override

@@ -475,7 +475,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
         current: State
     ) {
         val groups = listOf(
-            listOf(ACTION_PLAYER, ACTION_OPERATION),
+            listOf(ACTION_PLAYER, ACTION_OPERATION, ACTION_AI),
             listOf(ACTION_THEME, ACTION_ACCENT, ACTION_GLASS_NAVIGATION, ACTION_LIVE_TAB_VISIBLE),
             listOf(ACTION_LIVE, ACTION_DOH, ACTION_PROXY),
             listOf(ACTION_INCOGNITO, ACTION_CACHE),
@@ -526,6 +526,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
     private fun matches(id: Int, current: State, query: String): Boolean {
         if (query.isEmpty()) return true
         val text = when (id) {
+            ACTION_AI -> "AI 找片 DeepSeek 密钥 人工智能 语音"
             ACTION_VOD -> stringResource(R.string.setting_vod) + " " + current.vodDescription
             ACTION_LIVE -> stringResource(R.string.setting_live) + " " + current.liveDescription
             ACTION_THEME -> stringResource(R.string.setting_theme) + " " + current.themeOptions.joinToString(" ")
@@ -599,6 +600,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
         current: State
     ) {
         when (id) {
+            ACTION_AI -> ActionRow(id, R.drawable.ic_nav_discover, R.string.ai_settings, R.string.ai_settings_summary, palette)
             ACTION_VOD -> SourceRow(
                 id, R.drawable.ic_nav_vod, R.string.setting_vod, current.vodDescription,
                 backdrop, frameNanos, palette
@@ -1379,6 +1381,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
         const val WEBDAV_SAVE = 26
         const val ACTION_LOG = 27
         const val ACTION_GLASS_NAVIGATION = 28
+        const val ACTION_AI = 29
         private const val PROJECT_URL = "https://github.com/star-xiaoyi/XYBox"
         private const val JIANGUOYUN_URL = "https://dav.jianguoyun.com/dav/XYBox/"
     }

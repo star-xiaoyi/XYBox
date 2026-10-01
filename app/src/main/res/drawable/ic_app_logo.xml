@@ -9,10 +9,10 @@
         android:fillColor="#FFFFFFFF"
         android:pathData="M22.5,0L77.5,0A22.5,22.5 0,0 1,100 22.5L100,77.5A22.5,22.5 0,0 1,77.5 100L22.5,100A22.5,22.5 0,0 1,0 77.5L0,22.5A22.5,22.5 0,0 1,22.5 0Z" />
     <group
-        android:scaleX="0.72"
-        android:scaleY="0.72"
-        android:translateX="26.96"
-        android:translateY="34.808">
+        android:scaleX="0.58"
+        android:scaleY="0.58"
+        android:translateX="31.44"
+        android:translateY="37.762">
         <path
             android:fillColor="#FF000000"
             android:pathData="M1.122,1.656Q0,0 2,0L7.665,0Q9.665,0 10.787,1.656L28.878,28.344Q30,30 28,30L22.335,30Q20.335,30 19.213,28.344ZM19.213,1.656Q20.335,0 22.335,0L28,0Q30,0 28.878,1.656L10.787,28.344Q9.665,30 7.665,30L2,30Q0,30 1.122,28.344Z" />

@@ -4103,6 +4103,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                     onPlay();
                 })
                 .setPositiveButton("跳转到云端进度", (dialog, which) -> {
+                    if (seekToCloudProgress(remote)) return;
                     mSuppressHistorySaves = true;
                     mHistoryWriteGeneration++;
                     mPlayers.pause();
@@ -4124,6 +4125,54 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                     checkId();
                 }).show();
         return true;
+    }
+
+    /** Keep the active source and decoder when only the playback position changed. */
+    private boolean seekToCloudProgress(History remote) {
+        if (!mHistoryPlaybackConfirmed || mPlayers.isEmpty() || mPlayers.isIdle() || isCasting()
+                || !isSameCloudEpisode(remote)) return false;
+        long position = Math.max(0, remote.getPosition());
+        long duration = mPlayers.getDuration();
+        if (duration > 0) position = Math.min(position, duration);
+        synchronized (mHistoryWriteLock) {
+            // Discard queued writes from before the choice, but keep this device's source/episode URL.
+            mHistoryWriteGeneration++;
+            mKnownHistoryVersion = Math.max(mKnownHistoryVersion, remote.getCreateTime());
+            mLastHistoryCapture = Math.max(mLastHistoryCapture, mKnownHistoryVersion);
+            mHistory.setCreateTime(mKnownHistoryVersion);
+            mHistory.setPosition(position);
+            if (duration > 0) mHistory.setDuration(duration);
+        }
+        mPendingCloudHistory = null;
+        mCloudResumePosition = -1;
+        mPlayers.seekTo(position);
+        mCloudChoicePending = false;
+        mResumeAfterCloudSync = false;
+        // Do not use onPlay(): its ended-state shortcut can overwrite a seek with the opening time.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        mPlayers.play();
+        checkPlayImg();
+        mClock.stop().start();
+        queueHistorySnapshot(true, true);
+        return true;
+    }
+
+    private boolean isSameCloudEpisode(History remote) {
+        if (mHistory == null || !TextUtils.equals(mHistory.getVodName(), remote.getVodName())) return false;
+        int kind = mCurrentVod == null ? TitleKey.KIND_UNKNOWN : TitleKey.kind(mCurrentVod.getTypeName());
+        if (kind == TitleKey.KIND_MOVIE && mHistory.getEpisodeCount() == 0 && remote.getEpisodeCount() == 0) return true;
+        // Prefer named episode identity over source list positions (sources can omit episodes or extras).
+        String local = mHistory.getVodRemarks().trim();
+        String cloud = remote.getVodRemarks().trim();
+        if (!local.isEmpty() && local.equalsIgnoreCase(cloud)) return true;
+        if (!mHistory.getEpisodeUrl().isEmpty() && mHistory.getEpisodeUrl().equals(remote.getEpisodeUrl())) return true;
+        int localNumber = Util.getDigit(local);
+        int cloudNumber = Util.getDigit(cloud);
+        boolean series = kind == TitleKey.KIND_TV || mHistory.getEpisodeCount() > 1;
+        // Only ordinary numbered episode labels qualify; dates, specials and quality labels do not.
+        String numbered = "(?i)^(?:第\\s*)?[0-9０-９]+\\s*(?:集|话|話|期)?$";
+        return series && local.matches(numbered) && cloud.matches(numbered)
+                && localNumber > 0 && localNumber == cloudNumber;
     }
 
     @Override
