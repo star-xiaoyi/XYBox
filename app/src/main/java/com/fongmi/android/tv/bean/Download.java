@@ -372,7 +372,8 @@ public class Download {
 
     /** 文件真实存在才算能离线播放，避免用户手动清了目录后点了播不出来。 */
     public boolean isPlayable() {
-        return isDone() && !getLocalPath().isEmpty() && new File(getLocalPath()).exists();
+        File file = new File(getLocalPath());
+        return isDone() && !getLocalPath().isEmpty() && file.isFile() && file.length() > 0;
     }
 
     /** 每集一个独立目录，HLS 分片和直链文件都落在里面，删除时整个目录清掉。 */
@@ -512,9 +513,12 @@ public class Download {
         /** 同一集可能来自两个源，算集数时按集去重，否则会数成两集。 */
         private int distinct(boolean doneOnly) {
             List<String> keys = new ArrayList<>();
+            java.util.Set<String> completed = completedKeys();
             for (Download item : items) {
                 if (doneOnly != item.isDone()) continue;
+                if (doneOnly && !item.isPlayable()) continue;
                 String key = episodeKey(item.getEpisodeName());
+                if (!doneOnly && completed.contains(key)) continue;
                 if (!keys.contains(key)) keys.add(key);
             }
             return keys.size();
@@ -542,6 +546,37 @@ public class Download {
 
         public int getActiveCount() {
             return distinct(false);
+        }
+
+        /** Compact episode ranges retain gaps: 7,8,10 is shown as 7–8、10, never 7–10. */
+        public String episodeSummary(boolean completed) {
+            java.util.SortedSet<Integer> numbers = new java.util.TreeSet<>();
+            java.util.Set<String> names = new java.util.LinkedHashSet<>();
+            java.util.Set<String> ready = completedKeys();
+            for (Download item : items) {
+                if (completed ? !item.isPlayable() : !item.isActive()) continue;
+                if (!completed && ready.contains(episodeKey(item.getEpisodeName()))) continue;
+                int number = com.fongmi.android.tv.utils.Util.getDigit(item.getEpisodeName());
+                if (number >= 0 && number < 10000) numbers.add(number);
+                else names.add(item.getEpisodeName());
+            }
+            List<String> ranges = new ArrayList<>();
+            int start = -1, last = -1;
+            for (int number : numbers) {
+                if (start < 0) start = last = number;
+                else if (number == last + 1) last = number;
+                else { ranges.add(start == last ? String.valueOf(start) : start + "–" + last); start = last = number; }
+            }
+            if (start >= 0) ranges.add(start == last ? String.valueOf(start) : start + "–" + last);
+            String numbered = ranges.isEmpty() ? "" : "第 " + TextUtils.join("、", ranges) + " 集";
+            String named = TextUtils.join("、", names);
+            return numbered.isEmpty() ? named : named.isEmpty() ? numbered : numbered + "、" + named;
+        }
+
+        private java.util.Set<String> completedKeys() {
+            java.util.Set<String> keys = new java.util.HashSet<>();
+            for (Download item : items) if (item.isPlayable()) keys.add(episodeKey(item.getEpisodeName()));
+            return keys;
         }
 
         /** 未完成任务的平均进度，全部完成时为 100。 */

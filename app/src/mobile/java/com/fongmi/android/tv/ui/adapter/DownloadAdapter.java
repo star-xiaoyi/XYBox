@@ -80,6 +80,8 @@ public class DownloadAdapter extends RecyclerView.Adapter<DownloadAdapter.ViewHo
             case Download.STATUS_DONE:
                 return ResUtil.getString(R.string.download_state_done);
             case Download.STATUS_RUNNING:
+                String phase = com.fongmi.android.tv.download.DownloadManager.get().getPhase(item.getId());
+                if (!phase.isEmpty()) return phase;
                 return join(ResUtil.getString(R.string.download_state_running), item.getProgress() + "%", speed(item.getSpeed()));
             case Download.STATUS_PAUSED:
                 return join(ResUtil.getString(R.string.download_state_paused), item.getProgress() + "%");

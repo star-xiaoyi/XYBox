@@ -7,21 +7,18 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Download;
-import com.fongmi.android.tv.databinding.AdapterVodBinding;
+import com.fongmi.android.tv.databinding.AdapterDownloadVodBinding;
 import com.fongmi.android.tv.utils.ImgUtil;
-import com.fongmi.android.tv.utils.ResUtil;
 
 import java.util.ArrayList;
 import java.util.List;
 
-/** 缓存列表页的剧集网格，沿用观看记录的卡片与长按删除交互。 */
+/** Film rows show the actual completed and pending episodes beside a small poster. */
 public class DownloadVodAdapter extends RecyclerView.Adapter<DownloadVodAdapter.ViewHolder> {
 
     private final List<Download.Group> mItems = new ArrayList<>();
     private final OnClickListener mListener;
-    private int width, height;
     private boolean delete;
 
     public interface OnClickListener {
@@ -35,11 +32,6 @@ public class DownloadVodAdapter extends RecyclerView.Adapter<DownloadVodAdapter.
 
     public DownloadVodAdapter(OnClickListener listener) {
         this.mListener = listener;
-    }
-
-    public void setSize(int[] size) {
-        this.width = size[0];
-        this.height = size[1];
     }
 
     public boolean isDelete() {
@@ -69,23 +61,20 @@ public class DownloadVodAdapter extends RecyclerView.Adapter<DownloadVodAdapter.
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        ViewHolder holder = new ViewHolder(AdapterVodBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false));
-        holder.binding.getRoot().getLayoutParams().width = width;
-        holder.binding.getRoot().getLayoutParams().height = height;
-        return holder;
+        return new ViewHolder(AdapterDownloadVodBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false));
     }
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Download.Group item = mItems.get(position);
         holder.binding.name.setText(item.getVodName());
-        holder.binding.site.setVisibility(View.GONE);
-        holder.binding.remark.setVisibility(delete ? View.GONE : View.VISIBLE);
         holder.binding.delete.setVisibility(delete ? View.VISIBLE : View.GONE);
         int active = item.getActiveCount();
-        holder.binding.remark.setText(active > 0
-                ? ResUtil.getString(R.string.download_running_count, String.valueOf(active))
-                : ResUtil.getString(R.string.download_count, String.valueOf(item.getDoneCount())));
+        int ready = item.getDoneCount();
+        holder.binding.ready.setText(ready > 0 ? "已缓存 " + ready + " 集 · " + item.episodeSummary(true) : "暂无可播放缓存");
+        holder.binding.pending.setText(active > 0 ? "未完成 · " + item.episodeSummary(false) : "全部缓存完成，可离线观看");
+        holder.binding.pending.setVisibility(active > 0 || ready > 0 ? View.VISIBLE : View.GONE);
+        holder.binding.delete.setOnClickListener(v -> mListener.onItemDelete(item));
         ImgUtil.loadVod(item.getVodName(), item.getVodPic(), holder.binding.image);
         holder.binding.getRoot().setOnLongClickListener(view -> mListener.onLongClick());
         holder.binding.getRoot().setOnClickListener(view -> {
@@ -96,9 +85,9 @@ public class DownloadVodAdapter extends RecyclerView.Adapter<DownloadVodAdapter.
 
     static class ViewHolder extends RecyclerView.ViewHolder {
 
-        private final AdapterVodBinding binding;
+        private final AdapterDownloadVodBinding binding;
 
-        ViewHolder(@NonNull AdapterVodBinding binding) {
+        ViewHolder(@NonNull AdapterDownloadVodBinding binding) {
             super(binding.getRoot());
             this.binding = binding;
         }

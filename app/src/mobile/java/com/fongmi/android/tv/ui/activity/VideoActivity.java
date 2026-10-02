@@ -99,6 +99,7 @@ import com.fongmi.android.tv.event.ErrorEvent;
 import com.fongmi.android.tv.event.PlayerEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.download.DownloadManager;
+import com.fongmi.android.tv.download.OfflinePlayback;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.player.Players;
 import com.fongmi.android.tv.player.PreviewPlayer;
@@ -286,7 +287,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private float mHandleDown;
     private boolean mDragging;
     private boolean mPortraitLock;
-    private int mCachedSize = -1;
+    private final java.util.Set<String> mCachedKeys = new java.util.HashSet<>();
+    private final java.util.Set<String> mFailedLocalPaths = new java.util.HashSet<>();
+    private Download mPlayingDownload;
+    private boolean mLocalDetail;
+    private boolean mRefreshingLocalDetail;
+    private int mLocalDetailGeneration;
+    private long mDetailRequestedAt, mPlaybackRequestedAt;
+    private boolean mLoggedPlaybackReady;
+    private int mTransitionTrace;
     private int mVideoBase;
     private int mStatusBarInset;
     private ValueAnimator mWidthAnimator;
@@ -329,7 +338,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /**
      * 从离线缓存进来：仍然用原站源的 key/vodId 打开详情页，观看记录才不会被离线记录挤掉；
-     * 只是多带一个 offline 标记，让页面默认选中「离线缓存」那条线路。
+     * 缓存直接参与普通剧集播放，入口标记只用于优先选择已缓存的一集。
      */
     public static void download(Activity activity, Download.Group group) {
         Intent intent = new Intent(activity, VideoActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -344,10 +353,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private boolean isOffline() {
         return getIntent().getBooleanExtra("offline", false);
-    }
-
-    private String getOfflineGroup() {
-        return Objects.toString(getIntent().getStringExtra("offline_group"), Download.buildGroupKey(getName()));
     }
 
     /**
@@ -489,6 +494,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         GroupCache.remove(getGroupToken());
         getIntent().removeExtra("group");
         getIntent().removeExtra("year");
+        getIntent().removeExtra("offline");
+        getIntent().removeExtra("offline_group");
         getIntent().putExtras(intent);
         resetSources();
         setOrient();
@@ -497,12 +504,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     protected void initView(Bundle savedInstanceState) {
+        getWindow().setBackgroundDrawableResource(R.color.black);
+        mBinding.exo.setBackgroundColor(Color.BLACK);
+        mBinding.exo.setShutterBackgroundColor(Color.BLACK);
         showDetailSystemUI();
         applyDetailWindowInsets();
         mKeyDown = CustomKeyDownVod.create(this, mBinding.exo);
         mPreview = new PreviewPlayer();
         mFrameParams = mBinding.video.getLayoutParams();
-        mBinding.progressLayout.showProgress();
         mBinding.swipeLayout.setEnabled(false);
         mObserveDetail = this::setDetail;
         mObservePlayer = this::setPlayer;
@@ -523,7 +532,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         setRecyclerView();
         setVideoView();
         setViewModel();
-        showProgress();
         showDanmaku();
         checkId();
         mHandler = new Handler(Looper.getMainLooper());
@@ -682,7 +690,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.content.setOnClickListener(view -> onContent());
         mBinding.reverse.setOnClickListener(view -> onReverse());
         mBinding.episodeTab.setOnClickListener(view -> setDetailPanel(DETAIL_EPISODE));
-        mBinding.sourceTab.setOnClickListener(view -> setDetailPanel(DETAIL_SOURCE));
+        mBinding.sourceTab.setOnClickListener(view -> {
+            setDetailPanel(DETAIL_SOURCE);
+            checkQuick();
+        });
         mBinding.flagTab.setOnClickListener(view -> setDetailPanel(DETAIL_FLAG));
         mBinding.name.setOnLongClickListener(view -> onChange());
         mBinding.content.setOnLongClickListener(view -> onCopy());
@@ -795,7 +806,17 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (getId().startsWith("push://")) getIntent().putExtra("key", "push_agent").putExtra("id", getId().substring(7));
         setTarget(getName(), getYear(), "");
         initSources();
-        if (getId().isEmpty() || getId().startsWith("msearch:")) setEmpty();
+        boolean hasLocal = OfflinePlayback.matching(getKey(), getId(), getName(), getYear(), "").stream().anyMatch(Download::isPlayable);
+        if (hasLocal) {
+            mBinding.progressLayout.showContent();
+            mBinding.swipeLayout.setRefreshing(false);
+            hideProgress();
+        } else {
+            mBinding.progressLayout.showProgress();
+            showProgress();
+        }
+        if (!Util.isNetworkAvailable() || hasLocal) getDetail();
+        else if (getId().isEmpty() || getId().startsWith("msearch:")) setEmpty();
         else getDetail();
     }
 
@@ -804,14 +825,34 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean mRetryDetailWhenOnline;
 
     private void getDetail() {
+        mDetailRequestedAt = SystemClock.elapsedRealtime();
+        mLocalDetailGeneration++;
+        mRefreshingLocalDetail = false;
         mDetailLoading = true;
         mRetryDetailWhenOnline = false;
         mDetailStartedWithoutNetwork = !isOffline() && (!com.fongmi.android.tv.utils.Util.isNetworkAvailable()
                 || VodConfig.get().getSites().isEmpty());
-        // 从离线缓存入口进来必须第一步就读本地数据库。原实现仍先请求原站详情，
-        // 移动数据可用但源站不通时会一直等超时，完全断网反而更快触发本地兜底。
-        // Intent 里仍保留原 key/id，观看记录继续写回原站条目。
-        if (isOffline()) mViewModel.detailContent(SiteViewModel.DOWNLOAD_KEY, getOfflineGroup());
+        // History and cache entries share the same offline-first path, without waiting for a source timeout.
+        boolean hasLocal = OfflinePlayback.matching(getKey(), getId(), getName(), getYear(), "").stream().anyMatch(Download::isPlayable);
+        if (hasLocal) {
+            mBinding.progressLayout.showContent();
+            mBinding.swipeLayout.setRefreshing(false);
+            cancelBufferingProgress();
+            hideProgress();
+        }
+        Logger.i("OfflineStart: detail name=" + getName() + " site=" + getKey() + " id=" + getId()
+                + " local=" + hasLocal + " network=" + Util.isNetworkAvailable() + " offlineEntry=" + isOffline());
+        if (!hasLocal) {
+            int logged = 0;
+            for (Download item : Download.getAll()) {
+                if (!TitleKey.normalize(item.getVodName()).equals(TitleKey.normalize(getName()))) continue;
+                Logger.i("OfflineStart: unmatched episode=" + item.getEpisodeName() + " year=" + item.getVodYear()
+                        + " type=" + item.getVodType() + " status=" + item.getStatus() + " playable=" + item.isPlayable());
+                if (++logged >= 8) break;
+            }
+        }
+        mLocalDetail = !"push_agent".equals(getKey()) && (hasLocal || !Util.isNetworkAvailable() || getSite().getApi().isEmpty());
+        if (mLocalDetail) mViewModel.offlineContent(getKey(), getId(), getName(), getYear());
         else mViewModel.detailContent(getKey(), getId());
     }
 
@@ -831,6 +872,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void setDetail(Result result) {
+        Logger.i("OfflineStart: detail-result local=" + mLocalDetail + " elapsedMs=" + (SystemClock.elapsedRealtime() - mDetailRequestedAt)
+                + " items=" + result.getList().size());
         mDetailLoading = false;
         mBinding.swipeLayout.setRefreshing(false);
         Vod offline = result.getList().isEmpty() ? getOfflineVod() : null;
@@ -838,7 +881,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 && (mDetailStartedWithoutNetwork || !com.fongmi.android.tv.utils.Util.isNetworkAvailable()
                 || VodConfig.get().getSites().isEmpty());
         // 站源拉不到详情（多半是断网）而本地有缓存时，直接用缓存把页面撑起来
-        if (offline != null) setDetail(offline);
+        if (offline != null) { mLocalDetail = true; setDetail(offline); }
         else if (result.getList().isEmpty()) setEmpty();
         else setDetail(result.getList().get(0));
         // 只在有错误或重要消息时显示提示
@@ -849,6 +892,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void retryDetailAfterNetwork() {
+        if (mLocalDetail && mCurrentVod != null) { refreshLocalCatalog(); return; }
         if (!mRetryDetailWhenOnline || mDetailLoading || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
                 || isOffline() || isCasting() || isFinishing() || isDestroyed()
                 || !com.fongmi.android.tv.utils.Util.isNetworkAvailable()) return;
@@ -858,11 +902,63 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         getDetail();
     }
 
+    /** Refill the online catalog after reconnecting without restarting the locally playing episode. */
+    private void refreshLocalCatalog() {
+        if (!mLocalDetail) return;
+        if (mPlayingDownload != null && !mPlayers.isReady()) return;
+        if (mRefreshingLocalDetail || mDetailLoading || !Util.isNetworkAvailable() || getSite().getApi().isEmpty()
+                || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return;
+        mRefreshingLocalDetail = true;
+        final int generation = ++mLocalDetailGeneration;
+        final String key = getKey(), id = getId();
+        final Site site = getSite();
+        App.execute(() -> {
+            Result result;
+            try { result = SiteViewModel.detail(site, id, false); }
+            catch (Throwable error) { result = Result.empty(); }
+            final Result loaded = result;
+            App.post(() -> {
+                if (generation != mLocalDetailGeneration || isFinishing() || isDestroyed()
+                        || !key.equals(getKey()) || !id.equals(getId())) return;
+                mRefreshingLocalDetail = false;
+                if (!mLocalDetail || loaded.getList().isEmpty()) return;
+                Vod vod = loaded.getList().get(0);
+                Episode playing = getEpisode();
+                String line = getFlag() == null ? "" : getFlag().getFlag();
+                List<Download> local = OfflinePlayback.matching(key, id, vod.getVodName(), vod.getVodYear(), vod.getTypeName());
+                OfflinePlayback.remember(key, id, vod);
+                OfflinePlayback.merge(vod, local);
+                prioritizePlayableFlags(vod);
+                Flag selected = null;
+                for (Flag flag : vod.getVodFlags()) {
+                    if (flag.isCloudDrive() || flag.getEpisodes().isEmpty()) continue;
+                    if (selected == null || flag.getFlag().equals(line)) selected = flag;
+                }
+                if (selected == null || playing == null) return;
+                Episode replacement = selected.findByRemarks(playing.getName());
+                if (replacement == null) return;
+                mCurrentVod = vod;
+                mLocalDetail = false;
+                mFlagAdapter.addAll(vod.getVodFlags());
+                mFlagAdapter.setActivated(selected);
+                if (mHistory.isRevSort()) mFlagAdapter.reverse();
+                mFlagAdapter.toggle(replacement);
+                setEpisodeAdapter(selected.getEpisodes());
+                mHistory.setVodFlag(selected.getFlag());
+                mHistory.setEpisodeUrl(replacement.getUrl());
+                updateHistoryEpisodeNumbers(replacement);
+                setMeta(vod);
+                checkQuick();
+            });
+        });
+    }
+
     /**
      * 详情拉不到（站点挂了、只给了片名）时换到别的源。
      * 以前从搜索结果进来会直接关掉页面，现在手上有整组片源，挨个换下去就是了。
      */
     private void setEmpty() {
+        if (!Util.isNetworkAvailable()) { showEmpty(); return; }
         if (getName().isEmpty()) {
             showEmpty();
         } else {
@@ -880,6 +976,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void setDetail(Vod item) {
+        List<Download> local = OfflinePlayback.matching(getKey(), getId(), item.getVodName(getName()), item.getVodYear(), item.getTypeName());
+        if (!mLocalDetail && !local.isEmpty()) OfflinePlayback.remember(getKey(), getId(), item);
+        OfflinePlayback.merge(item, local);
         prioritizePlayableFlags(item);
         if (!isOffline() && !mManualSourceSelection && hasOnlyCloudFlags(item)) {
             skipCloudSource();
@@ -899,7 +998,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         setCast(item);
         updateContentExpand();
         mBinding.contentLayout.setVisibility(mBinding.content.getVisibility());
-        addOfflineFlag(item);
         mFlagAdapter.addAll(item.getVodFlags());
         setMeta(item);
         setTags(mDoubanGenres);
@@ -910,7 +1008,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         checkHistory(item);
         applyDoubanMetadata();
         checkFlag(item);
-        checkOffline();
+        getIntent().removeExtra("offline");
         checkKeepImg();
         checkQuick();
         mManualSourceSelection = false;
@@ -1111,22 +1209,52 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void getPlayer(Flag flag, Episode episode, boolean replay) {
+        mPlaybackRequestedAt = SystemClock.elapsedRealtime();
+        mLoggedPlaybackReady = false;
         mBinding.control.title.setText(getString(R.string.detail_title, mBinding.name.getText(), episode.getName()));
-        mViewModel.playerContent(getKey(), flag.getFlag(), episode.getUrl());
+        List<Download> local = getLocalDownloads();
+        mPlayingDownload = OfflinePlayback.find(local, episode.getName(), getKey(), getId(), flag.getFlag(), mFailedLocalPaths);
+        Logger.i("OfflineStart: select episode=" + episode.getName() + " line=" + flag.getFlag()
+                + " candidates=" + local.size() + " hit=" + (mPlayingDownload != null) + " cloudWait=" + mAwaitingCloudSync);
+        if (mPlayingDownload == null) for (Download item : local.subList(0, Math.min(8, local.size()))) Logger.i("OfflineStart: candidate episode=" + item.getEpisodeName()
+                + " status=" + item.getStatus() + " playable=" + item.isPlayable() + " rejected=" + mFailedLocalPaths.contains(item.getLocalPath()));
+        boolean localUrl = OfflinePlayback.isLocal(episode.getUrl());
+        String localPath = localUrl ? Uri.parse(episode.getUrl()).getPath() : null;
+        boolean unavailableFile = localUrl && (localPath == null || !new File(localPath).isFile() || mFailedLocalPaths.contains(localPath));
+        if (mPlayingDownload == null && ((!Util.isNetworkAvailable() && !localUrl && !"push_agent".equals(getKey())) || unavailableFile)) {
+            hideProgress();
+            boolean cached = local.stream().anyMatch(item -> item.isPlayable()
+                    && Download.episodeKey(item.getEpisodeName()).equals(Download.episodeKey(episode.getName())));
+            showError(cached ? "本集缓存播放失败，文件仍在，请导出运行日志" : localUrl ? "本集缓存文件不可用" : "本集尚未缓存，联网后可播放");
+            return;
+        }
+        // Keep the original episode URL and line in history; substitute only the playback request.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mBinding.control.title.setSelected(true);
         updateHistory(episode, replay);
-        showProgress();
+        cancelBufferingProgress();
+        if (mPlayingDownload != null || localUrl) {
+            hideProgress();
+            hideError();
+        } else showProgress();
         setMetadata();
+        if (mPlayingDownload != null || localUrl) {
+            mAwaitingCloudSync = false;
+            mResumeAfterCloudSync = false;
+            mClock.start();
+            mViewModel.localPlayer(mPlayingDownload == null ? episode.getUrl() : OfflinePlayback.localUrl(mPlayingDownload));
+        } else mViewModel.playerContent(getKey(), flag.getFlag(), episode.getUrl());
     }
 
     private void setPlayer(Result result) {
+        Logger.i("OfflineStart: player-result local=" + OfflinePlayback.isLocal(result.getUrl().v())
+                + " elapsedMs=" + (SystemClock.elapsedRealtime() - mPlaybackRequestedAt));
         result.getUrl().set(mQualityAdapter.getPosition());
         if (!result.getDesc().isEmpty() && (mDoubanSubject == null || mDoubanSubject.getIntro().isEmpty())) {
             setText(mBinding.content, R.string.detail_content, Html.fromHtml(result.getDesc()).toString());
             updateContentExpand();
         }
-        setUseParse(VodConfig.hasParse() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags().contains(result.getFlag())) || result.getJx() == 1));
+        setUseParse(!OfflinePlayback.isLocal(result.getUrl().v()) && VodConfig.hasParse() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags().contains(result.getFlag())) || result.getJx() == 1));
         if (mControlDialog != null && mControlDialog.isVisible()) mControlDialog.setParseVisible(isUseParse());
         mBinding.control.parse.setVisibility(View.GONE);
         stopPlaybackCache();
@@ -1217,29 +1345,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 本地缓存拼出来的详情，只在站源那边什么都没拿到时用来兜底。 */
     private Vod getOfflineVod() {
-        Result result = SiteViewModel.offlineResult(Download.buildGroupKey(getName()));
-        return result.getList().isEmpty() ? null : result.getList().get(0);
+        return OfflinePlayback.detail(getKey(), getId(), getName(), getYear(), "");
     }
 
-    /**
-     * 本地有缓存就在线路列表末尾挂一条「离线缓存」。
-     * 放最后是为了不抢默认选中——有网时照常走站源线路，用户想省流量可以手动切过来。
-     */
-    private void addOfflineFlag(Vod item) {
-        Result result = SiteViewModel.offlineResult(Download.buildGroupKey(item.getVodName(getName())));
-        if (result.getList().isEmpty()) return;
-        List<Flag> flags = result.getList().get(0).getVodFlags();
-        if (flags.isEmpty()) return;
-        // 兜底出来的详情本身就是这条线路，别再挂一遍
-        if (item.getVodFlags().contains(flags.get(0))) return;
-        item.getVodFlags().add(flags.get(0));
-    }
-
-    /** 从缓存页进来、或者当前没网，就把默认线路切到「离线缓存」。 */
-    private void checkOffline() {
-        if (!isOffline() && Util.isNetworkAvailable()) return;
-        Flag offline = mFlagAdapter.find(ResUtil.getString(R.string.download_flag));
-        if (offline != null) onItemClick(offline);
+    private List<Download> getLocalDownloads() {
+        return OfflinePlayback.matching(getKey(), getId(), getVodName(),
+                mCurrentVod == null ? getYear() : mCurrentVod.getVodYear(), mCurrentVod == null ? "" : mCurrentVod.getTypeName());
     }
 
     private String getVodName() {
@@ -1249,16 +1360,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     /** 给已经缓存好的集打标，剧集胶囊右侧会多一个小角标。 */
     private void markCached(List<Episode> items) {
         List<String> keys = getCachedKeys();
-        mCachedSize = keys.size();
+        mCachedKeys.clear();
+        mCachedKeys.addAll(keys);
         for (Episode item : items) item.setCached(keys.contains(Download.episodeKey(item.getName())));
     }
 
     /** 用集号比对，别的源里集名写法不同（第01集 / 1）也能认出来是同一集。 */
     private List<String> getCachedKeys() {
         List<String> keys = new ArrayList<>();
-        if (SiteViewModel.DOWNLOAD_KEY.equals(getKey())) return keys;
-        for (Download item : Download.getByGroup(getGroupKey())) {
-            if (!item.isDone()) continue;
+        for (Download item : getLocalDownloads()) {
+            if (!item.isPlayable()) continue;
             String key = Download.episodeKey(item.getEpisodeName());
             if (!keys.contains(key)) keys.add(key);
         }
@@ -1288,15 +1399,17 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     /**
-     * 缓存状态变了：按钮上的进度实时刷；剧集角标只在「已缓存集数」真的变了才重绘，
+     * 缓存状态变了：按钮上的进度实时刷；剧集角标只在「已缓存集数集合」变了才重绘，
      * 进度事件每秒来两次，无脑重绘整排胶囊会闪。
      */
     private void onDownloadRefresh() {
         setDownloadText();
         if (mEpisodeAdapter.isEmpty()) return;
-        if (getCachedKeys().size() == mCachedSize) return;
-        markCached(mEpisodeAdapter.getItems());
-        notifyItemChanged(mEpisodeAdapter);
+        if (mCachedKeys.equals(new java.util.HashSet<>(getCachedKeys()))) return;
+        Episode playing = getEpisode();
+        if (mCurrentVod != null) OfflinePlayback.merge(mCurrentVod, getLocalDownloads());
+        if (playing != null) mFlagAdapter.toggle(playing);
+        setEpisodeAdapter(getFlag().getEpisodes());
     }
 
     private void onDownload() {
@@ -1305,16 +1418,19 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 .episodes(mEpisodeAdapter.getItems())
                 .currentIndex(mEpisodeAdapter.getPosition())
                 .groupKey(getGroupKey())
+                .identity(getKey(), getId(), mCurrentVod == null ? getYear() : mCurrentVod.getVodYear(), mCurrentVod == null ? "" : mCurrentVod.getTypeName())
                 .callback(this::startDownload)
                 .show(this);
     }
 
     private void startDownload(List<Episode> items) {
+        if (mCurrentVod != null && !mLocalDetail) OfflinePlayback.remember(getKey(), getId(), mCurrentVod);
         String name = getVodName();
         String pic = mCurrentVod == null || mCurrentVod.getVodPic().isEmpty() ? getPic() : mCurrentVod.getVodPic();
         String flag = getFlag().getFlag();
         List<Download> downloads = new ArrayList<>();
         for (Episode item : items) {
+            if (OfflinePlayback.isLocal(item.getUrl())) continue;
             Download download = Download.create(getKey(), getId(), name, pic, flag, item);
             // 简介等元信息一起存下来，离线详情页才不是一片空白
             if (mCurrentVod != null) {
@@ -1332,6 +1448,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private boolean seamless(Flag flag, boolean autoSwitch, int previousPosition) {
         Episode episode = autoSwitch ? flag.findByRemarks(mHistory.getVodRemarks()) : flag.find(mHistory.getVodRemarks(), getMark().isEmpty());
+        if ((isOffline() || !Util.isNetworkAvailable()) && (episode == null || !episode.isCached())) {
+            for (Episode cached : flag.getEpisodes()) if (cached.isCached()) { episode = cached; break; }
+        }
         // 国语/粤语等电影线路常用不同集名，无法靠文字匹配；自动换线时按原线路
         // 的同一序号承接。序号超出目标线路范围则不乱播，由换源流程继续找下一条。
         if (episode == null && autoSwitch && previousPosition >= 0 && previousPosition < flag.getEpisodes().size()) episode = flag.getEpisodes().get(previousPosition);
@@ -1940,6 +2059,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onRotate() {
+        traceTransition("rotate-click");
         // 用户手动选过方向，之后就一直算数，不要再按片源比例自动转回去。
         // 原来这里清成 false，导致用旋转按钮切到竖屏全屏后，
         // 下一集的 SIZE 事件一到 checkOrientation 就把屏幕转回横屏。
@@ -2256,6 +2376,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void enterFullscreen(boolean portrait) {
         if (isFullscreen()) return;
+        traceTransition("fullscreen-enter");
         logVideoLayout("fullscreen-before-layout", -1f);
         clearDrag();
         mBinding.video.setLayoutParams(new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT));
@@ -2277,6 +2398,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void exitFullscreen() {
         if (!isFullscreen()) return;
+        traceTransition("fullscreen-exit");
         logVideoLayout("fullscreen-exit", -1f);
         applyPortraitViewingOffset(false);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
@@ -2518,15 +2640,24 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mHistory.setEpisodeUrl(item.getUrl());
         mHistory.setVodRemarks(item.getName());
         mHistory.setVodFlag(getFlag().getFlag());
+        updateHistoryEpisodeNumbers(item);
+        mHistory.setCreateTime(System.currentTimeMillis());
+        mHistory.setPosition(replay ? C.TIME_UNSET : mHistory.getPosition());
+    }
+
+    private void updateHistoryEpisodeNumbers(Episode item) {
         int count = mEpisodeAdapter.getItemCount();
         int kind = mCurrentVod == null ? TitleKey.KIND_UNKNOWN : TitleKey.kind(mCurrentVod.getTypeName());
         boolean series = kind != TitleKey.KIND_MOVIE && (count > 1 || kind == TitleKey.KIND_TV);
         int index = mEpisodeAdapter.getPosition(item);
         int number = mHistory.isRevSort() ? count - index : index + 1;
+        if (mLocalDetail && item.getNumber() > 0) {
+            number = item.getNumber();
+            count = Math.max(count, mHistory.getEpisodeCount());
+            if (number > count) count = 0; // Legacy downloads may not contain the full catalog yet.
+        }
         mHistory.setEpisodeCount(series ? count : 0);
         mHistory.setEpisodeNumber(series && index >= 0 ? number : 0);
-        mHistory.setCreateTime(System.currentTimeMillis());
-        mHistory.setPosition(replay ? C.TIME_UNSET : mHistory.getPosition());
     }
 
     /** 只有播放器确认片源可用后才允许创建/更新记录，失败片源不会碰数据库里的旧记录。 */
@@ -2665,6 +2796,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 }
                 break;
             case Player.STATE_READY:
+                if (!mLoggedPlaybackReady) {
+                    mLoggedPlaybackReady = true;
+                    Logger.i("OfflineStart: ready local=" + OfflinePlayback.isLocal(mPlayers.getUrl())
+                            + " elapsedMs=" + (SystemClock.elapsedRealtime() - mPlaybackRequestedAt) + " cloudWait=" + mAwaitingCloudSync);
+                    if (mLocalDetail) App.post(this::refreshLocalCatalog, 400);
+                }
                 if (mAwaitingCloudSync || mCloudChoicePending) mPlayers.pause();
                 cancelBufferingProgress();
                 mPlayers.reset();
@@ -2791,6 +2928,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onErrorEvent(ErrorEvent event) {
         if (!event.getTag().equals(tag)) return;
+        Logger.i("OfflineStart: error type=" + event.getType() + " msg=" + event.getMsg()
+                + " local=" + (mPlayingDownload != null) + " fileExists=" + (mPlayingDownload != null && mPlayingDownload.isPlayable()));
+        if (mPlayingDownload != null) {
+            mFailedLocalPaths.add(mPlayingDownload.getLocalPath());
+            mPlayingDownload = null;
+            onRefresh();
+            return;
+        }
         if (mPlayers.retried()) onError(event);
         else onRefresh();
     }
@@ -2813,6 +2958,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void startFlow() {
+        if (!Util.isNetworkAvailable()) return;
         if (!getSite().isChangeable()) return;
         if (isUseParse()) checkParse();
         else checkFlag();
@@ -2854,8 +3000,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         else startSourceSearch(true);
     }
 
-    /** 详情加载完：没有现成片源组时，延后一秒按片名补搜其他普通站点。 */
+    /** Additional source scripts run when the user opens sources; playback failures still auto-switch. */
     private void checkQuick() {
+        if (mDetailPanel != DETAIL_SOURCE) return;
+        if (!Util.isNetworkAvailable()) return;
         if (mSourceTask != null) return;
         if (GroupCache.get(getGroupToken()) == null) App.post(mR5, 1000);
     }
@@ -2871,6 +3019,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 换了一部片（通知栏、投屏接收等从外部再次打开详情页）：清掉上一部片的片源。 */
     private void resetSources() {
+        mLocalDetailGeneration++;
+        mRefreshingLocalDetail = false;
+        mLocalDetail = false;
+        mPlayingDownload = null;
+        mFailedLocalPaths.clear();
         stopSourceSearch();
         mSourceAdapter.clear();
         mCurrentVod = null;
@@ -3238,6 +3391,48 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 + " surfaceH=" + mBinding.playerSurface.getHeight()
                 + " surfaceTY=" + Math.round(mBinding.playerSurface.getTranslationY())
                 + " travel=" + getSheetTravel(isLand()));
+    }
+
+    /** Six pre-draw samples plus a settled sample; no continuous per-frame logging. */
+    private void traceTransition(String reason) {
+        if (mBinding == null) return;
+        final int trace = ++mTransitionTrace;
+        logTransitionFrame(reason, trace);
+        View root = mBinding.getRoot();
+        android.view.ViewTreeObserver.OnPreDrawListener sample = new android.view.ViewTreeObserver.OnPreDrawListener() {
+            int frames;
+            @Override public boolean onPreDraw() {
+                if (trace != mTransitionTrace || isDestroyed() || ++frames > 6) {
+                    if (root.getViewTreeObserver().isAlive()) root.getViewTreeObserver().removeOnPreDrawListener(this);
+                } else logTransitionFrame("frame-" + frames, trace);
+                return true;
+            }
+        };
+        root.getViewTreeObserver().addOnPreDrawListener(sample);
+        root.postDelayed(() -> {
+            if (root.getViewTreeObserver().isAlive()) root.getViewTreeObserver().removeOnPreDrawListener(sample);
+            if (trace == mTransitionTrace && !isDestroyed()) logTransitionFrame("settled", trace);
+        }, 600);
+    }
+
+    private void logTransitionFrame(String stage, int trace) {
+        View surface = mBinding.exo.getVideoSurfaceView();
+        Logger.i("VideoTransition: id=" + trace + " stage=" + stage + " full=" + isFullscreen() + " land=" + isLand()
+                + " window=" + describeVideoLayer(getWindow().getDecorView()) + " root=" + describeVideoLayer(mBinding.getRoot())
+                + " video=" + describeVideoLayer(mBinding.video) + " player=" + describeVideoLayer(mBinding.exo)
+                + " surface=" + describeVideoLayer(surface) + " sheet=" + mBinding.swipeLayout.getVisibility());
+        if (surface instanceof android.view.SurfaceView) {
+            android.view.SurfaceHolder holder = ((android.view.SurfaceView) surface).getHolder();
+            Logger.i("VideoTransition: id=" + trace + " surfaceFrame=" + holder.getSurfaceFrame() + " valid=" + holder.getSurface().isValid());
+        }
+    }
+
+    private String describeVideoLayer(View view) {
+        if (view == null) return "none";
+        android.graphics.drawable.Drawable bg = view.getBackground();
+        String color = bg instanceof android.graphics.drawable.ColorDrawable
+                ? Integer.toHexString(((android.graphics.drawable.ColorDrawable) bg).getColor()) : bg == null ? "transparent" : bg.getClass().getSimpleName();
+        return view.getWidth() + "x" + view.getHeight() + "/" + color + "/v" + view.getVisibility() + "/a" + view.getAlpha();
     }
 
     private boolean isInitAuto() {
@@ -3709,7 +3904,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBufferingProgressPending = true;
         mBufferingProgressStartedAt = SystemClock.uptimeMillis();
         mBufferingProgressReason = reason;
-        App.post(mShowBufferingProgress, BUFFERING_PROGRESS_DELAY_MS);
+        // Fully cached media normally prepares in a fraction of a second. Avoid flashing a spinner
+        // during first-frame decoding, but retain feedback if local I/O actually stalls.
+        boolean localStartup = !mLoggedPlaybackReady && (mPlayingDownload != null || OfflinePlayback.isLocal(mPlayers.getUrl()));
+        App.post(mShowBufferingProgress, localStartup ? 2000L : BUFFERING_PROGRESS_DELAY_MS);
     }
 
     private void cancelBufferingProgress() {
@@ -3969,6 +4167,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        traceTransition("configuration-" + newConfig.orientation);
         if (!isFullscreen()) applyOrientation();
         if (isFullscreen()) Util.hideSystemUI(this);
         applyPortraitViewingOffset(isFullscreen() && newConfig.orientation == Configuration.ORIENTATION_PORTRAIT && !mPiP.isInMode(this));
@@ -3992,7 +4191,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     protected void onStart() {
         super.onStart();
-        mAwaitingCloudSync = !isCasting() && !mPlayers.isPlaying() && App.isAwaitingForegroundSync();
+        mAwaitingCloudSync = mPlayingDownload == null && !OfflinePlayback.isLocal(mPlayers.getUrl())
+                && Util.isNetworkAvailable() && !isCasting() && !mPlayers.isPlaying() && App.isAwaitingForegroundSync();
         mResumeAfterCloudSync = mAwaitingCloudSync;
         if (mAwaitingCloudSync && mHistory != null) Notify.show("正在同步观看进度…");
         mClock.stop();
@@ -4050,6 +4250,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void queueHistorySnapshot(boolean watched, boolean flush) {
+        // Local video can start during sync, but must not overwrite a cloud position before it is compared.
+        if (mPlayingDownload != null && App.isAwaitingForegroundSync()) return;
         if (!mHistoryPlaybackConfirmed || mHistory == null || mAwaitingCloudSync || mCloudChoicePending || mSuppressHistorySaves || Setting.isIncognito()) return;
         History snapshot = History.objectFrom(mHistory.toString());
         snapshot.setAccountId(mHistory.getAccountId());

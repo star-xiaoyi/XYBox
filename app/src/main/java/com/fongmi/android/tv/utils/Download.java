@@ -21,6 +21,9 @@ public class Download {
     private final String fallbackUrl;
     private Callback callback;
     private volatile boolean canceled;
+    private boolean systemNetwork;
+
+    public Download useSystemNetwork() { systemNetwork = true; return this; }
     private static final int MAX_RETRY_COUNT = 3; // 最大重试次数
 
     public static Download create(String url, File file) {
@@ -149,7 +152,7 @@ public class Download {
             long existingLength = file.exists() ? file.length() : 0;
             Request.Builder request = new Request.Builder().url(downloadUrl).tag(downloadUrl);
             if (existingLength > 0) request.header("Range", "bytes=" + existingLength + "-");
-            res = OkHttp.client().newCall(request.build()).execute();
+            res = (systemNetwork ? OkHttp.systemClient() : OkHttp.client()).newCall(request.build()).execute();
 
             // 文件可能已收完整，只是在完成回调前中断；服务器此时会返回 416。
             if (res.code() == 416 && existingLength > 0) {

@@ -13,6 +13,7 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Download;
 import com.fongmi.android.tv.databinding.ActivityDownloadTaskBinding;
 import com.fongmi.android.tv.download.DownloadManager;
+import com.fongmi.android.tv.download.DownloadTaskPolicy;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.ui.adapter.DownloadAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
@@ -84,7 +85,7 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
     }
 
     private void refresh() {
-        List<Download> items = Download.getActive();
+        List<Download> items = DownloadTaskPolicy.active(Download.getAll());
         mAdapter.setItems(items);
         boolean empty = items.isEmpty();
         mBinding.emptyLayout.getRoot().setVisibility(empty ? View.VISIBLE : View.GONE);
@@ -115,7 +116,7 @@ public class DownloadTaskActivity extends BaseActivity implements DownloadAdapte
         GlassConfirmDialog.show(this,
                 getString(R.string.dialog_delete_download_episode, item.getVodName(), item.getEpisodeName()),
                 () -> {
-                    DownloadManager.get().remove(item);
+                    DownloadManager.get().removeEpisodeTask(item);
                     refresh();
                     Notify.show(R.string.download_delete_episode_done);
                 });

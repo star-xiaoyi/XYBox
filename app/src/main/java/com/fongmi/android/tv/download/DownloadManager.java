@@ -60,7 +60,15 @@ public class DownloadManager {
     public synchronized void restore() {
         // 早期版本离线播放会写伪站源的观看记录，把同名的在线记录挤掉，顺手清一次
         AppDatabase.get().getHistoryDao().deleteOffline();
+        List<Download> restored = DownloadTaskPolicy.active(Download.getAll());
+        Set<String> selected = new java.util.HashSet<>();
+        for (Download item : restored) selected.add(item.getId());
         for (Download item : Download.getActive()) {
+            if (!selected.contains(item.getId()) && (item.isRunning() || item.isPending())) {
+                item.setStatus(Download.STATUS_PAUSED); item.setSpeed(0); item.save();
+            }
+        }
+        for (Download item : restored) {
             if (item.isPaused()) continue;
             // beta6 把直链自愈次数用完后错误地落成了永久失败。升级后只自动接回这种
             // 明确可续传的旧任务，其他真正的解析/文件错误仍留给用户决定是否重试。
@@ -79,9 +87,23 @@ public class DownloadManager {
     public synchronized void add(List<Download> items) {
         List<Download> added = new ArrayList<>();
         for (Download item : items) {
-            Download exist = Download.find(item.getId());
+            Download exist = DownloadTaskPolicy.preferred(DownloadTaskPolicy.matching(Download.getAll(), item));
             if (exist != null && exist.isPlayable()) continue;
+            if (exist != null && (running.containsKey(exist.getId()) || exist.isPending())) continue;
             Download target = exist == null ? item : exist;
+            boolean changedSource = exist != null && (!exist.getSiteKey().equals(item.getSiteKey())
+                    || !exist.getVodId().equals(item.getVodId()) || !exist.getFlag().equals(item.getFlag()));
+            if (changedSource) {
+                // Keep the task ID/card. Bytes from different encodings cannot be concatenated.
+                Download previous = Download.objectFrom(target.toString());
+                target.setSiteKey(item.getSiteKey()); target.setVodId(item.getVodId());
+                target.setVodKey(item.getVodKey()); target.setFlag(item.getFlag());
+                target.setLocalPath(""); target.setProgress(0); target.setDoneBytes(0); target.setTotalBytes(0);
+                target.setDoneSeg(0); target.setTotalSeg(0); target.setDuration(0);
+                if (!previous.dir().equals(target.dir())) previous.clearFiles();
+            }
+            target.setVodYear(item.getVodYear()); target.setVodArea(item.getVodArea());
+            target.setVodType(item.getVodType()); target.setVodContent(item.getVodContent());
             target.setEpisodeUrl(item.getEpisodeUrl());
             target.setVodPic(item.getVodPic());
             target.setVodName(item.getVodName());
@@ -89,6 +111,7 @@ public class DownloadManager {
             target.setErrorMsg("");
             target.setSpeed(0);
             target.save();
+            DownloadLog.d("任务入队 id=%s 剧集=%s 复用=%s 换源=%s 已保留=%s", target.getId(), target.getEpisodeName(), exist != null, changedSource, DownloadLog.size(target.getDoneBytes()));
             removed.remove(target.getId());
             enqueue(target.getId());
             added.add(target);
@@ -109,6 +132,16 @@ public class DownloadManager {
         DownloadService.ensure();
         schedule();
         notifyChanged(true);
+    }
+
+    public synchronized void removeEpisodeTask(Download item) {
+        for (Download candidate : DownloadTaskPolicy.matching(Download.getAll(), item)) removeInternal(candidate);
+        notifyChanged(true);
+    }
+
+    public String getPhase(String id) {
+        Task task = running.get(id);
+        return task == null ? "" : task.phase;
     }
 
     public synchronized void pause(String id) {
@@ -301,6 +334,7 @@ public class DownloadManager {
         private final Download item;
         private volatile boolean cancelled;
         private volatile long lastPersist;
+        private volatile String phase = "正在获取下载地址";
 
         Task(Download item) {
             this.item = item;
@@ -319,6 +353,7 @@ public class DownloadManager {
         public void onProgress(int percent, long doneBytes, long totalBytes, int doneSeg, int totalSeg, long speed) {
             // 已经被暂停/删除时不要再写库，否则会把刚落下的 PAUSED 状态又盖回 RUNNING
             if (isCancelled()) return;
+            if (doneBytes > 0 || doneSeg > 0) phase = "";
             item.setProgress(percent);
             item.setDoneBytes(doneBytes);
             item.setTotalBytes(totalBytes);
@@ -385,6 +420,8 @@ public class DownloadManager {
             int refreshes = 0;
             int retryRound = 0;
             while (true) {
+                phase = "正在获取下载地址";
+                notifyChanged(true);
                 long resolving = System.currentTimeMillis();
                 Resolver.Address address = Resolver.resolve(item);
                 DownloadLog.d("任务 %s 解析用时=%dms 次数=%d 在跑=%d", item.getEpisodeName(),
@@ -397,6 +434,8 @@ public class DownloadManager {
                         item.getEpisodeName(), hls ? "HLS" : "直链", addressHls ? "地址" : "探测",
                         mode(), threads, Setting.getDownloadTask());
                 long beforeAttempt = item.getDoneBytes();
+                phase = hls ? "正在读取视频列表" : "正在连接下载";
+                notifyChanged(true);
                 try {
                     if (hls) {
                         HlsFetcher fetcher = new HlsFetcher(address.getHeaders(), dir, threads, this);

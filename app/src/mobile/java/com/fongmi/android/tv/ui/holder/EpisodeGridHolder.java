@@ -23,6 +23,7 @@ public class EpisodeGridHolder extends BaseEpisodeHolder {
         binding.text.setSelected(item.isSelected());
         binding.text.setActivated(item.isActivated());
         binding.text.setText(item.getDesc().concat(item.getName()));
+        bindCacheMark(binding.text, item);
         binding.text.setOnClickListener(v -> listener.onItemClick(item));
     }
 }

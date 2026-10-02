@@ -93,7 +93,18 @@ public class HlsFetcher {
     /** 主列表逐层下钻，直到拿到真正的媒体列表。 */
     private Playlist fetchMedia(String url, int depth) throws Exception {
         String text = Http.string(url, headers);
-        if (TextUtils.isEmpty(text) || !text.contains("#EXTM3U")) throw new Exception("不是有效的 m3u8");
+        if (TextUtils.isEmpty(text)) throw new IOException("源站返回空的视频列表，请检查网络后重试");
+        if (!text.contains("#EXTM3U")) {
+            // Some source proxies return a single resolved URL instead of an HTTP redirect.
+            String redirect = text.trim();
+            HttpUrl target = redirect.contains("\n") || redirect.contains("\r") ? null : HttpUrl.parse(redirect);
+            if (target != null && !redirect.equals(url) && depth < MAX_REDIRECT) {
+                DownloadLog.d("视频列表转向 host=%s depth=%d", target.host(), depth + 1);
+                return fetchMedia(target.toString(), depth + 1);
+            }
+            DownloadLog.d("视频列表无效 bytes=%d kind=%s", text.length(), redirect.startsWith("<") ? "html" : "other");
+            throw new IOException("源站未返回有效的视频列表，请检查网络或切换线路");
+        }
         if (!text.contains("#EXT-X-STREAM-INF")) return new Playlist(url, text);
         if (depth >= MAX_REDIRECT) throw new Exception("m3u8 嵌套过深");
         checkSplitAudio(text);
