@@ -76,7 +76,7 @@ internal fun parse(raw: String): AiReply {
             film.optString("country").ifBlank { obj.optString("country") }, film.optString("type").ifBlank { obj.optString("type") },
             jsonStrings(film.optJSONArray("actors") ?: obj.optJSONArray("actors")),
             film.optString("original_title"), film.optString("douban_id"))
-    }.distinctBy { AiIdentity.name(it.title) + it.year + it.country }.take(5)
+    }.distinctBy { AiIdentity.name(it.title) + it.year + it.country }
     val text = obj.optString("message").trim()
     val search = AiTitle.clean(obj.optString("search"))
     val sources = obj.optJSONArray("sources") ?: JSONArray()

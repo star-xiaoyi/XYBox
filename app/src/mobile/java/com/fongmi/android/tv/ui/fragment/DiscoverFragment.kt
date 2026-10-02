@@ -80,7 +80,7 @@ import java.util.concurrent.Executors
 
 /** The former discovery placeholder is now the mobile AI tab. */
 class DiscoverFragment : BaseFragment() {
-    private data class Turn(val question: String, val reply: AiReply? = null, val id: String = java.util.UUID.randomUUID().toString())
+    private data class Turn(val question: String, val reply: AiReply? = null, val id: String = java.util.UUID.randomUUID().toString(), val askedAt: Long = System.currentTimeMillis())
     private var turns by mutableStateOf(listOf<Turn>())
     private var query by mutableStateOf("")
     private var busy by mutableStateOf(false)
@@ -95,6 +95,8 @@ class DiscoverFragment : BaseFragment() {
     private var history = JSONArray()
     private var generation = 0
     private var service: Qwen? = null
+    private var voiceTurnId: String? = null
+    private var voiceCancel: Runnable? = null
     private val worker = Executors.newSingleThreadExecutor()
     private val metadata = Executors.newFixedThreadPool(2)
     private var drawer by mutableStateOf(0f)
@@ -121,6 +123,7 @@ class DiscoverFragment : BaseFragment() {
     private var sourceTitle by mutableStateOf("")
     private var sourceError by mutableStateOf("")
     private val metadataSearches = mutableMapOf<String, AiVideoSearch>()
+    private val metadataQueue = java.util.ArrayDeque<Pair<AiFilm, Int>>()
 
     fun updateNavigationHeight(height: Int) { navigationHeight = height }
 
@@ -167,8 +170,8 @@ class DiscoverFragment : BaseFragment() {
     }
 
     override fun onResume() { super.onResume(); pageVisible = !isHidden; syncNavigationHeight(); refreshIdentity() }
-    override fun onPause() { pageVisible = false; cancelSources(); cancelMetadataSearches(); super.onPause() }
-    override fun onHiddenChanged(hidden: Boolean) { super.onHiddenChanged(hidden); pageVisible = !hidden; if (!hidden) refreshIdentity() else { cancelSources(); cancelMetadataSearches() } }
+    override fun onPause() { pageVisible = false; cancelVoiceRequest(); cancelSources(); cancelMetadataSearches(); super.onPause() }
+    override fun onHiddenChanged(hidden: Boolean) { super.onHiddenChanged(hidden); pageVisible = !hidden; if (!hidden) refreshIdentity() else { cancelVoiceRequest(); cancelSources(); cancelMetadataSearches() } }
     private fun refreshIdentity() {
         if (profile != LocalProfile.id()) { reset(); profile = LocalProfile.id() }
         conversations = AiConversations.list()
@@ -176,6 +179,7 @@ class DiscoverFragment : BaseFragment() {
         glassNavigation = (activity as? HomeActivity)?.isGlassNavigationEnabled ?: true
     }
     private fun reset() {
+        cancelVoiceRequest()
         cancelMetadataSearches()
         cancelSources(); sourceTurnId = ""; sourceGroups = emptyList(); sourceError = ""
         generation++; service?.cancel(); service = null; busy = false; routing = false
@@ -185,23 +189,68 @@ class DiscoverFragment : BaseFragment() {
     }
     fun acceptVoice(text: String) {
         refreshIdentity(); editQuery(text)
-        if (busy) return
-        val plan = VoiceRouter.plan(text)
-        if (plan.route == VoiceRouter.Route.SEARCH) { startDirectSearch(text, plan.keyword); return }
-        if (plan.route == VoiceRouter.Route.AI) { send(); return }
-        val token = ++generation; val identity = LocalProfile.id()
-        routing = true; error = "正在核对片名，不消耗 AI 额度…"
-        worker.execute {
-            val match = try { VoiceRouter.isFilm(plan.keyword) } catch (_: Exception) { null }
-            App.post {
-                if (token != generation || identity != LocalProfile.id()) return@post
-                routing = false; error = ""
-                if (match == true && !isHidden && isResumed) startDirectSearch(text, plan.keyword)
-                else if (match == false && !isHidden && isResumed) send()
-                else error = "未能确认片名，你可以直接搜索，或发送给 AI 分析"
-            }
+        if (!busy) send()
+    }
+    fun acceptResolvedVoice(text: String, raw: String?, reply: AiReply?, failure: String, askedAt: Long) {
+        refreshIdentity()
+        reset()
+        if (reply == null || raw == null) { query = text; error = failure; return }
+        val turn = Turn(text, reply, askedAt = askedAt)
+        turns = listOf(turn)
+        history.put(message("user", text).put("asked_at", turn.askedAt)).put(message("assistant", raw))
+        try { AiConversations.save(conversationId, history); conversations = AiConversations.list() }
+        catch (_: Exception) { error = "本次对话未能保存到本机" }
+        if (failure.isNotBlank()) error = failure
+        reply.films.forEach { enrich(it, generation, turn.id) }
+    }
+
+    /** Observe an already running request; no model call is made by these methods. */
+    fun beginVoiceRequest(text: String, status: String, askedAt: Long, cancel: Runnable): String {
+        refreshIdentity(); reset(); onPageSelected()
+        val turn = Turn(text, askedAt = askedAt)
+        turns = listOf(turn); progress = status; busy = true
+        voiceTurnId = turn.id; voiceCancel = cancel
+        return turn.id
+    }
+
+    fun updateVoiceProgress(id: String, status: String) {
+        if (voiceTurnId == id && profile == LocalProfile.id()) progress = status
+    }
+
+    fun updateVoiceReply(id: String, raw: String, reply: AiReply) {
+        if (voiceTurnId != id || profile != LocalProfile.id()) return
+        val turn = turns.find { it.id == id } ?: return
+        if (turn.reply != null) return
+        turns = turns.map { if (it.id == id) it.copy(reply = reply) else it }
+        history.put(message("user", turn.question).put("asked_at", turn.askedAt)).put(message("assistant", raw))
+        try { AiConversations.save(conversationId, history); conversations = AiConversations.list() }
+        catch (_: Exception) { error = "本次对话未能保存到本机" }
+        reply.films.forEach { enrich(it, generation, id) }
+    }
+
+    fun finishVoiceRequest(id: String, raw: String?, reply: AiReply?, failure: String) {
+        if (voiceTurnId != id || profile != LocalProfile.id()) return
+        if (raw != null && reply != null) updateVoiceReply(id, raw, reply)
+        else turns.find { it.id == id }?.let { query = it.question; turns = turns.filterNot { item -> item.id == id } }
+        busy = false; voiceTurnId = null; voiceCancel = null
+        if (failure.isNotBlank()) error = failure
+    }
+
+    fun abortVoiceRequest(id: String) {
+        if (voiceTurnId != id) return
+        busy = false; voiceTurnId = null; voiceCancel = null
+        turns.find { it.id == id && it.reply == null }?.let {
+            query = it.question; turns = turns.filterNot { item -> item.id == id }
         }
     }
+
+    private fun cancelVoiceRequest() {
+        val id = voiceTurnId ?: return
+        val cancel = voiceCancel
+        abortVoiceRequest(id)
+        cancel?.run()
+    }
+
     private fun editQuery(text: String) {
         if (sourceSearching) cancelSources()
         if (routing) {
@@ -222,7 +271,8 @@ class DiscoverFragment : BaseFragment() {
         val identity = LocalProfile.id()
         val request = Qwen().also { service = it }
         val context = JSONArray(history.toString())
-        turns = (turns + Turn(input)).takeLast(20); query = ""; error = ""; progress = "正在思考…"; busy = true
+        val pending = Turn(input)
+        turns = (turns + pending).takeLast(20); query = ""; error = ""; progress = "正在思考…"; busy = true
         worker.execute {
             try {
                 val (raw, reply) = request.chat(key, context, input) { status ->
@@ -230,10 +280,10 @@ class DiscoverFragment : BaseFragment() {
                 }
                 App.post {
                     if (token != generation || identity != LocalProfile.id()) return@post
-                    history.put(message("user", input)).put(message("assistant", raw))
+                    history.put(message("user", input).put("asked_at", pending.askedAt)).put(message("assistant", raw))
                     while (history.length() > 40) history.remove(0)
                     try { AiConversations.save(conversationId, history); conversations = AiConversations.list() } catch (_: Exception) { error = "本次对话未能保存到本机" }
-                    val completed = Turn(input, reply, turns.last().id)
+                    val completed = pending.copy(reply = reply)
                     turns = turns.dropLast(1) + completed; busy = false
                     reply.films.forEach { enrich(it, token, completed.id) }
                     if (reply.search.isNotEmpty() && isResumed && !isHidden) search(reply.search, reply.searchYear, completed.id)
@@ -261,24 +311,35 @@ class DiscoverFragment : BaseFragment() {
     private fun enrich(film: AiFilm, token: Int, turnId: String) {
         val requested = contextualFilm(film, turnId)
         metadata.execute {
+            if (token != generation) return@execute
             val detail = AiCatalog.resolve(requested)
             App.post {
                 if (token != generation) return@post
-                if (detail != null && detail.id.isNotEmpty()) details = details + (AiCatalog.key(requested) to detail)
-                else if (pageVisible) findFallbackMetadata(requested, token)
+                if (detail != null) details = details + (AiCatalog.key(requested) to detail)
+                if ((detail?.pic.isNullOrBlank() || detail?.summary.isNullOrBlank()) && pageVisible) findFallbackMetadata(requested, token)
             }
         }
     }
 
     private fun findFallbackMetadata(film: AiFilm, token: Int) {
         val key = AiCatalog.key(film)
-        if (key in metadataSearches || metadataSearches.size >= 2) return
-        val request = AiVideoSearch(update = { _, running -> if (!running) metadataSearches.remove(key) }, open = { group ->
+        if (key in metadataSearches) return
+        if (metadataSearches.size >= 2) { metadataQueue.add(film to token); return }
+        val request = AiVideoSearch(update = { _, running -> if (!running) {
+            metadataSearches.remove(key)
+            while (metadataQueue.isNotEmpty() && metadataSearches.size < 2) {
+                val next = metadataQueue.removeFirst()
+                if (next.second == generation) findFallbackMetadata(next.first, next.second)
+            }
+        } }, open = { group ->
             if (token == generation) {
                 val vod = group.first().vod
                 // This poster belongs to an edition-checked provider result; never label it as Douban data.
-                details = details + (key to AiMetadata("", vod.vodName, vod.vodYear, vod.vodArea,
-                    vod.typeName, vod.vodActor.split(Regex("[/、,，]")).filter { it.isNotBlank() }, emptyList(), vod.vodPic, 0.0))
+                val fallback = AiMetadata("", vod.vodName, vod.vodYear, vod.vodArea,
+                    vod.typeName, vod.vodActor.split(Regex("[/、,，]")).filter { it.isNotBlank() }, emptyList(), vod.vodPic, 0.0, vod.vodContent.replace(Regex("<[^>]+>"), "").trim())
+                val known = details[key]
+                details = details + (key to (known?.copy(pic = known.pic.ifBlank { fallback.pic },
+                    summary = known.summary.ifBlank { fallback.summary }) ?: fallback))
             }
         })
         metadataSearches[key] = request
@@ -288,15 +349,8 @@ class DiscoverFragment : BaseFragment() {
     private fun cancelMetadataSearches() {
         metadataSearches.values.toList().forEach { it.cancel() }
         metadataSearches.clear()
+        metadataQueue.clear()
     }
-    private fun startDirectSearch(input: String, title: String) {
-        val reply = AiReply("", listOf(AiFilm(AiTitle.clean(title), "", "")), AiTitle.clean(title))
-        val turn = Turn(input, reply)
-        turns = (turns + turn).takeLast(20); query = ""
-        enrich(reply.films.single(), generation, turn.id)
-        search(title, "", turn.id)
-    }
-
     private fun cancelSources() {
         sourceGeneration++; sourceSearch?.cancel(); sourceSearch = null; sourceSearching = false
     }
@@ -309,6 +363,7 @@ class DiscoverFragment : BaseFragment() {
     }
 
     private fun searchFilm(film: AiFilm, turnId: String) {
+        cancelVoiceRequest()
         val requested = contextualFilm(film, turnId)
         val info = details[AiCatalog.key(requested)]
         val target = if (info == null) requested else requested.copy(title = info.title, year = requested.year.ifBlank { info.year },
@@ -331,6 +386,7 @@ class DiscoverFragment : BaseFragment() {
         }).also { it.start(target) }
     }
     private fun stop() {
+        cancelVoiceRequest()
         cancelSources()
         generation++; service?.cancel(); busy = false
         turns.lastOrNull()?.takeIf { it.reply == null }?.let { query = it.question; turns = turns.dropLast(1) }
@@ -341,17 +397,22 @@ class DiscoverFragment : BaseFragment() {
         drawer = 0f; return true
     }
     private fun openConversation(item: AiConversation) {
+        cancelVoiceRequest()
         cancelMetadataSearches()
         cancelSources(); sourceGroups = emptyList(); sourceTurnId = ""
         generation++; service?.cancel(); busy = false; routing = false
         conversationId = item.id; history = JSONArray(item.messages)
         val restored = mutableListOf<Turn>()
         var question = ""
+        var askedAt = 0L
         for (i in 0 until history.length()) {
             val message = history.getJSONObject(i)
-            if (message.optString("role") == "user") question = message.optString("content")
+            if (message.optString("role") == "user") {
+                question = message.optString("content")
+                askedAt = message.optLong("asked_at", 0L)
+            }
             else if (message.optString("role") == "assistant") {
-                try { restored += Turn(question, parse(message.optString("content"))) } catch (_: Exception) { }
+                try { restored += Turn(question, parse(message.optString("content")), askedAt = askedAt) } catch (_: Exception) { }
             }
         }
         turns = restored; query = ""; error = ""; drawer = 0f
@@ -485,17 +546,19 @@ class DiscoverFragment : BaseFragment() {
                             verticalArrangement = Arrangement.spacedBy(24.dp)) {
                             items(turns, key = { it.id }) { turn ->
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    AiText(if (turn.askedAt > 0L) java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(turn.askedAt)) else "历史提问 · 时间未记录",
+                                        11, true, modifier = Modifier.align(Alignment.End))
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                         Box(Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(22.dp)).background(aiSurface()).padding(16.dp)) { AiText(turn.question) }
                                     }
                                     val reply = turn.reply
-                                    if (reply == null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    if (reply == null || (voiceTurnId == turn.id && busy)) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                         AndroidView(factory = { ImageView(it).apply { setImageDrawable(AiOrbDrawable()) } }, modifier = Modifier.size(28.dp),
                                             update = { (it.drawable as AiOrbDrawable).apply { setTint(0xFF249DF2.toInt()); setMode(2); setRunning(pageVisible) } }, onReset = null,
                                             onRelease = { (it.drawable as AiOrbDrawable).setRunning(false) })
                                         AiText(progress, muted = true)
                                     }
-                                    else {
+                                    if (reply != null) {
                                         if (reply.message.isNotEmpty()) AiText(reply.message)
                                         reply.films.forEach { film -> FilmCard(film, turn.id) }
                                         if (turn.id == sourceTurnId) SourceResults()
@@ -758,30 +821,33 @@ class DiscoverFragment : BaseFragment() {
         val detail = details[AiCatalog.key(requested)]
         val title = detail?.title ?: film.title
         val opening = sourceSearching && sourceTurnId == turnId && (sourceTitle == title || sourceTitle == requested.title)
-        Box(Modifier.fillMaxWidth().heightIn(min = 104.dp).clip(RoundedCornerShape(16.dp)).background(aiSurface())
+        Box(Modifier.fillMaxWidth().height(148.dp).clip(RoundedCornerShape(16.dp)).background(aiSurface())
             .clickable(enabled = !opening) { searchFilm(requested, turnId) }) {
-            Column(Modifier.fillMaxWidth().padding(start = 88.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            Column(Modifier.fillMaxWidth().padding(start = 108.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 AiText(title, 16, bold = true, maxLines = 2)
                 val meta = listOf(detail?.year ?: requested.year, detail?.country ?: requested.country,
                     detail?.kind ?: requested.kind, if ((detail?.rating ?: 0.0) > 0) "豆瓣 %.1f".format(detail!!.rating) else "")
                     .filter { it.isNotBlank() }.joinToString(" · ")
                 if (meta.isNotBlank()) AiText(meta, 11, true, maxLines = 1)
-                if (film.reason.isNotBlank()) AiText(film.reason, 12, true, maxLines = 1)
-                AiText(if (opening) "正在打开…" else "播放 ›", 12, true)
+                val summary = detail?.summary.orEmpty().ifBlank { film.reason }
+                if (summary.isNotBlank()) AiText(summary, 12, true, maxLines = 3)
+                if (opening) AiText("正在打开…", 12, true)
             }
             // This overlay doesn't measure the row: the image fills the text-determined card height.
             Box(Modifier.matchParentSize()) {
+                Box(Modifier.width(96.dp).fillMaxHeight().clipToBounds()) {
                 AndroidView(factory = { ImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP } },
-                    modifier = Modifier.width(76.dp).fillMaxHeight(), update = {
+                    modifier = Modifier.fillMaxSize(), update = {
                         val pic = detail?.pic.orEmpty()
                         if (pic.isEmpty()) { it.scaleType = ImageView.ScaleType.CENTER; it.setImageResource(R.drawable.ic_img_empty) }
                         else ImgUtil.load("", pic, it, ImageView.ScaleType.CENTER_CROP, true)
                     })
+                }
             }
         }
     }
 
-    override fun onDestroyView() { cancelSources(); cancelMetadataSearches(); super.onDestroyView() }
+    override fun onDestroyView() { cancelVoiceRequest(); cancelSources(); cancelMetadataSearches(); super.onDestroyView() }
     override fun onDestroy() { cancelSources(); cancelMetadataSearches(); generation++; service?.cancel(); worker.shutdownNow(); metadata.shutdownNow(); super.onDestroy() }
 }

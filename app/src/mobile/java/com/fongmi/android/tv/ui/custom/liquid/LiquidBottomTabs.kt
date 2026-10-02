@@ -72,6 +72,8 @@ internal fun LiquidBottomTabs(
     accentColor: Color,
     containerColor: Color,
     modifier: Modifier = Modifier,
+    interactionEnabled: Boolean = true,
+    selectionAlpha: Float = 1f,
     content: @Composable RowScope.() -> Unit
 ) {
     val isLightTheme = !isSystemInDarkTheme()
@@ -219,14 +221,15 @@ internal fun LiquidBottomTabs(
             Modifier
                 .padding(horizontal = 4.dp)
                 .graphicsLayer {
+                    alpha = selectionAlpha
                     translationX = if (isLtr) {
                         dampedDragAnimation.value * tabWidth + panelOffset
                     } else {
                         size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset
                     }
                 }
-                .then(interactiveHighlight.gestureModifier)
-                .then(dampedDragAnimation.modifier)
+                .then(if (interactionEnabled) interactiveHighlight.gestureModifier else Modifier)
+                .then(if (interactionEnabled) dampedDragAnimation.modifier else Modifier)
                 .drawBackdrop(
                     backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
                     shape = { Capsule() },

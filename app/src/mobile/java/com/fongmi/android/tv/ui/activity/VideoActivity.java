@@ -4088,12 +4088,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         checkPlayImg();
         String localTime = android.text.format.DateUtils.formatElapsedTime(Math.max(0, mHistory.getPosition()) / 1000);
         String cloudTime = android.text.format.DateUtils.formatElapsedTime(Math.max(0, remote.getPosition()) / 1000);
-        mCloudProgressDialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-                .setTitle("发现云端最新观看进度")
-                .setMessage(mHistory.getVodName() + "\n本机：" + mHistory.getVodRemarks() + " · " + localTime
-                        + "\n云端：" + remote.getVodRemarks() + " · " + cloudTime)
-                .setCancelable(false)
-                .setNegativeButton("继续本机进度", (dialog, which) -> {
+        mCloudProgressDialog = com.fongmi.android.tv.ui.dialog.CloudProgressDialog.show(this,
+                mHistory.getVodName(), mHistory.getVodRemarks() + " · " + localTime,
+                remote.getVodRemarks() + " · " + cloudTime, () -> {
                     synchronized (mHistoryWriteLock) {
                         mHistoryWriteGeneration++;
                         mKnownHistoryVersion = remote.getCreateTime();
@@ -4101,8 +4098,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                     }
                     mCloudChoicePending = false;
                     onPlay();
-                })
-                .setPositiveButton("跳转到云端进度", (dialog, which) -> {
+                }, () -> {
                     if (seekToCloudProgress(remote)) return;
                     mSuppressHistorySaves = true;
                     mHistoryWriteGeneration++;
@@ -4123,7 +4119,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                     mCloudChoicePending = false;
                     mSuppressHistorySaves = false;
                     checkId();
-                }).show();
+                });
         return true;
     }
 

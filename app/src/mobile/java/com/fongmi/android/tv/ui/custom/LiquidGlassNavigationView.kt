@@ -9,6 +9,8 @@ import android.graphics.RectF
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -17,6 +19,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -30,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import android.widget.ImageView
@@ -50,10 +56,17 @@ import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.fongmi.android.tv.R
 import com.fongmi.android.tv.ui.custom.liquid.LiquidBottomTab
 import com.fongmi.android.tv.ui.custom.liquid.LiquidBottomTabs
@@ -73,6 +86,8 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
         fun onGlassContextAction()
         fun onGlassContextLongAction()
         fun onGlassAiTouch(view: View, event: MotionEvent): Boolean
+        fun onGlassVoiceCancel()
+        fun onGlassVoiceOpen()
     }
 
     private var selectedIdState by mutableIntStateOf(R.id.recommend)
@@ -84,6 +99,15 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
     private var renderingEnabledState by mutableStateOf(false)
     private var listener: Listener? = null
     private var aiModeState by mutableIntStateOf(0)
+    private var voiceActiveState by mutableStateOf(false)
+    private var voiceProgressState by mutableFloatStateOf(0f)
+    private var voiceStatusState by mutableStateOf("")
+    fun setVoiceState(active: Boolean, progress: Float, status: String) {
+        voiceActiveState = active
+        voiceProgressState = progress.coerceIn(0f, 1f)
+        voiceStatusState = status
+        if (!active) aiGesture = false
+    }
     private var bottomInsetState by mutableIntStateOf(0)
     fun setBottomInsetPixels(bottom: Int) { bottomInsetState = bottom.coerceAtLeast(0) }
     fun setAiMode(mode: Int) { aiModeState = mode }
@@ -101,6 +125,8 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // During processing, only the visible status controls handle navigation touches.
+        if (voiceActiveState) return super.dispatchTouchEvent(event)
         if (!voiceGestureEnabled) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
             val handled = super.dispatchTouchEvent(event)
@@ -251,58 +277,33 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                     LiquidBottomTabs(
                         selectedTabIndex = selectedIndex,
                         onTabSelected = { index ->
-                            items.getOrNull(index)?.let { listener?.onGlassNavigationSelected(it.id) }
+                            if (!voiceActiveState) items.getOrNull(index)?.let { listener?.onGlassNavigationSelected(it.id) }
                         },
                         backdrop = backdrop,
                         frameNanos = frameNanos,
                         tabsCount = items.size,
                         accentColor = accentState,
                         containerColor = containerColor,
-                        modifier = tabsModifier
+                        modifier = tabsModifier,
+                        interactionEnabled = !voiceActiveState,
+                        selectionAlpha = (1f - voiceProgressState * 3f).coerceIn(0f, 1f)
                     ) {
-                        items.forEach { item ->
-                            LiquidBottomTab(
-                                onClick = { listener?.onGlassNavigationSelected(item.id) },
-                                modifier = Modifier.onGloballyPositioned { coordinates ->
-                                    if (item.id == R.id.vod) {
-                                        val bounds = coordinates.boundsInWindow()
-                                        aiBounds.set(bounds.left, bounds.top, bounds.right, bounds.bottom)
-                                    }
-                                }.semantics {
-                                    role = Role.Tab
-                                    contentDescription = context.getString(item.label)
-                                }
-                            ) {
-                                if (item.id == R.id.vod) AndroidView(
-                                    factory = { ImageView(it).apply { setImageDrawable(AiOrbDrawable()) } },
-                                    modifier = Modifier.size(24.dp),
-                                    update = { (it.drawable as AiOrbDrawable).apply {
-                                        setTint(contentColor.toArgb()); setMode(aiModeState); setRunning(renderingEnabledState)
-                                    } }, onReset = null,
-                                    onRelease = { (it.drawable as AiOrbDrawable).setRunning(false) }
-                                ) else Image(
-                                    painter = painterResource(item.icon),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(22.dp),
-                                    colorFilter = ColorFilter.tint(contentColor)
-                                )
-                            }
-                        }
+                        NavigationContents(items, contentColor)
                     }
                 }
                 val action: @Composable (Modifier) -> Unit = { actionModifier ->
                     if (actionVisibleState) {
                         LiquidButton(
-                            onClick = { listener?.onGlassContextAction() },
+                            onClick = { if (!voiceActiveState) listener?.onGlassContextAction() },
                             onLongClick = if (actionState == ACTION_FILTER) {
-                                { listener?.onGlassContextLongAction() }
+                                { if (!voiceActiveState) listener?.onGlassContextLongAction() }
                             } else {
                                 null
                             },
                             backdrop = backdrop,
                             frameNanos = frameNanos,
                             surfaceColor = containerColor,
-                            modifier = actionModifier.semantics {
+                            modifier = actionModifier.graphicsLayer { alpha = 1f - voiceProgressState }.semantics {
                                 role = Role.Button
                                 contentDescription = context.getString(actionDescription(actionState))
                             }
@@ -338,6 +339,84 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                             .padding(end = wideActionEndPadding)
                     ) {
                         action(Modifier.size(52.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun NavigationContents(items: List<NavItem>, contentColor: Color) {
+        // The glass component records this content a second time for sampling. Do not
+        // retain an ImageView from either pass or copy its drawable into a screen overlay.
+        BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
+            val slotWidth = maxWidth / items.size
+            val progress = voiceProgressState
+            val navigationAlpha = (1f - progress * 2f).coerceIn(0f, 1f)
+            val statusAlpha = ((progress - .25f) / .75f).coerceIn(0f, 1f)
+            // Covers the robot and status area; the separate close button consumes its own tap.
+            Row(Modifier.fillMaxSize()
+                .then(if (voiceActiveState) Modifier.clearAndSetSemantics { } else Modifier)) {
+                items.forEach { item ->
+                    LiquidBottomTab(
+                        onClick = { if (!voiceActiveState) listener?.onGlassNavigationSelected(item.id) },
+                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                            if (item.id == R.id.vod) {
+                                val bounds = coordinates.boundsInWindow()
+                                aiBounds.set(bounds.left, bounds.top, bounds.right, bounds.bottom)
+                            }
+                        }.semantics {
+                            role = Role.Tab
+                            contentDescription = context.getString(item.label)
+                        }
+                    ) {
+                        if (item.id == R.id.vod) Spacer(Modifier.size(24.dp))
+                        else Image(
+                            painter = painterResource(item.icon), contentDescription = null,
+                            modifier = Modifier.size(22.dp).graphicsLayer { alpha = navigationAlpha },
+                            colorFilter = ColorFilter.tint(contentColor)
+                        )
+                    }
+                }
+            }
+            val aiIndex = items.indexOfFirst { it.id == R.id.vod }.coerceAtLeast(0)
+            // One persistent robot per glass render pass; only its position changes.
+            AndroidView(
+                factory = { ImageView(it).apply { setImageDrawable(AiOrbDrawable()) } },
+                modifier = Modifier.align(Alignment.CenterStart)
+                    .offset(x = slotWidth * (aiIndex * (1f - progress) + .5f) - 12.dp)
+                    .size(24.dp),
+                update = { (it.drawable as AiOrbDrawable).apply {
+                    setTint(contentColor.toArgb())
+                    setMode(if (voiceActiveState) 2 else aiModeState)
+                    setBodyMotionEnabled(!voiceActiveState)
+                    setRunning(renderingEnabledState)
+                } }, onReset = null,
+                onRelease = { (it.drawable as AiOrbDrawable).setRunning(false) }
+            )
+            if (voiceActiveState) {
+                Box(Modifier.fillMaxSize().padding(end = 44.dp)
+                    .clickable(role = Role.Button) { listener?.onGlassVoiceOpen() }
+                    .semantics { contentDescription = "打开 AI 对话查看找片进度" })
+                Row(
+                    Modifier.fillMaxSize().padding(start = slotWidth, end = 4.dp)
+                        .graphicsLayer { alpha = statusAlpha },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BasicText(
+                        text = voiceStatusState,
+                        modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
+                        style = TextStyle(color = contentColor, fontSize = 13.sp, fontWeight = FontWeight.Medium),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    Box(
+                        Modifier.width(40.dp).fillMaxHeight()
+                            .clickable(enabled = progress > .5f, role = Role.Button) { listener?.onGlassVoiceCancel() }
+                            .semantics { contentDescription = "取消语音找片" },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(painterResource(R.drawable.ic_action_close), contentDescription = null,
+                            modifier = Modifier.size(18.dp), colorFilter = ColorFilter.tint(contentColor))
                     }
                 }
             }
