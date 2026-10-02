@@ -94,7 +94,7 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
     private var liveVisibleState by mutableStateOf(true)
     private var actionState by mutableIntStateOf(ACTION_NONE)
     private var actionVisibleState by mutableStateOf(false)
-    private var accentState by mutableStateOf(Color(0xFFFFCC00))
+    private var accentState by mutableStateOf(Color(context.getColor(R.color.action_primary)))
     private var backdropViewState by mutableStateOf<View?>(null)
     private var renderingEnabledState by mutableStateOf(false)
     private var listener: Listener? = null
@@ -286,7 +286,9 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
                         containerColor = containerColor,
                         modifier = tabsModifier,
                         interactionEnabled = !voiceActiveState,
-                        selectionAlpha = (1f - voiceProgressState * 3f).coerceIn(0f, 1f)
+                        selectionAlpha = (1f - voiceProgressState * 3f).coerceIn(0f, 1f),
+                        processingProgress = voiceProgressState,
+                        processingTabIndex = items.indexOfFirst { it.id == R.id.vod }.coerceAtLeast(0)
                     ) {
                         NavigationContents(items, contentColor)
                     }

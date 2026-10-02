@@ -701,6 +701,8 @@ class DiscoverFragment : BaseFragment() {
     }
 
     @Composable private fun MessageInput() {
+        val actionFill = aiControlFill()
+        val actionText = aiControlText()
         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(aiSurface())
             .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.foundation.text.BasicTextField(query, { editQuery(it) },
@@ -715,22 +717,22 @@ class DiscoverFragment : BaseFragment() {
                 .clickable(enabled = busy || (query.isNotBlank() && !routing)) { if (busy) stop() else send() },
                 contentAlignment = Alignment.Center) {
                 Box(Modifier.size(30.dp).clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(Color(0xFF1677FF).copy(alpha = if (busy || (query.isNotBlank() && !routing)) 1f else .28f)),
+                    .background(actionFill.copy(alpha = if (busy || (query.isNotBlank() && !routing)) 1f else .28f)),
                     contentAlignment = Alignment.Center) {
                     androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
                         if (busy) {
                             val side = 8.dp.toPx()
-                            drawRoundRect(Color.White, topLeft = Offset((size.width - side) / 2f, (size.height - side) / 2f),
+                            drawRoundRect(actionText, topLeft = Offset((size.width - side) / 2f, (size.height - side) / 2f),
                                 size = androidx.compose.ui.geometry.Size(side, side),
                                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx()))
                         } else {
                             val stroke = 2.dp.toPx()
                             val tip = Offset(size.width / 2f, 3.dp.toPx())
-                            drawLine(Color.White, Offset(tip.x, size.height - 3.dp.toPx()), tip,
+                            drawLine(actionText, Offset(tip.x, size.height - 3.dp.toPx()), tip,
                                 stroke, androidx.compose.ui.graphics.StrokeCap.Round)
-                            drawLine(Color.White, Offset(3.dp.toPx(), 9.dp.toPx()), tip,
+                            drawLine(actionText, Offset(3.dp.toPx(), 9.dp.toPx()), tip,
                                 stroke, androidx.compose.ui.graphics.StrokeCap.Round)
-                            drawLine(Color.White, tip, Offset(size.width - 3.dp.toPx(), 9.dp.toPx()),
+                            drawLine(actionText, tip, Offset(size.width - 3.dp.toPx(), 9.dp.toPx()),
                                 stroke, androidx.compose.ui.graphics.StrokeCap.Round)
                         }
                     }
@@ -821,29 +823,25 @@ class DiscoverFragment : BaseFragment() {
         val detail = details[AiCatalog.key(requested)]
         val title = detail?.title ?: film.title
         val opening = sourceSearching && sourceTurnId == turnId && (sourceTitle == title || sourceTitle == requested.title)
-        Box(Modifier.fillMaxWidth().height(148.dp).clip(RoundedCornerShape(16.dp)).background(aiSurface())
+        Row(Modifier.fillMaxWidth().height(126.dp).clip(RoundedCornerShape(14.dp)).background(aiSurface())
             .clickable(enabled = !opening) { searchFilm(requested, turnId) }) {
-            Column(Modifier.fillMaxWidth().padding(start = 108.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            // A fixed 2:3 portrait keeps every result the same size while leaving more room for text.
+            AndroidView(factory = { ImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP } },
+                modifier = Modifier.width(84.dp).fillMaxHeight().clipToBounds(), update = {
+                    val pic = detail?.pic.orEmpty()
+                    if (pic.isEmpty()) { it.scaleType = ImageView.ScaleType.CENTER; it.setImageResource(R.drawable.ic_img_empty) }
+                    else ImgUtil.load("", pic, it, ImageView.ScaleType.CENTER_CROP, true)
+                })
+            Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                AiText(title, 16, bold = true, maxLines = 2)
+                AiText(title, 15, bold = true, maxLines = 2)
                 val meta = listOf(detail?.year ?: requested.year, detail?.country ?: requested.country,
                     detail?.kind ?: requested.kind, if ((detail?.rating ?: 0.0) > 0) "豆瓣 %.1f".format(detail!!.rating) else "")
                     .filter { it.isNotBlank() }.joinToString(" · ")
-                if (meta.isNotBlank()) AiText(meta, 11, true, maxLines = 1)
+                if (opening || meta.isNotBlank()) AiText(if (opening) "正在打开…" else meta, 11, true, maxLines = 1)
                 val summary = detail?.summary.orEmpty().ifBlank { film.reason }
-                if (summary.isNotBlank()) AiText(summary, 12, true, maxLines = 3)
-                if (opening) AiText("正在打开…", 12, true)
-            }
-            // This overlay doesn't measure the row: the image fills the text-determined card height.
-            Box(Modifier.matchParentSize()) {
-                Box(Modifier.width(96.dp).fillMaxHeight().clipToBounds()) {
-                AndroidView(factory = { ImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP } },
-                    modifier = Modifier.fillMaxSize(), update = {
-                        val pic = detail?.pic.orEmpty()
-                        if (pic.isEmpty()) { it.scaleType = ImageView.ScaleType.CENTER; it.setImageResource(R.drawable.ic_img_empty) }
-                        else ImgUtil.load("", pic, it, ImageView.ScaleType.CENTER_CROP, true)
-                    })
-                }
+                // Height and width determine the visible lines; AiText ellipsizes the final fitting line.
+                if (summary.isNotBlank()) AiText(summary, 12, true, modifier = Modifier.fillMaxWidth().weight(1f))
             }
         }
     }

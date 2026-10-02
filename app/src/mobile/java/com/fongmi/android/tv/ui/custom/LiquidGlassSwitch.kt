@@ -59,7 +59,7 @@ class LiquidGlassSwitch @JvmOverloads constructor(
     @Composable
     override fun Content() {
         val light = !isSystemInDarkTheme()
-        val accent = Color(ContextCompat.getColor(context, ThemeUtil.getAccentColorResource()))
+        val accent = Color(ContextCompat.getColor(context, com.fongmi.android.tv.R.color.control_toggle))
         val backdrop = rememberCanvasBackdrop { }
 
         LiquidToggle(

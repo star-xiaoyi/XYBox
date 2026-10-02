@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -353,9 +354,29 @@ public class App extends Application {
         if (manager == null) return;
         try {
             manager.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+                private Network validatedNetwork;
                 @Override
                 public void onAvailable(@NonNull Network network) {
                     if (WebDAVSyncManager.get().isAutoSyncEnabled()) execute(() -> WebDAVSyncManager.get().syncNow());
+                }
+                @Override
+                public void onCapabilitiesChanged(@NonNull Network network, @NonNull NetworkCapabilities capabilities) {
+                    boolean usable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                    if (!usable) {
+                        if (network.equals(validatedNetwork)) validatedNetwork = null;
+                        return;
+                    }
+                    if (network.equals(validatedNetwork)) return;
+                    validatedNetwork = network;
+                    post(() -> {
+                        com.fongmi.android.tv.api.config.VodConfig.get().recoverIfNeeded();
+                        com.fongmi.android.tv.event.RefreshEvent.network();
+                    });
+                }
+                @Override
+                public void onLost(@NonNull Network network) {
+                    if (network.equals(validatedNetwork)) validatedNetwork = null;
                 }
             });
         } catch (Exception e) {

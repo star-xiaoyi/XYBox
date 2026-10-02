@@ -147,7 +147,7 @@ class LiquidGlassFilterView @JvmOverloads constructor(
             else Color(0xFF242428).copy(alpha = 0.88f),
             text = if (light) Color(0xFF1C1C1E) else Color.White,
             secondary = if (light) Color(0xFF6E6E73) else Color(0xFF98989D),
-            accent = Color(context.getColor(ThemeUtil.getAccentColorResource()))
+            accent = Color(context.getColor(com.fongmi.android.tv.R.color.home_category_surface))
         )
         val backdrop = rememberLayerBackdrop()
         val frameNanos = remember { mutableLongStateOf(0L) }
@@ -301,12 +301,12 @@ class LiquidGlassFilterView @JvmOverloads constructor(
                 ) {
                     values.forEach { value ->
                         val selected = selectedValues[filter.key] == value.v
-                        val selectedText = if (palette.accent.luminance() > 0.58f) Color(0xFF1C1C1E) else Color.White
+                        val selectedText = if (palette.accent.luminance() > 0.22f) Color(0xFF1C1C1E) else Color.White
                         LiquidButton(
                             onClick = { select(filter, value) },
                             backdrop = backdrop,
                             frameNanos = frameNanos,
-                            surfaceColor = if (selected) palette.accent.copy(alpha = 0.88f) else palette.glass,
+                            surfaceColor = if (selected) palette.accent else palette.glass,
                             modifier = Modifier.weight(1f).height(48.dp)
                         ) {
                             BasicText(

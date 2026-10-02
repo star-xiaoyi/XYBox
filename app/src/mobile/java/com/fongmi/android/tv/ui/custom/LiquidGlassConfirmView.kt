@@ -85,7 +85,7 @@ class LiquidGlassConfirmView @JvmOverloads constructor(
             Modifier
                 .fillMaxWidth()
                 .padding(5.dp)
-                .drawBackdrop(
+                .playbackSurface(context, panel, 28.dp) { drawBackdrop(
                     backdrop = backdrop,
                     shape = { RoundedRectangle(28.dp) },
                     effects = {
@@ -94,7 +94,7 @@ class LiquidGlassConfirmView @JvmOverloads constructor(
                         lens(12.dp.toPx(), 28.dp.toPx(), depthEffect = true)
                     },
                     onDrawSurface = { drawRect(panel) }
-                )
+                ) }
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {

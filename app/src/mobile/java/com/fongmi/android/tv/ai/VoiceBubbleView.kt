@@ -202,7 +202,7 @@ class VoiceBubbleView(
             paint.shader = null; paint.xfermode = null
             canvas.restoreToCount(layer)
         }
-        val surfaceColor = if (cancelled) 0xFFE34D59.toInt() else 0xFF1677FF.toInt()
+        val surfaceColor = if (cancelled) 0xFFE34D59.toInt() else context.getColor(com.fongmi.android.tv.R.color.voice_recording_blue)
         paint.shader = LinearGradient(0f, top, 0f, opaqueY,
             intArrayOf(surfaceColor and 0x00FFFFFF, (surfaceColor and 0x00FFFFFF) or 0x55000000, surfaceColor),
             floatArrayOf(0f, .45f, 1f), Shader.TileMode.CLAMP)

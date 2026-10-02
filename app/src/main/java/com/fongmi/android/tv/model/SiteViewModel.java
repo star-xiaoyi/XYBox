@@ -73,6 +73,7 @@ public class SiteViewModel extends ViewModel {
     public void homeContent() {
         execute(result, "首页", () -> {
             Site site = VodConfig.get().getHome();
+            requireSite(site);
             if (site.getType() == 3) {
                 Spider spider = site.recent().spider();
                 String homeContent = spider.homeContent(true);
@@ -149,6 +150,7 @@ public class SiteViewModel extends ViewModel {
      * 把 recent 切走的话，正在播放的那个站点的代理地址会被路由到错误的 JAR。
      */
     public static Result detail(Site site, String id, boolean recent) throws Exception {
+        requireSite(site);
         if (site.getType() == 3) {
             Spider spider = recent ? site.recent().spider() : site.spider();
             String detailContent = spider.detailContent(Arrays.asList(id));
@@ -181,6 +183,8 @@ public class SiteViewModel extends ViewModel {
      */
     public static Result getPlayer(String key, String flag, String id) throws Exception {
         Site site = VodConfig.get().getSite(key);
+        if (!DOWNLOAD_KEY.equals(key) && (id == null || !id.startsWith("file://"))
+                && !(site.isEmpty() && "push_agent".equals(key))) requireSite(site);
         // 本地缓存文件不能丢给爬虫去解析，认出 file:// 就直接当播放地址用
         if (DOWNLOAD_KEY.equals(key) || (id != null && id.startsWith("file://"))) {
             Result result = new Result();
@@ -373,7 +377,17 @@ public class SiteViewModel extends ViewModel {
         });
     }
 
-    private static String call(Site site, ArrayMap<String, String> params) throws IOException {
+    private static void requireSite(Site site) throws ExtractException {
+        if (site != null && !site.getApi().isEmpty()) return;
+        if (VodConfig.get().getSites().isEmpty()) {
+            VodConfig.get().recoverIfNeeded();
+            throw new ExtractException("站源配置尚未加载，请连接网络后重试");
+        }
+        throw new ExtractException("当前接口没有这个站源，请切换片源后重试");
+    }
+
+    private static String call(Site site, ArrayMap<String, String> params) throws Exception {
+        requireSite(site);
         if (!site.getExt().isEmpty()) params.put("extend", site.getExt());
         Call get = OkHttp.newCall(site.getApi(), site.getHeaders(), params);
         Call post = OkHttp.newCall(site.getApi(), site.getHeaders(), OkHttp.toBody(params));

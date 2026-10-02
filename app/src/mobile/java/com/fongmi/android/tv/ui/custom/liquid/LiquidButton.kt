@@ -1,6 +1,8 @@
 package com.fongmi.android.tv.ui.custom.liquid
 
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -10,6 +12,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
@@ -43,6 +47,20 @@ internal fun LiquidButton(
     dragResponse: Float = 0.05f,
     content: @Composable RowScope.() -> Unit
 ) {
+    val context = LocalContext.current
+    if (com.fongmi.android.tv.utils.PlaybackUi.isPlain(context)) {
+        val fill = when {
+            surfaceColor.isSpecified -> if (surfaceColor.alpha == 0f) Color.Transparent else surfaceColor.copy(alpha = 1f)
+            tint.isSpecified -> tint
+            else -> Color(context.getColor(com.fongmi.android.tv.R.color.surface_secondary))
+        }
+        Row(modifier.clip(RoundedCornerShape(12.dp)).background(fill)
+            .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content)
+        return
+    }
     val animationScope = rememberCoroutineScope()
     val interactiveHighlight = remember(animationScope) {
         InteractiveHighlight(animationScope = animationScope)

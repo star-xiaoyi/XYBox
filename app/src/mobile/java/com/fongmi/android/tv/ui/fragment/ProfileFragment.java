@@ -453,12 +453,16 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
             FrameLayout cover=new FrameLayout(requireContext());cover.setBackground(surface(10));cover.setClipToOutline(true);card.addView(cover,new LinearLayout.LayoutParams(-1,Math.round(posterWidth*1.2f)));
             ImageView poster=new ImageView(requireContext());poster.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.addView(poster,new FrameLayout.LayoutParams(-1,-1));
             TextView episode=text("",10,false,false);episode.setTextColor(android.graphics.Color.WHITE);episode.setSingleLine(true);episode.setEllipsize(TextUtils.TruncateAt.END);episode.setPadding(dp(6),dp(18),dp(6),dp(6));
-            episode.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x00000000,0xB3000000}));
             LinearLayout overlay = column();
+            // One backdrop spans both the label and the progress track, including 0% and movies without episode text.
+            overlay.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x00000000,0xB3000000}));
+            overlay.setMinimumHeight(dp(40));
+            overlay.setGravity(Gravity.BOTTOM);
             overlay.addView(episode, new LinearLayout.LayoutParams(-1,-2));
             ProgressBar progress = new ProgressBar(requireContext(), null, android.R.attr.progressBarStyleHorizontal);
-            progress.setMax(100); progress.setProgressTintList(android.content.res.ColorStateList.valueOf(color(R.color.accent_blue)));
-            progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x66FFFFFF));
+            progress.setMax(100); progress.setProgressTintList(android.content.res.ColorStateList.valueOf(color(R.color.progress_primary)));
+            progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.TRANSPARENT));
+            progress.setPadding(0,0,0,0);
             overlay.addView(progress, new LinearLayout.LayoutParams(-1,dp(3)));
             cover.addView(overlay,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
             TextView title=text("",14,true,false);title.setSingleLine(true);title.setEllipsize(TextUtils.TruncateAt.END);title.setPadding(0,dp(7),0,dp(4));card.addView(title);

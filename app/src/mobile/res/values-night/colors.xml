@@ -1,8 +1,8 @@
 <resources>
 
-    <color name="primary">#FDD835</color>
-    <color name="primaryDark">#FBC02D</color>
-    <color name="accent">#FDD835</color>
+    <color name="primary">@color/action_primary</color>
+    <color name="primaryDark">@color/action_primary</color>
+    <color name="accent">@color/action_primary</color>
     <color name="indicator">@color/black_50</color>
 
     <!-- iOS-inspired semantic palette (dark) -->
@@ -23,11 +23,46 @@
     <color name="nav_background">#FF000000</color>
     <color name="cursor">#FFFFFFFF</color>
     <color name="accent_yellow">#FFFFD60A</color>
-    <color name="accent_blue">#FF0A84FF</color>
-    <color name="accent_green">#FF30D158</color>
-    <color name="accent_purple">#FFBF5AF2</color>
+    <color name="accent_blue">@color/action_primary</color>
+    <color name="accent_green">@color/feature_download</color>
+    <color name="accent_purple">@color/feature_settings</color>
     <color name="source_fast">@color/accent_green</color>
     <color name="source_medium">@color/accent_yellow</color>
     <color name="source_slow">@color/download_error_text</color>
 
+
+    <!-- Apple HIG Color / Specifications (2026-10-02): default system colors for
+         controls and progress, increased-contrast variants for small colored labels.
+         Reference: https://developer.apple.com/design/human-interface-guidelines/color -->
+    <color name="action_primary">#FF5CB8FF</color>
+    <color name="action_on_primary">#FF101828</color>
+    <color name="feature_download">#FF4AD968</color>
+    <color name="feature_sync">#FF3BDDEC</color>
+    <color name="feature_settings">#FFEA8DFF</color>
+    <color name="feature_library">#FFFEDF43</color>
+    <color name="status_warning">#FFFFA056</color>
+    <color name="status_danger">#FFFF6165</color>
+    <color name="status_success">@color/feature_download</color>
+    <color name="control_primary">#FF0091FF</color>
+    <color name="control_download">#FF30D158</color>
+    <color name="control_danger">#FFFF4245</color>
+    <color name="control_on_fill">#FF081323</color>
+    <color name="progress_primary">#FF0091FF</color>
+    <color name="progress_download">#FF30D158</color>
+    <color name="control_toggle">#FF30D158</color>
+
+    <!-- Playback selection and played/buffered tracks use a separate soft pink palette. -->
+    <color name="playback_selected_surface">#FFD49AB3</color>
+    <color name="playback_selected_text">#FF482337</color>
+    <color name="playback_progress">#FFF2A6C5</color>
+    <color name="playback_scrubber">#FFFFD1E3</color>
+    <color name="playback_buffered">#70F2A6C5</color>
+    <color name="playback_unplayed">#30FFFFFF</color>
+
+    <!-- Soft colors for loading and home category controls. -->
+    <color name="loading_indicator">@color/playback_progress</color>
+    <color name="home_category_surface">#FFA9CDEA</color>
+    <color name="home_category_text">#FF183D59</color>
+    <color name="download_selection_surface">#FFCE87A8</color>
+    <color name="download_selection_text">#FF3C1A2D</color>
 </resources>

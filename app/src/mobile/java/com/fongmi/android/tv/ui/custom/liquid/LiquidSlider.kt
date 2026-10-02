@@ -28,6 +28,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
@@ -64,6 +67,28 @@ internal fun LiquidSlider(
     val light = !isSystemInDarkTheme()
     val trackColor = if (light) Color(0xFF787878).copy(alpha = 0.20f)
     else Color(0xFF787880).copy(alpha = 0.36f)
+    if (com.fongmi.android.tv.utils.PlaybackUi.isPlain(LocalContext.current)) {
+        val width = (valueRange.endInclusive - valueRange.start).coerceAtLeast(.0001f)
+        AndroidView(
+            factory = { androidx.appcompat.widget.AppCompatSeekBar(it).apply { max = 1000; setPadding(0, 0, 0, 0) } },
+            modifier = modifier.fillMaxWidth().height(40.dp),
+            update = { bar ->
+                bar.setOnSeekBarChangeListener(null)
+                bar.progress = (((value() - valueRange.start) / width).coerceIn(0f, 1f) * 1000).fastRoundToInt()
+                bar.progressTintList = android.content.res.ColorStateList.valueOf(accentColor.toArgb())
+                bar.thumbTintList = bar.progressTintList
+                bar.progressBackgroundTintList = android.content.res.ColorStateList.valueOf(trackColor.toArgb())
+                bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(view: android.widget.SeekBar, progress: Int, fromUser: Boolean) {
+                        if (fromUser) onValueChange(valueRange.start + width * progress / 1000f)
+                    }
+                    override fun onStartTrackingTouch(view: android.widget.SeekBar) { }
+                    override fun onStopTrackingTouch(view: android.widget.SeekBar) { }
+                })
+            }
+        )
+        return
+    }
     val trackBackdrop = rememberLayerBackdrop()
 
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {

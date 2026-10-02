@@ -50,7 +50,7 @@ class PlaybackGlassSurfaceView @JvmOverloads constructor(
                 .fillMaxSize()
                 // 把模糊和透镜效果也裁进圆角，避免离屏图层在四角留下矩形虚影。
                 .clip(RoundedCornerShape(24.dp))
-                .drawBackdrop(
+                .playbackSurface(context, surface, 24.dp) { drawBackdrop(
                     backdrop = backdrop,
                     shape = { RoundedRectangle(24.dp) },
                     effects = {
@@ -59,7 +59,7 @@ class PlaybackGlassSurfaceView @JvmOverloads constructor(
                         lens(8.dp.toPx(), 22.dp.toPx(), depthEffect = true)
                     },
                     onDrawSurface = { drawRect(surface) }
-                )
+                ) }
         )
     }
 }

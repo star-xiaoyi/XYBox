@@ -13,10 +13,6 @@ public class Setting {
     public static final int THEME_SYSTEM = 0;
     public static final int THEME_LIGHT = 1;
     public static final int THEME_DARK = 2;
-    public static final int ACCENT_YELLOW = 0;
-    public static final int ACCENT_BLUE = 1;
-    public static final int ACCENT_GREEN = 2;
-    public static final int ACCENT_PURPLE = 3;
     public static final int DOWNLOAD_MODE_SMART = 0;
     public static final int DOWNLOAD_MODE_FAST = 1;
     public static final int DOWNLOAD_TASK_MAX = 5;
@@ -28,15 +24,6 @@ public class Setting {
 
     public static void putThemeMode(int mode) {
         Prefers.put("theme_mode", mode);
-    }
-
-    public static int getAccentColor() {
-        int accent = Prefers.getInt("accent_color", ACCENT_YELLOW);
-        return accent >= ACCENT_YELLOW && accent <= ACCENT_PURPLE ? accent : ACCENT_YELLOW;
-    }
-
-    public static void putAccentColor(int accent) {
-        Prefers.put("accent_color", accent);
     }
 
     public static String getDoh() {

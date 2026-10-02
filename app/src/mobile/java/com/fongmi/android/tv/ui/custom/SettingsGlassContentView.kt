@@ -125,11 +125,8 @@ class SettingsGlassContentView @JvmOverloads constructor(
         val themeIndex: Int = 0,
         val sizeOptions: List<String> = emptyList(),
         val sizeIndex: Int = 0,
-        val accentOptions: List<String> = emptyList(),
-        val accentIndex: Int = 0,
         val dohOptions: List<String> = emptyList(),
         val dohIndex: Int = 0,
-        @ColorInt val accentColor: Int = 0xFFFFCC00.toInt(),
         val historyVisible: Boolean = true,
         val liveTabVisible: Boolean = false,
         val liquidGlassNavigation: Boolean = true,
@@ -215,9 +212,6 @@ class SettingsGlassContentView @JvmOverloads constructor(
         state = state.copy(sizeOptions = options.toList(), sizeIndex = selectedIndex)
     }
 
-    fun setAccentOptions(options: Array<String>, selectedIndex: Int, @ColorInt color: Int) {
-        state = state.copy(accentOptions = options.toList(), accentIndex = selectedIndex, accentColor = color)
-    }
 
     fun setDohOptions(options: Array<String>, selectedIndex: Int) {
         state = state.copy(
@@ -291,7 +285,6 @@ class SettingsGlassContentView @JvmOverloads constructor(
         state = when (action) {
             ACTION_THEME -> state.copy(themeIndex = index)
             ACTION_SIZE -> state.copy(sizeIndex = index)
-            ACTION_ACCENT -> state.copy(accentIndex = index)
             ACTION_DOH -> state.copy(dohIndex = index)
             else -> state
         }
@@ -326,7 +319,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
             text = if (light) Color(0xFF1C1C1E) else Color.White,
             secondary = if (light) Color(0xFF6E6E73) else Color(0xFF98989D),
             separator = if (light) Color(0x203C3C43) else Color(0x40545458),
-            accent = Color(state.accentColor)
+            accent = Color(context.getColor(R.color.action_primary))
         )
         val backdrop = rememberLayerBackdrop()
         val frameNanos = remember { mutableLongStateOf(0L) }
@@ -476,7 +469,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
     ) {
         val groups = listOf(
             listOf(ACTION_PLAYER, ACTION_OPERATION, ACTION_AI),
-            listOf(ACTION_THEME, ACTION_ACCENT, ACTION_GLASS_NAVIGATION, ACTION_LIVE_TAB_VISIBLE),
+            listOf(ACTION_THEME, ACTION_GLASS_NAVIGATION, ACTION_LIVE_TAB_VISIBLE),
             listOf(ACTION_LIVE, ACTION_DOH, ACTION_PROXY),
             listOf(ACTION_INCOGNITO, ACTION_CACHE),
             listOf(ACTION_LABORATORY, ACTION_LOG)
@@ -530,7 +523,6 @@ class SettingsGlassContentView @JvmOverloads constructor(
             ACTION_VOD -> stringResource(R.string.setting_vod) + " " + current.vodDescription
             ACTION_LIVE -> stringResource(R.string.setting_live) + " " + current.liveDescription
             ACTION_THEME -> stringResource(R.string.setting_theme) + " " + current.themeOptions.joinToString(" ")
-            ACTION_ACCENT -> stringResource(R.string.setting_accent) + " " + current.accentOptions.joinToString(" ")
             ACTION_SIZE -> stringResource(R.string.setting_size) + " " + current.sizeOptions.joinToString(" ")
             ACTION_GLASS_NAVIGATION -> stringResource(R.string.laboratory_liquid_glass_navigation) + " " + stringResource(R.string.laboratory_liquid_glass_navigation_summary)
             ACTION_HISTORY_VISIBLE -> stringResource(R.string.setting_history_visible)
@@ -613,7 +605,6 @@ class SettingsGlassContentView @JvmOverloads constructor(
                 id, R.drawable.ic_settings_appearance, R.string.setting_theme,
                 current.themeOptions, current.themeIndex, backdrop, frameNanos, palette
             )
-            ACTION_ACCENT -> DialogAccentRow(current, backdrop, frameNanos, palette)
             ACTION_SIZE -> DialogOptionRow(
                 id, R.drawable.ic_setting_size, R.string.setting_size,
                 current.sizeOptions, current.sizeIndex, backdrop, frameNanos, palette
@@ -1031,47 +1022,6 @@ class SettingsGlassContentView @JvmOverloads constructor(
         }
     }
 
-    @Composable
-    private fun DialogAccentRow(
-        current: State,
-        backdrop: Backdrop,
-        frameNanos: androidx.compose.runtime.LongState,
-        palette: SettingsPalette
-    ) {
-        val colors = listOf(Color(0xFFFFCC00), Color(0xFF0A84FF), Color(0xFF30D158), Color(0xFFBF5AF2))
-        Column {
-            SettingsRow(
-                icon = R.drawable.ic_settings_palette,
-                title = stringResource(R.string.setting_accent),
-                summary = null,
-                palette = palette,
-                onClick = { toggleDialog(ACTION_ACCENT) }
-            ) {
-                Box(
-                    Modifier
-                        .size(12.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(colors.getOrElse(current.accentIndex) { palette.accent })
-                )
-                Spacer(Modifier.width(8.dp))
-                BasicText(
-                    current.accentOptions.getOrNull(current.accentIndex).orEmpty(),
-                    style = TextStyle(palette.secondary, 13.sp, FontWeight.Medium)
-                )
-                Spacer(Modifier.width(6.dp))
-                Arrow(palette)
-            }
-            DialogOptionsPanel(
-                visible = expandedAction == ACTION_ACCENT,
-                options = current.accentOptions,
-                selected = current.accentIndex,
-                backdrop = backdrop,
-                palette = palette,
-                colors = colors,
-                onSelect = { selectOption(ACTION_ACCENT, it) }
-            )
-        }
-    }
 
     @Composable
     private fun DialogOptionsPanel(
@@ -1162,7 +1112,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
                 selected = { checked },
                 onSelect = { setToggle(id, it) },
                 backdrop = backdrop,
-                accentColor = palette.accent,
+                accentColor = Color(context.getColor(R.color.control_toggle)),
                 modifier = Modifier.size(64.dp, 40.dp)
             )
         }
@@ -1231,14 +1181,14 @@ class SettingsGlassContentView @JvmOverloads constructor(
                     onClick = { selectOption(id, index) },
                     backdrop = backdrop,
                     frameNanos = frameNanos,
-                    tint = if (active) palette.accent else Color.Unspecified,
+                    tint = if (active) Color(context.getColor(R.color.control_primary)) else Color.Unspecified,
                     surfaceColor = if (active) Color.Unspecified else palette.glass,
                     modifier = Modifier.weight(1f).height(48.dp)
                 ) {
                     BasicText(
                         label,
                         style = TextStyle(
-                            color = if (active && palette.accent.luminance() <= 0.55f) Color.White else palette.text,
+                            color = if (active) Color(context.getColor(R.color.control_on_fill)) else palette.text,
                             fontSize = 12.sp,
                             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal
                         ),
@@ -1360,7 +1310,6 @@ class SettingsGlassContentView @JvmOverloads constructor(
         const val ACTION_VOD_HISTORY = 5
         const val ACTION_LIVE_HISTORY = 6
         const val ACTION_THEME = 7
-        const val ACTION_ACCENT = 8
         const val ACTION_SIZE = 9
         const val ACTION_HISTORY_VISIBLE = 10
         const val ACTION_LIVE_TAB_VISIBLE = 11

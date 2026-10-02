@@ -11,6 +11,10 @@ public class RefreshEvent {
         EventBus.getDefault().post(new RefreshEvent(Type.CONFIG));
     }
 
+    public static void network() {
+        EventBus.getDefault().post(new RefreshEvent(Type.NETWORK));
+    }
+
     public static void image() {
         EventBus.getDefault().post(new RefreshEvent(Type.IMAGE));
     }
@@ -69,7 +73,7 @@ public class RefreshEvent {
     }
 
     public enum Type {
-        CONFIG, IMAGE, VIDEO, HISTORY, KEEP, SIZE, LIVE, DETAIL, PLAYER, SUBTITLE, DANMAKU, DOWNLOAD
+        CONFIG, IMAGE, VIDEO, HISTORY, KEEP, SIZE, LIVE, DETAIL, PLAYER, SUBTITLE, DANMAKU, DOWNLOAD, NETWORK
     }
 
     public static void download() {

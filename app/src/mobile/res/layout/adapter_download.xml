@@ -80,6 +80,7 @@
                 android:layout_marginTop="8dp"
                 android:max="100"
                 android:progressDrawable="@drawable/progress_history"
+                android:progressTint="@color/progress_download"
                 tools:progress="62" />
 
         </LinearLayout>

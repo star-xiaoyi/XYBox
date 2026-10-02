@@ -127,22 +127,24 @@ class LiquidGlassDownloadSettingView @JvmOverloads constructor(
             else Color(0xFF242428).copy(alpha = 0.88f),
             text = if (light) Color(0xFF1C1C1E) else Color.White,
             secondary = if (light) Color(0xFF6E6E73) else Color(0xFF98989D),
-            accent = Color(context.getColor(ThemeUtil.getAccentColorResource()))
+            accent = Color(context.getColor(com.fongmi.android.tv.R.color.feature_download)),
+            fill = Color(context.getColor(com.fongmi.android.tv.R.color.control_download))
         )
         val backdrop = rememberLayerBackdrop()
         val frameNanos = remember { mutableLongStateOf(0L) }
         val panelLocation = remember { IntArray(2) }
         val sourceLocation = remember { IntArray(2) }
         val sourceView = backdropViewState
-        LaunchedEffect(visibleState, sourceView) {
-            while (visibleState && sourceView != null) {
+        val plainPlayback = com.fongmi.android.tv.utils.PlaybackUi.isPlain(context)
+        LaunchedEffect(visibleState, sourceView, plainPlayback) {
+            while (visibleState && sourceView != null && !plainPlayback) {
                 withFrameNanos { frameNanos.longValue = it }
             }
         }
 
         Box(Modifier.fillMaxSize()) {
             if (visibleState) {
-                Canvas(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+                if (!plainPlayback) Canvas(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
                     frameNanos.longValue
                     if (sourceView != null && sourceView.isAttachedToWindow) {
                         this@LiquidGlassDownloadSettingView.getLocationInWindow(panelLocation)
@@ -200,7 +202,7 @@ class LiquidGlassDownloadSettingView @JvmOverloads constructor(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .drawBackdrop(
+                    .playbackSurface(context, palette.panel, 28.dp) { drawBackdrop(
                         backdrop = backdrop,
                         shape = { RoundedRectangle(28.dp) },
                         effects = {
@@ -209,7 +211,7 @@ class LiquidGlassDownloadSettingView @JvmOverloads constructor(
                             lens(8.dp.toPx(), 24.dp.toPx(), depthEffect = true)
                         },
                         onDrawSurface = { drawRect(palette.panel) }
-                    )
+                    ) }
                     .combinedClickable(
                         interactionSource = null,
                         indication = null,
@@ -272,7 +274,7 @@ class LiquidGlassDownloadSettingView @JvmOverloads constructor(
                         valueRange = 1f..Setting.DOWNLOAD_TASK_MAX.toFloat(),
                         visibilityThreshold = 0.05f,
                         backdrop = backdrop,
-                        accentColor = palette.accent,
+                        accentColor = Color(context.getColor(com.fongmi.android.tv.R.color.progress_download)),
                         modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp)
                     )
                 }
@@ -302,7 +304,7 @@ class LiquidGlassDownloadSettingView @JvmOverloads constructor(
                         onClick = ::confirm,
                         backdrop = backdrop,
                         frameNanos = frameNanos,
-                        surfaceColor = palette.accent.copy(alpha = 0.88f),
+                        surfaceColor = palette.fill,
                         modifier = Modifier.weight(1f).height(48.dp)
                     ) {
                         BasicText(
@@ -329,7 +331,7 @@ class LiquidGlassDownloadSettingView @JvmOverloads constructor(
             onClick = { modeState = mode },
             backdrop = backdrop,
             frameNanos = frameNanos,
-            surfaceColor = if (selected) palette.accent.copy(alpha = 0.88f) else palette.glass,
+            surfaceColor = if (selected) palette.fill else palette.glass,
             modifier = modifier
         ) {
             BasicText(
@@ -349,8 +351,9 @@ private data class DownloadSettingPalette(
     val glass: Color,
     val text: Color,
     val secondary: Color,
-    val accent: Color
+    val accent: Color,
+    val fill: Color
 ) {
     val selectedText: Color
-        get() = if (accent.luminance() > 0.58f) Color(0xFF1C1C1E) else Color.White
+        get() = if (fill.luminance() > 0.22f) Color(0xFF1C1C1E) else Color.White
 }

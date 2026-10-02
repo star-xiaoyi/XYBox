@@ -17,7 +17,7 @@
             android:maxLines="1" android:ellipsize="end" />
         <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent" android:layout_height="4dp" android:layout_marginTop="8dp"
-            android:max="100" android:progressTint="@color/accent" />
+            android:max="100" android:progressTint="@color/progress_primary" />
         <TextView android:id="@+id/progress_text" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="5dp" android:textColor="@color/text_secondary" android:textSize="12sp" />
         <TextView android:id="@+id/site" android:layout_width="match_parent" android:layout_height="wrap_content"

@@ -59,10 +59,16 @@ public class DownloadEpisodeAdapter extends RecyclerView.Adapter<DownloadEpisode
         Episode item = items.get(position);
         Download state = states == null ? null : states.get(Download.episodeKey(item.getName()));
         holder.binding.text.setText(item.getName());
-        holder.binding.getRoot().setActivated(selected != null && selected.contains(item.getName()));
+        boolean checked = selected != null && selected.contains(item.getName());
+        holder.binding.getRoot().setActivated(checked);
         holder.binding.getRoot().setSelected(item == current);
         holder.binding.playing.setVisibility(item == current ? View.VISIBLE : View.GONE);
-        holder.binding.done.setVisibility(state != null && state.isDone() ? View.VISIBLE : View.GONE);
+        holder.binding.selectionMark.setVisibility(checked ? View.VISIBLE : View.GONE);
+        holder.binding.done.setVisibility(state != null && state.isDone() && !checked ? View.VISIBLE : View.GONE);
+        holder.binding.getRoot().setContentDescription(item.getName()
+                + (item == current ? "，" + holder.string(R.string.download_current_episode) : "")
+                + (checked ? "，已选中缓存" : "，未选中缓存")
+                + (state != null && state.isDone() ? "，" + holder.string(R.string.download_state_done) : ""));
         if (state == null) {
             holder.binding.state.setVisibility(View.GONE);
         } else if (state.isDone()) {
