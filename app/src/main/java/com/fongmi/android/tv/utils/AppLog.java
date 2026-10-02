@@ -77,6 +77,36 @@ public final class AppLog {
                 + " pid=" + Process.myPid()
                 + " device=" + Build.MANUFACTURER + " " + Build.MODEL
                 + " android=" + Build.VERSION.RELEASE + " sdk=" + Build.VERSION.SDK_INT);
+        if (Build.VERSION.SDK_INT >= 30) WRITER.execute(() -> recordSystemExits(context));
+    }
+
+    /** Native crashes and system kills cannot run a Java uncaught-exception handler. */
+    @android.annotation.TargetApi(30)
+    private static void recordSystemExits(Context context) {
+        try {
+            android.app.ActivityManager manager = (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (manager == null) return;
+            android.content.SharedPreferences prefs = context.getSharedPreferences("log_process_exits", Context.MODE_PRIVATE);
+            long previous = prefs.getLong("last", 0), newest = previous;
+            for (android.app.ApplicationExitInfo exit : manager.getHistoricalProcessExitReasons(context.getPackageName(), 0, 5)) {
+                newest = Math.max(newest, exit.getTimestamp());
+                if (exit.getTimestamp() <= previous) continue;
+                String reason;
+                switch (exit.getReason()) {
+                    case android.app.ApplicationExitInfo.REASON_CRASH: reason = "JAVA_CRASH"; break;
+                    case android.app.ApplicationExitInfo.REASON_CRASH_NATIVE: reason = "NATIVE_CRASH"; break;
+                    case android.app.ApplicationExitInfo.REASON_ANR: reason = "ANR"; break;
+                    case android.app.ApplicationExitInfo.REASON_LOW_MEMORY: reason = "LOW_MEMORY"; break;
+                    case android.app.ApplicationExitInfo.REASON_SIGNALED: reason = "SIGNAL"; break;
+                    case android.app.ApplicationExitInfo.REASON_EXIT_SELF: reason = "EXIT_SELF"; break;
+                    default: reason = "SYSTEM_" + exit.getReason();
+                }
+                append(format(Log.WARN, "ProcessExit", "pid=" + exit.getPid() + " time=" + exit.getTimestamp()
+                        + " reason=" + reason + " status=" + exit.getStatus() + " importance=" + exit.getImportance()
+                        + " description=" + exit.getDescription(), null));
+            }
+            prefs.edit().putLong("last", newest).apply();
+        } catch (Exception error) { append(format(Log.WARN, "ProcessExit", "无法读取系统退出记录", error)); }
     }
 
     private static void enqueue(int priority, String tag, String message, Throwable throwable) {

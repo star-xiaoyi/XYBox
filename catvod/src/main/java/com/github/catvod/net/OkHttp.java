@@ -49,6 +49,7 @@ public class OkHttp {
     private AuthInterceptor authInterceptor;
     private OkProxySelector selector;
     private OkHttpClient client;
+    private OkHttpClient systemClient;
     private OkDns dns;
 
     private boolean proxy;
@@ -109,6 +110,7 @@ public class OkHttp {
     public void setDoh(Doh doh) {
         dns().setDoh(doh.getUrl().isEmpty() ? null : new DnsOverHttps.Builder().client(new OkHttpClient()).url(HttpUrl.get(doh.getUrl())).bootstrapDnsHosts(doh.getHosts()).build());
         client = null;
+        systemClient = null;
     }
 
     public void setProxy(String proxy) {
@@ -117,6 +119,7 @@ public class OkHttp {
         this.proxy = !TextUtils.isEmpty(proxy);
         Logger.i("NetworkProxy: appProxy=" + this.proxy + ", loopback=direct");
         client = null;
+        systemClient = null;
     }
 
     public static OkDns dns() {
@@ -147,6 +150,12 @@ public class OkHttp {
     public static OkHttpClient client() {
         if (get().client != null) return get().client;
         return get().client = getBuilder().build();
+    }
+
+    /** Version checks/APKs keep the system VPN/proxy; media requests use physical-network sockets. */
+    public static OkHttpClient systemClient() {
+        if (get().systemClient == null) get().systemClient = getBuilder(false).build();
+        return get().systemClient;
     }
 
     public static OkHttpClient client(long timeout) {
@@ -224,12 +233,18 @@ public class OkHttp {
     }
 
     public static void cancel(String tag) {
-        for (Call call : client().dispatcher().queuedCalls()) if (tag.equals(call.request().tag())) call.cancel();
-        for (Call call : client().dispatcher().runningCalls()) if (tag.equals(call.request().tag())) call.cancel();
+        cancel(client(), tag);
+        if (get().systemClient != null) cancel(get().systemClient, tag);
+    }
+
+    private static void cancel(OkHttpClient client, String tag) {
+        for (Call call : client.dispatcher().queuedCalls()) if (tag.equals(call.request().tag())) call.cancel();
+        for (Call call : client.dispatcher().runningCalls()) if (tag.equals(call.request().tag())) call.cancel();
     }
 
     public static void cancelAll() {
         client().dispatcher().cancelAll();
+        if (get().systemClient != null) get().systemClient.dispatcher().cancelAll();
     }
 
     public static FormBody toBody(ArrayMap<String, String> params) {
@@ -245,9 +260,14 @@ public class OkHttp {
     }
 
     private static OkHttpClient.Builder getBuilder() {
+        return getBuilder(true);
+    }
+
+    private static OkHttpClient.Builder getBuilder(boolean direct) {
         OkHttpClient.Builder builder = new OkHttpClient.Builder().cookieJar(OkCookieJar.get()).addInterceptor(requestInterceptor()).addInterceptor(authInterceptor()).addNetworkInterceptor(responseInterceptor()).connectTimeout(TIMEOUT, TimeUnit.MILLISECONDS).readTimeout(TIMEOUT, TimeUnit.MILLISECONDS).writeTimeout(TIMEOUT, TimeUnit.MILLISECONDS).dns(dns()).hostnameVerifier((hostname, session) -> true).sslSocketFactory(getSSLContext().getSocketFactory(), trustAllCertificates());
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY);
         builder.proxySelector(get().proxy ? selector() : defaultSelector);
+        if (direct) builder.proxy(Proxy.NO_PROXY).dns(hostname -> dns().lookupDirect(hostname)).socketFactory(DirectNetwork.sockets());
         //builder.addNetworkInterceptor(logging);
         return builder;
     }

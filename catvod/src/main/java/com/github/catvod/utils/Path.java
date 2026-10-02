@@ -26,7 +26,14 @@ public class Path {
     }
 
     public static boolean exists(String path) {
-        return new File(path.replace("file://", "")).exists();
+        if (path == null || path.isEmpty()) return false;
+        if (!path.startsWith("file:")) return new File(path).exists();
+        android.net.Uri uri = android.net.Uri.parse(path);
+        String host = uri.getHost();
+        if (host != null && !host.isEmpty() && !"localhost".equalsIgnoreCase(host)) return false;
+        // Uri.fromFile escapes Chinese, spaces, '#' and '%'. Check the decoded filesystem path.
+        String local = uri.getPath();
+        return local != null && !local.isEmpty() && new File(local).exists();
     }
 
     public static File root() {

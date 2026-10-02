@@ -9,7 +9,6 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
 import com.airbnb.lottie.LottieAnimationView;
-import com.fongmi.android.tv.Product;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Download;
 import com.fongmi.android.tv.databinding.ActivityDownloadBinding;
@@ -26,7 +25,7 @@ import org.greenrobot.eventbus.ThreadMode;
 
 import java.util.List;
 
-/** 离线缓存：按剧聚合的网格，右上角进「下载列表」看进行中的任务。 */
+/** 离线缓存：按影片列出已完成和未完成的具体集数。 */
 public class DownloadActivity extends BaseActivity implements DownloadVodAdapter.OnClickListener {
 
     private ActivityDownloadBinding mBinding;
@@ -49,9 +48,8 @@ public class DownloadActivity extends BaseActivity implements DownloadVodAdapter
         mBinding.toolbar.attachContent(mBinding.content, mBinding.recycler);
         mBinding.recycler.setHasFixedSize(false);
         mBinding.recycler.getItemAnimator().setChangeDuration(0);
-        mBinding.recycler.setLayoutManager(new GridLayoutManager(this, Product.getColumn(this)));
+        mBinding.recycler.setLayoutManager(new GridLayoutManager(this, getResources().getConfiguration().screenWidthDp >= 720 ? 2 : 1));
         mBinding.recycler.setAdapter(mAdapter = new DownloadVodAdapter(this));
-        mAdapter.setSize(Product.getSpec(this));
         refresh();
     }
 

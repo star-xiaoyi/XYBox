@@ -140,7 +140,7 @@ public class Updater implements Download.Callback {
             return new JSONObject(CACHE[channel]);
         JSONObject release = null;
         if (System.currentTimeMillis() >= apiRetryAt) {
-            try (okhttp3.Response response = OkHttp.newCall(dev ? DEV_API : RELEASE_API).execute()) {
+            try (okhttp3.Response response = OkHttp.newCall(OkHttp.systemClient(), dev ? DEV_API : RELEASE_API).execute()) {
                 if (response.code() == 403 || response.code() == 429) {
                     long retry = System.currentTimeMillis() + 60_000;
                     try { retry = Math.max(retry, Long.parseLong(response.header("X-RateLimit-Reset", "0")) * 1000); }
@@ -161,13 +161,13 @@ public class Updater implements Download.Callback {
     private JSONObject fetchWebRelease() throws Exception {
         JSONObject release = null;
         if (dev) {
-            try (okhttp3.Response response = OkHttp.newCall(REPOSITORY + "/releases.atom").execute()) {
+            try (okhttp3.Response response = OkHttp.newCall(OkHttp.systemClient(), REPOSITORY + "/releases.atom").execute()) {
                 if (!response.isSuccessful() || response.body() == null) throw new java.io.IOException("发布订阅暂时不可用");
                 release = parseFeed(response.body().string());
             }
         } else {
             // GitHub redirects this public page to the latest non-prerelease tag.
-            try (okhttp3.Response response = OkHttp.newCall(REPOSITORY + "/releases/latest").execute()) {
+            try (okhttp3.Response response = OkHttp.newCall(OkHttp.systemClient(), REPOSITORY + "/releases/latest").execute()) {
                 String link = response.request().url().toString();
                 String prefix = REPOSITORY + "/releases/tag/";
                 if (response.isSuccessful() && link.startsWith(prefix)) {
@@ -178,7 +178,7 @@ public class Updater implements Download.Callback {
         }
         if (release == null) throw new java.io.IOException("暂时无法读取发布版本");
         String tag = release.getString("tag_name");
-        try (okhttp3.Response response = OkHttp.newCall(REPOSITORY + "/releases/expanded_assets/" + tag).execute()) {
+        try (okhttp3.Response response = OkHttp.newCall(OkHttp.systemClient(), REPOSITORY + "/releases/expanded_assets/" + tag).execute()) {
             if (!response.isSuccessful() || response.body() == null) throw new java.io.IOException("安装包列表暂时不可用");
             release.put("assets", parseWebAssets(response.body().string(), tag));
         }
@@ -446,7 +446,7 @@ public class Updater implements Download.Callback {
             return;
         }
         DownloadService.beginUpdate();
-        download = Download.create(apkUrl, getFile(), apkUrl, this);
+        download = Download.create(apkUrl, getFile(), apkUrl, this).useSystemNetwork();
         download.start();
     }
 

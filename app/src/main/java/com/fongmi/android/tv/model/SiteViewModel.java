@@ -57,6 +57,7 @@ public class SiteViewModel extends ViewModel {
     public MutableLiveData<Result> search;
     public MutableLiveData<Result> action;
     private ExecutorService executor;
+    private volatile int requestGeneration;
 
     public SiteViewModel() {
         this.episode = new MutableLiveData<>();
@@ -143,6 +144,23 @@ public class SiteViewModel extends ViewModel {
         });
     }
 
+    public void offlineContent(String key, String id, String name, String year) {
+        execute(result, "本地详情", () -> {
+            Vod vod = com.fongmi.android.tv.download.OfflinePlayback.detail(key, id, name, year, "");
+            return vod == null ? Result.empty() : Result.vod(vod);
+        });
+    }
+
+    /** A verified local file needs no site lookup, spider or resolver thread. */
+    public void localPlayer(String url) {
+        ++requestGeneration;
+        if (executor != null) executor.shutdownNow();
+        Result local = new Result();
+        local.setParse(0);
+        local.setUrl(Url.create().add(url));
+        player.setValue(local);
+    }
+
     /**
      * 阻塞式取详情，只拆出线路和剧集，不展开磁力、油管这类剧集。
      * <p>
@@ -183,10 +201,10 @@ public class SiteViewModel extends ViewModel {
      */
     public static Result getPlayer(String key, String flag, String id) throws Exception {
         Site site = VodConfig.get().getSite(key);
-        if (!DOWNLOAD_KEY.equals(key) && (id == null || !id.startsWith("file://"))
+        if (!DOWNLOAD_KEY.equals(key) && !com.fongmi.android.tv.download.OfflinePlayback.isLocal(id)
                 && !(site.isEmpty() && "push_agent".equals(key))) requireSite(site);
         // 本地缓存文件不能丢给爬虫去解析，认出 file:// 就直接当播放地址用
-        if (DOWNLOAD_KEY.equals(key) || (id != null && id.startsWith("file://"))) {
+        if (DOWNLOAD_KEY.equals(key) || com.fongmi.android.tv.download.OfflinePlayback.isLocal(id)) {
             Result result = new Result();
             result.setParse(0);
             result.setFlag(flag);
@@ -413,29 +431,35 @@ public class SiteViewModel extends ViewModel {
     }
 
     private void execute(MutableLiveData<Result> result, String tag, Callable<Result> callable) {
+        final int generation = ++requestGeneration;
         if (executor != null) executor.shutdownNow();
-        executor = Executors.newFixedThreadPool(2);
-        executor.execute(() -> {
+        ExecutorService active = executor = Executors.newFixedThreadPool(2);
+        active.execute(() -> {
             try {
                 if (Thread.interrupted()) return;
-                result.postValue(executor.submit(callable).get(Constant.TIMEOUT_VOD, TimeUnit.MILLISECONDS));
+                deliver(result, active.submit(callable).get(Constant.TIMEOUT_VOD, TimeUnit.MILLISECONDS), generation);
             } catch (Throwable e) {
                 if (e instanceof InterruptedException || Thread.interrupted()) return;
                 // 确保在发生任何异常时都返回结果，避免界面一直显示加载中
                 if (e.getCause() instanceof ExtractException) {
-                    result.postValue(Result.error(e.getCause().getMessage()));
+                    deliver(result, Result.error(e.getCause().getMessage()), generation);
                 } else if (e instanceof java.util.concurrent.TimeoutException) {
-                    result.postValue(Result.error("加载超时，请重试"));
+                    deliver(result, Result.error("加载超时，请重试"), generation);
                 } else {
-                    result.postValue(Result.empty());
+                    deliver(result, Result.empty(), generation);
                 }
                 Logger.e("Error", e);
             }
         });
     }
 
+    private void deliver(MutableLiveData<Result> result, Result value, int generation) {
+        App.post(() -> { if (generation == requestGeneration) result.setValue(value); });
+    }
+
     @Override
     protected void onCleared() {
+        ++requestGeneration;
         if (executor != null) executor.shutdownNow();
     }
 }

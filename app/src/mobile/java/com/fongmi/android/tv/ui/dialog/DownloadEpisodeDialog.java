@@ -16,6 +16,7 @@ import androidx.viewbinding.ViewBinding;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Download;
 import com.fongmi.android.tv.bean.Episode;
+import com.fongmi.android.tv.download.OfflinePlayback;
 import com.fongmi.android.tv.databinding.DialogDownloadEpisodeBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.ui.activity.DownloadTaskActivity;
@@ -55,6 +56,7 @@ public class DownloadEpisodeDialog extends BaseDialog implements DownloadEpisode
     private List<Episode> episodes = new ArrayList<>();
     private Callback callback;
     private String groupKey = "";
+    private String siteKey = "", vodId = "", year = "", type = "";
     private int spanCount = 3;
     private int currentIndex;
 
@@ -73,6 +75,11 @@ public class DownloadEpisodeDialog extends BaseDialog implements DownloadEpisode
 
     public DownloadEpisodeDialog groupKey(String groupKey) {
         this.groupKey = groupKey;
+        return this;
+    }
+
+    public DownloadEpisodeDialog identity(String siteKey, String vodId, String year, String type) {
+        this.siteKey = siteKey; this.vodId = vodId; this.year = year; this.type = type;
         return this;
     }
 
@@ -126,7 +133,8 @@ public class DownloadEpisodeDialog extends BaseDialog implements DownloadEpisode
      */
     private void loadStates() {
         states = new HashMap<>();
-        for (Download item : Download.getByGroup(groupKey)) {
+        for (Download item : OfflinePlayback.matching(siteKey, vodId, groupKey, year, type)) {
+            if (item.isDone() && !item.isPlayable()) continue;
             String key = Download.episodeKey(item.getEpisodeName());
             Download exist = states.get(key);
             // 同一集有多条记录时，已缓存的那条优先

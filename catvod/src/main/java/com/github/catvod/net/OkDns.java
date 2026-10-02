@@ -43,7 +43,15 @@ public class OkDns implements Dns {
     @NonNull
     @Override
     public List<InetAddress> lookup(@NonNull String hostname) throws UnknownHostException {
+        return (doh != null ? doh : Dns.SYSTEM).lookup(mappedHost(hostname));
+    }
+
+    public List<InetAddress> lookupDirect(@NonNull String hostname) throws UnknownHostException {
+        return DirectNetwork.dns().lookup(mappedHost(hostname));
+    }
+
+    private String mappedHost(String hostname) {
         for (Map.Entry<String, String> entry : map.entrySet()) if (Util.containOrMatch(hostname, entry.getKey())) hostname = entry.getValue();
-        return (doh != null ? doh : Dns.SYSTEM).lookup(hostname);
+        return hostname;
     }
 }
