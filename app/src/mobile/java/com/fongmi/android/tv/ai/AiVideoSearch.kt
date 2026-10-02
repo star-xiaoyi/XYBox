@@ -50,6 +50,7 @@ class AiVideoSearch(private val update: (List<VodGroup>, Boolean) -> Unit,
                         site = item.site
                         if (vodId.isBlank()) vodId = item.vodId
                         if (vodName.isBlank()) vodName = item.vodName
+                        if (vodPic.isBlank()) vodPic = item.vodPic
                         if (vodYear.isBlank()) vodYear = item.vodYear
                         if (vodArea.isBlank()) vodArea = item.vodArea
                         if (typeName.isBlank()) typeName = item.typeName

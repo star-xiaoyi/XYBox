@@ -76,6 +76,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     private final com.fongmi.android.tv.ai.AiOrbDrawable aiOrb = new com.fongmi.android.tv.ai.AiOrbDrawable();
     private boolean aiRecording;
     private boolean aiThinking;
+    private com.fongmi.android.tv.ai.VoiceEntryController voiceEntry;
+    private boolean openVoiceAfterRecognition;
     private FrameLayout aiNavigationHost;
     private View aiNavigationBackdrop;
     private boolean navigationDisposed;
@@ -94,8 +96,16 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void initView(Bundle savedInstanceState) {
+        voiceEntry = new com.fongmi.android.tv.ai.VoiceEntryController(this);
         aiVoice = new com.fongmi.android.tv.ai.VoiceHoldController(this, text -> {
-            mBinding.navigation.setSelectedItemId(R.id.vod);
+            if (currentPosition != POSITION_VOD || openVoiceAfterRecognition) {
+                boolean openConversation = openVoiceAfterRecognition;
+                openVoiceAfterRecognition = false;
+                voiceEntry.start(text);
+                if (openConversation) voiceEntry.openConversation();
+                return kotlin.Unit.INSTANCE;
+            }
+            aiVoice.finishThinking(null);
             Fragment fragment = mManager.getFragment(POSITION_VOD);
             if (fragment instanceof com.fongmi.android.tv.ui.fragment.DiscoverFragment)
                 ((com.fongmi.android.tv.ui.fragment.DiscoverFragment) fragment).acceptVoice(text);
@@ -484,8 +494,55 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     public void setAiRecording(boolean recording) {
+        if (recording) openVoiceAfterRecognition = false;
+        if (recording && voiceEntry != null) voiceEntry.cancel();
         aiRecording = recording;
         updateAiFace();
+    }
+
+    public void showVoiceThinking(String status) { if (aiVoice != null) aiVoice.showThinking(status); }
+    public boolean isVoiceNavigationAvailable() {
+        return currentPosition != POSITION_VOD && glassNavigationEnabled;
+    }
+    public void setVoiceNavigationState(boolean active, float progress, String status) {
+        mBinding.glassNavigation.setVoiceState(active, progress, status);
+    }
+    @Override
+    public void onGlassVoiceCancel() {
+        openVoiceAfterRecognition = false;
+        if (voiceEntry != null) voiceEntry.cancel();
+        if (aiVoice != null) aiVoice.cancel();
+    }
+    @Override
+    public void onGlassVoiceOpen() {
+        if (voiceEntry != null && voiceEntry.openConversation()) return;
+        openVoiceAfterRecognition = true;
+        // Recognition can still be finishing before the first AI request exists.
+        finishVoiceThinking(() -> {
+            if (voiceEntry == null || !voiceEntry.openConversation()) onGlassNavigationSelected(R.id.vod);
+        });
+    }
+    public com.fongmi.android.tv.ui.fragment.DiscoverFragment openVoiceConversation() {
+        if (aiVoice != null) aiVoice.detachThinking();
+        // The legacy selection callback cancels requests; this path keeps the active one.
+        onGlassNavigationSelected(R.id.vod);
+        Fragment fragment = mManager.getFragment(POSITION_VOD);
+        return fragment instanceof com.fongmi.android.tv.ui.fragment.DiscoverFragment
+                ? (com.fongmi.android.tv.ui.fragment.DiscoverFragment) fragment : null;
+    }
+    public void finishVoiceThinking(Runnable after) {
+        finishVoiceThinking(false, after);
+    }
+    public void finishVoiceThinking(boolean found, Runnable after) {
+        if (aiVoice != null) aiVoice.finishThinking(after, found);
+        else if (after != null) after.run();
+    }
+
+    public void showAiVoiceResult(String input, String raw, com.fongmi.android.tv.ai.AiReply reply, String error, long askedAt) {
+        mBinding.navigation.setSelectedItemId(R.id.vod);
+        Fragment fragment = mManager.getFragment(POSITION_VOD);
+        if (fragment instanceof com.fongmi.android.tv.ui.fragment.DiscoverFragment)
+            ((com.fongmi.android.tv.ui.fragment.DiscoverFragment) fragment).acceptResolvedVoice(input, raw, reply, error, askedAt);
     }
 
     public void setAiThinking(boolean thinking) { aiThinking = thinking; updateAiFace(); }
@@ -522,6 +579,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
         if (mBinding.navigation.getSelectedItemId() == item.getItemId()) return false;
+        if (voiceEntry != null) voiceEntry.cancel();
         if (item.getItemId() == R.id.recommend) {
             change(POSITION_RECOMMEND);
             return true;
@@ -655,6 +713,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void onPause() {
+        openVoiceAfterRecognition = false;
+        if (voiceEntry != null) voiceEntry.cancel();
         aiOrb.setRunning(false);
         if (aiVoice != null) aiVoice.cancel();
         if (mBinding != null) mBinding.glassNavigation.setRenderingEnabled(false);
@@ -663,6 +723,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void onDestroy() {
+        if (voiceEntry != null) voiceEntry.cancel();
         navigationDisposed = true;
         if (mBinding != null) mBinding.getRoot().removeCallbacks(navigationUpdate);
         if (aiVoice != null) aiVoice.destroy();

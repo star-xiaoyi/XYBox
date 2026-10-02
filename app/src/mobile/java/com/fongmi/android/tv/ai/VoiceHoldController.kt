@@ -58,7 +58,7 @@ class VoiceHoldController(private val activity: HomeActivity, private val onText
             MotionEvent.ACTION_UP -> {
                 holding = false; handler.removeCallbacks(start)
                 if (longPress && recording) {
-                    if (cancelled) cancel() else { recording = false; overlay?.update(partial, false, true) }
+                    if (cancelled) cancel() else { recording = false; confirmRecognition() }
                 } else if (!longPress && !moved) view.performClick()
             }
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> { moved = true; cancel() }
@@ -101,7 +101,7 @@ class VoiceHoldController(private val activity: HomeActivity, private val onText
                     if (token == generation) {
                         if (cancelled) cancel()
                         else {
-                            recording = false; overlay?.setLevel(0f); overlay?.update(partial, false, true)
+                            recording = false; overlay?.setLevel(0f); confirmRecognition()
                             chunks.offer(ByteArray(0))
                         }
                     }
@@ -123,8 +123,9 @@ class VoiceHoldController(private val activity: HomeActivity, private val onText
                             val result = session.finish()
                             handler.post {
                                 if (token != generation) return@post
-                                busy = false; recording = false; hideOverlay(false)
-                                if (result.isBlank()) Notify.show("没有识别清楚，请重试或输入文字") else onText(result)
+                                busy = false; recording = false; activity.setAiRecording(false)
+                                if (result.isBlank()) { hideOverlay(); Notify.show("没有识别清楚，请重试或输入文字") }
+                                else { overlay?.update(result, false, true); onText(result) }
                             }
                             break
                         }
@@ -136,21 +137,47 @@ class VoiceHoldController(private val activity: HomeActivity, private val onText
         }
     }
     private fun fail(token: Int, text: String) { handler.post { if (token == generation) { cancel(); Notify.show(text) } } }
+    private fun confirmRecognition() {
+        overlay?.update(partial, false, true)
+        if (overlay?.usesNavigation == true) overlay?.showThinking("正在确认语音…")
+    }
+    private fun removeOverlay() {
+        val bubble = overlay ?: return
+        overlay = null
+        bubble.stopAnimations()
+        (bubble.parent as? ViewGroup)?.removeView(bubble)
+    }
+    /** Switch presentation without cancelling the microphone, AI request or its result. */
+    fun detachThinking() { removeOverlay() }
     private fun showOverlay() {
+        removeOverlay()
         val root = activity.findViewById<FrameLayout>(android.R.id.content)
-        val bubble = VoiceBubbleView(activity, root)
+        val bubble = VoiceBubbleView(activity, root, activity.isVoiceNavigationAvailable) { active, progress, status ->
+            activity.setVoiceNavigationState(active, progress, status)
+        }
         root.addView(bubble, FrameLayout.LayoutParams(-1, -1))
         overlay = bubble
         bubble.alpha = 0f
         bubble.animate().alpha(1f).setDuration(220).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
-    private fun hideOverlay(cancelled: Boolean) {
-        activity.setAiRecording(false)
-        val bubble = overlay ?: return; overlay = null
-        bubble.animate().cancel()
-        bubble.animate().alpha(0f)
-            .setDuration(if (cancelled) 160 else 180).withEndAction { (bubble.parent as? ViewGroup)?.removeView(bubble) }.start()
+    fun showThinking(text: String) {
+        if (overlay == null) showOverlay()
+        overlay?.showThinking(text)
     }
-    fun cancel() { generation++; holding = false; handler.removeCallbacks(start); cloud?.close(); cancelled = true; recording = false; busy = false; hideOverlay(true) }
-    fun destroy() { cancel(); capture.shutdownNow(); inference.shutdownNow() }
+    @JvmOverloads
+    fun finishThinking(after: Runnable?, found: Boolean = false) {
+        val bubble = overlay
+        if (bubble == null) { after?.run(); return }
+        bubble.dismiss(found, after != null) {
+            if (overlay === bubble) { removeOverlay(); after?.run() }
+        }
+    }
+    private fun hideOverlay() {
+        activity.setAiRecording(false)
+        val bubble = overlay ?: return
+        // Superseding a request must also cancel any queued completion/navigation.
+        bubble.dismiss(false, false) { if (overlay === bubble) removeOverlay() }
+    }
+    fun cancel() { generation++; holding = false; handler.removeCallbacks(start); cloud?.close(); cancelled = true; recording = false; busy = false; hideOverlay() }
+    fun destroy() { cancel(); removeOverlay(); capture.shutdownNow(); inference.shutdownNow() }
 }

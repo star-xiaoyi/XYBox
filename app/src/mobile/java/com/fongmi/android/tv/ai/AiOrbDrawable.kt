@@ -13,9 +13,11 @@ class AiOrbDrawable : Drawable(), Runnable {
     private var tint = ColorStateList.valueOf(Color.WHITE)
     private var running = false
     private var mode = 0
+    private var bodyMotionEnabled = true
     private var opacity = 255
     private var filter: ColorFilter? = null
     fun setMode(value: Int) { mode = value; invalidateSelf() }
+    fun setBodyMotionEnabled(value: Boolean) { bodyMotionEnabled = value; invalidateSelf() }
     fun setRunning(value: Boolean) {
         if (running == value) return
         running = value; unscheduleSelf(this); if (value) run()
@@ -33,9 +35,9 @@ class AiOrbDrawable : Drawable(), Runnable {
         val phase = t % 12000
         val bob = sin(t / 550.0).toFloat() * if (mode == 1) .5f else .22f
         val breath = 1f + sin(t / if (mode == 1) 180.0 else 700.0).toFloat() * if (mode == 1) .045f else .018f
-        canvas.translate(0f,bob); canvas.scale(breath, 2f-breath,12f,12f)
+        if (bodyMotionEnabled) { canvas.translate(0f,bob); canvas.scale(breath, 2f-breath,12f,12f) }
         val tilt = if (mode == 0 && phase in 5500..8500) sin((phase-5500)/3000.0*Math.PI).toFloat()*8f else if(mode==2) sin(t/450.0).toFloat()*4f else 0f
-        canvas.rotate(tilt,12f,12f)
+        if (bodyMotionEnabled) canvas.rotate(tilt,12f,12f)
         val layer=canvas.saveLayer(0f,0f,24f,24f,null)
         val base=tint.getColorForState(state,tint.defaultColor)
         paint.style=Paint.Style.STROKE; paint.colorFilter=filter; paint.xfermode=null

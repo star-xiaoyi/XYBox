@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 data class AiMetadata(val id: String, val title: String, val year: String, val country: String,
-    val kind: String, val actors: List<String>, val genres: List<String>, val pic: String, val rating: Double)
+    val kind: String, val actors: List<String>, val genres: List<String>, val pic: String, val rating: Double, val summary: String = "", val targetType: String = "")
 
 /** Full catalogue search; the five autocomplete suggestions are not a complete film catalogue. */
 object AiCatalog {
@@ -38,14 +38,14 @@ object AiCatalog {
                     subtitle.firstOrNull().orEmpty(), if (subtitle.getOrNull(1).orEmpty().contains("动画")) "动漫" else if (type == "tv") "电视剧" else "电影",
                     subtitle.drop(3).flatMap { it.split(' ') }.filter { it.isNotBlank() },
                     subtitle.getOrNull(1).orEmpty().split(' ').filter { it.isNotBlank() },
-                    picture(item.optString("cover_url")), item.optJSONObject("rating")?.optDouble("value", 0.0) ?: 0.0)
+                    picture(item.optString("cover_url")), item.optJSONObject("rating")?.optDouble("value", 0.0) ?: 0.0, targetType = type)
             }.filter { matches(film, it) }.distinctBy { it.id }
             if (candidates.size != 1) {
                 Logger.d("AiMetadata phase=no_unique_match title=${film.title} year=${film.year} country=${film.country} matches=${candidates.size}")
                 return null
             }
             val selected = candidates.single()
-            val full = detail(selected.id, if (selected.kind == "电视剧") "tv" else "movie")
+            val full = detail(selected.id, selected.targetType.ifBlank { if (selected.kind == "电影") "movie" else "tv" })
             val result = if (full != null && matches(film, full)) full.copy(pic = full.pic.ifBlank { selected.pic }) else selected
             cache[key(film)] = result
             Logger.d("AiMetadata phase=resolved title=${result.title} year=${result.year} country=${result.country} poster=${result.pic.isNotEmpty()}")
@@ -64,7 +64,8 @@ object AiCatalog {
         val actors = if (casts == null) emptyList() else (0 until casts.length()).mapNotNull { casts.optJSONObject(it)?.optString("name") }
         AiMetadata(id, data.optString("title"), data.optString("year"), jsonStrings(data.optJSONArray("countries")).joinToString(" / "),
             if (jsonStrings(data.optJSONArray("genres")).contains("动画")) "动漫" else if (type == "tv") "电视剧" else "电影", actors, jsonStrings(data.optJSONArray("genres")),
-            picture(data.optJSONObject("pic")?.optString("large").orEmpty()), data.optJSONObject("rating")?.optDouble("value", 0.0) ?: 0.0)
+            picture(data.optJSONObject("pic")?.optString("large").orEmpty()), data.optJSONObject("rating")?.optDouble("value", 0.0) ?: 0.0,
+            data.optString("intro").replace(Regex("<[^>]+>"), "").trim(), type)
     } catch (_: Exception) { null } }
     private fun get(url: String): JSONObject? = client.newCall(Request.Builder().url(url)
         .header("Referer", "https://m.douban.com/").build()).execute().use {
