@@ -9,7 +9,7 @@
     </item>
     <item android:id="@android:id/background">
         <shape android:shape="rectangle">
-            <solid android:color="@color/surface_secondary" />
+            <solid android:color="@color/download_selection_surface" />
             <corners android:radius="10dp" />
         </shape>
     </item>

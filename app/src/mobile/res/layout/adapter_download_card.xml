@@ -57,6 +57,7 @@
             android:layout_height="3dp"
             android:max="100"
             android:progressDrawable="@drawable/progress_history"
+                android:progressTint="@color/progress_download"
             android:visibility="gone"
             tools:progress="60"
             tools:visibility="visible" />

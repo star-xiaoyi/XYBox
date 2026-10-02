@@ -106,7 +106,8 @@ class LiquidGlassDownloadDeleteView @JvmOverloads constructor(
             episodeBorder = if (light) Color(0xFFD1D1D6) else Color(0xFF48484A),
             text = if (light) Color(0xFF1C1C1E) else Color.White,
             secondary = if (light) Color(0xFF6E6E73) else Color(0xFF98989D),
-            accent = Color(context.getColor(R.color.accent))
+            accent = Color(context.getColor(R.color.status_danger)),
+            fill = Color(context.getColor(R.color.control_danger))
         )
         val frameNanos = remember { mutableLongStateOf(0L) }
         val backdrop = rememberCanvasBackdrop {
@@ -123,7 +124,7 @@ class LiquidGlassDownloadDeleteView @JvmOverloads constructor(
                 .fillMaxWidth()
                 .padding(5.dp)
                 .heightIn(max = 580.dp)
-                .drawBackdrop(
+                .playbackSurface(context, palette.panel, 28.dp) { drawBackdrop(
                     backdrop = backdrop,
                     shape = { RoundedRectangle(28.dp) },
                     effects = {
@@ -132,7 +133,7 @@ class LiquidGlassDownloadDeleteView @JvmOverloads constructor(
                         lens(12.dp.toPx(), 28.dp.toPx(), depthEffect = true)
                     },
                     onDrawSurface = { drawRect(palette.panel) }
-                )
+                ) }
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -205,7 +206,7 @@ class LiquidGlassDownloadDeleteView @JvmOverloads constructor(
                     episodes.forEach { item ->
                         val key = Download.episodeKey(item.episodeName)
                         val selected = selectedState.contains(key)
-                        val selectedText = if (palette.accent.luminance() > 0.58f) Color(0xFF1C1C1E) else Color.White
+                        val selectedText = if (palette.fill.luminance() > 0.22f) Color(0xFF1C1C1E) else Color.White
                         val shape = RoundedCornerShape(12.dp)
                         Box(
                             contentAlignment = Alignment.Center,
@@ -213,7 +214,7 @@ class LiquidGlassDownloadDeleteView @JvmOverloads constructor(
                                 .weight(1f)
                                 .height(48.dp)
                                 .clip(shape)
-                                .background(if (selected) palette.accent else palette.episodeSurface)
+                                .background(if (selected) palette.fill else palette.episodeSurface)
                                 .border(
                                     width = 1.dp,
                                     color = if (selected) palette.accent else palette.episodeBorder,
@@ -293,5 +294,6 @@ private data class DeletePalette(
     val episodeBorder: Color,
     val text: Color,
     val secondary: Color,
-    val accent: Color
+    val accent: Color,
+    val fill: Color
 )

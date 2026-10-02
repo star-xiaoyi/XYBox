@@ -26,10 +26,19 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -74,10 +83,13 @@ internal fun LiquidBottomTabs(
     modifier: Modifier = Modifier,
     interactionEnabled: Boolean = true,
     selectionAlpha: Float = 1f,
+    processingProgress: Float = 0f,
+    processingTabIndex: Int = 1,
     content: @Composable RowScope.() -> Unit
 ) {
     val isLightTheme = !isSystemInDarkTheme()
     val tabsBackdrop = rememberLayerBackdrop()
+    val voiceBlue = Color(LocalContext.current.getColor(com.fongmi.android.tv.R.color.voice_recording_blue))
 
     BoxWithConstraints(modifier, contentAlignment = Alignment.CenterStart) {
         val density = LocalDensity.current
@@ -270,5 +282,58 @@ internal fun LiquidBottomTabs(
                 .height(44.dp)
                 .fillMaxWidth(1f / tabsCount)
         )
+
+        if (processingProgress > 0f) {
+            val motion = remember { com.fongmi.android.tv.ai.VoiceGlowMotion() }
+            val slot = processingTabIndex * (1f - processingProgress) + .5f
+            val iconX = with(density) { 4.dp.toPx() } + slot * tabWidth
+            val physicalIconX = if (isLtr) iconX else constraints.maxWidth - iconX
+            // Decorative only: hit targets and content stay in the existing navigation.
+            Box(Modifier.matchParentSize()
+                .graphicsLayer { translationX = panelOffset }
+                .processingOutline(processingProgress, frameNanos, voiceBlue, physicalIconX, motion))
+        }
+    }
+}
+
+private fun Modifier.processingOutline(progress: Float, frameNanos: LongState, blue: Color,
+    iconX: Float, motion: com.fongmi.android.tv.ai.VoiceGlowMotion) = drawWithCache {
+    val width = 1.6.dp.toPx()
+    val radius = minOf(size.height, size.width) / 2f
+    val originX = motion.originX(iconX).coerceIn(radius, maxOf(radius, size.width - radius))
+    val outline = Path().apply {
+        // Explicit origin on the upper edge directly above the AI icon, never the default path start.
+        moveTo(originX, 0f)
+        lineTo(size.width - radius, 0f)
+        arcTo(Rect(size.width - 2 * radius, 0f, size.width, size.height), -90f, 180f, false)
+        lineTo(radius, size.height)
+        arcTo(Rect(0f, 0f, radius * 2, size.height), 90f, 180f, false)
+        lineTo(originX, 0f)
+        close()
+    }
+    val measure = PathMeasure().apply { setPath(outline, true) }
+    val segment = Path()
+    val length = measure.length
+    val stroke = Stroke(width, cap = StrokeCap.Round)
+    val glow = Stroke(3.2.dp.toPx(), cap = StrokeCap.Round)
+    onDrawBehind {
+        if (length <= 0f) return@onDrawBehind
+        val opacity = progress.coerceIn(0f, 1f)
+        val animated = android.os.Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled()
+        val phase = if (animated) motion.phase(frameNanos.longValue, progress >= .999f, iconX) else 0f
+        val head = length * phase
+        val tail = length * .23f
+        val step = tail / 24f
+        // The path runs clockwise from the icon's top edge; the fading tail follows behind.
+        for (index in 0 until 24) {
+            val start = (head - (24 - index) * step + length) % length
+            val end = start + step
+            segment.reset()
+            measure.getSegment(start, minOf(end, length), segment, true)
+            if (end > length) measure.getSegment(0f, end - length, segment, true)
+            val strength = (index + 1) / 24f
+            drawPath(segment, blue.copy(alpha = .12f * strength * opacity), style = glow)
+            drawPath(segment, blue.copy(alpha = (.06f + .84f * strength * strength) * opacity), style = stroke)
+        }
     }
 }

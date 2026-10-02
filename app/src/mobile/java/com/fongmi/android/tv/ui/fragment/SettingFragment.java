@@ -121,7 +121,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         size = ResUtil.getStringArray(R.array.select_size);
         mBinding.settingsContent.setSizeOptions(size, Setting.getSize());
         mBinding.settingsContent.setThemeOptions(getThemeNames(), Setting.getThemeMode());
-        mBinding.settingsContent.setAccentOptions(getAccentNames(), Setting.getAccentColor(), requireContext().getColor(ThemeUtil.getAccentColorResource()));
         setLiveSettingsVisibility();
     }
 
@@ -144,9 +143,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         return new String[]{getString(R.string.setting_theme_system), getString(R.string.setting_theme_light), getString(R.string.setting_theme_dark)};
     }
 
-    private String[] getAccentNames() {
-        return new String[]{getString(R.string.setting_accent_yellow), getString(R.string.setting_accent_blue), getString(R.string.setting_accent_green), getString(R.string.setting_accent_purple)};
-    }
 
     private void setLiveSettingsVisibility() {
         // 设置项表达的是“隐藏直播”，所以 true 时不再显示直播源配置。
@@ -224,7 +220,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     private void onSettingOption(int action, int index) {
         switch (action) {
             case SettingsGlassContentView.ACTION_THEME: setTheme(index); break;
-            case SettingsGlassContentView.ACTION_ACCENT: setAccent(index); break;
             case SettingsGlassContentView.ACTION_SIZE: setSize(index); break;
             case SettingsGlassContentView.ACTION_DOH: setDoh(VodConfig.get().getDoh().get(index)); break;
         }
@@ -517,11 +512,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         ThemeUtil.applyNightMode();
     }
 
-    private void setAccent(int index) {
-        if (index == Setting.getAccentColor()) return;
-        Setting.putAccentColor(index);
-        requireActivity().recreate();
-    }
 
     private void setDoh(Doh doh) {
         Source.get().stop();

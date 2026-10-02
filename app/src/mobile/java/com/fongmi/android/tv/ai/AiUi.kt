@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.Alignment
 
 @Composable internal fun aiAccent() = Color(LocalContext.current.getColor(ThemeUtil.getAccentColorResource()))
+@Composable internal fun aiControlFill() = Color(LocalContext.current.getColor(R.color.control_primary))
+@Composable internal fun aiControlText() = Color(LocalContext.current.getColor(R.color.control_on_fill))
 @Composable internal fun aiTextColor() = Color(LocalContext.current.getColor(R.color.text_primary))
 @Composable internal fun aiSurface() = aiTextColor().copy(alpha = .055f)
 @Composable internal fun aiBackground(): Color = Color(LocalContext.current.getColor(R.color.screen_background))
@@ -43,9 +45,9 @@ import androidx.compose.ui.Alignment
         fontSize = size.sp, lineHeight = (size * 1.5f).sp, fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal))
 }
 @Composable internal fun AiButton(text: String, enabled: Boolean = true, primary: Boolean = false, onClick: () -> Unit) {
-    Box(Modifier.clip(RoundedCornerShape(16.dp)).background(if (primary) aiAccent().copy(alpha = if (enabled) 1f else .4f) else aiSurface())
+    Box(Modifier.clip(RoundedCornerShape(16.dp)).background(if (primary) aiControlFill().copy(alpha = if (enabled) 1f else .4f) else aiSurface())
         .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp)) {
-        BasicText(text, style = TextStyle(if (primary) Color.White else aiTextColor().copy(alpha = if (enabled) 1f else .4f), 14.sp, FontWeight.Medium))
+        BasicText(text, style = TextStyle(if (primary) aiControlText() else aiTextColor().copy(alpha = if (enabled) 1f else .4f), 14.sp, FontWeight.Medium))
     }
 }
 @Composable internal fun AiField(value: String, hint: String, secret: Boolean = false, onValue: (String) -> Unit) {

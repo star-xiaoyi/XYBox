@@ -175,7 +175,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private static final long BUFFERING_PROGRESS_DELAY_MS = 800;
     /** 竖屏全屏时，将画面中心固定在人眼更自然的、比屏幕几何中心高 28dp 的位置。 */
     private static final int PORTRAIT_VIEWING_CENTER_OFFSET_DP = 28;
-    private static final int PLAYER_PANEL_HEIGHT_DP = 260;
+    private static final int PLAYER_PANEL_MAX_HEIGHT_DP = 320;
     private static final Pattern RESOLUTION_PATTERN = Pattern.compile("(\\d{3,5})\\s*[xX×]\\s*(\\d{3,5})");
     private static final long MIN_AUTO_SWITCH_TIMEOUT = TimeUnit.SECONDS.toMillis(8);
     private static final int MORE_INFO = 1001;
@@ -799,7 +799,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         else getDetail();
     }
 
+    private boolean mDetailLoading;
+    private boolean mDetailStartedWithoutNetwork;
+    private boolean mRetryDetailWhenOnline;
+
     private void getDetail() {
+        mDetailLoading = true;
+        mRetryDetailWhenOnline = false;
+        mDetailStartedWithoutNetwork = !isOffline() && (!com.fongmi.android.tv.utils.Util.isNetworkAvailable()
+                || VodConfig.get().getSites().isEmpty());
         // 从离线缓存入口进来必须第一步就读本地数据库。原实现仍先请求原站详情，
         // 移动数据可用但源站不通时会一直等超时，完全断网反而更快触发本地兜底。
         // Intent 里仍保留原 key/id，观看记录继续写回原站条目。
@@ -823,8 +831,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void setDetail(Result result) {
+        mDetailLoading = false;
         mBinding.swipeLayout.setRefreshing(false);
         Vod offline = result.getList().isEmpty() ? getOfflineVod() : null;
+        mRetryDetailWhenOnline = !isOffline() && offline == null && result.getList().isEmpty()
+                && (mDetailStartedWithoutNetwork || !com.fongmi.android.tv.utils.Util.isNetworkAvailable()
+                || VodConfig.get().getSites().isEmpty());
         // 站源拉不到详情（多半是断网）而本地有缓存时，直接用缓存把页面撑起来
         if (offline != null) setDetail(offline);
         else if (result.getList().isEmpty()) setEmpty();
@@ -833,6 +845,17 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (result.hasMsg() && result.getList().isEmpty()) {
             Notify.show(result.getMsg());
         }
+        retryDetailAfterNetwork();
+    }
+
+    private void retryDetailAfterNetwork() {
+        if (!mRetryDetailWhenOnline || mDetailLoading || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                || isOffline() || isCasting() || isFinishing() || isDestroyed()
+                || !com.fongmi.android.tv.utils.Util.isNetworkAvailable()) return;
+        VodConfig.get().recoverIfNeeded();
+        if (getSite().getApi().isEmpty()) return;
+        Logger.i("VideoDetail: retry after network/configuration recovery");
+        getDetail();
     }
 
     /**
@@ -1610,7 +1633,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (isFullscreen() && !isActionShown(mBinding.control.action.reset)) addMore(ids, labels, icons, MORE_RESET, R.string.live_refresh, R.drawable.ic_action_refresh);
         if (isFullscreen() && !isActionShown(mBinding.control.action.ending)) addMore(ids, labels, icons, MORE_ENDING, R.string.play_ed, 0);
         if (isFullscreen() && !isActionShown(mBinding.control.action.exit)) addMore(ids, labels, icons, MORE_EXIT, R.string.play_exit_full, R.drawable.ic_control_exit_full);
-        mBinding.playbackPanel.show(anchor, getString(R.string.play_more), toIntArray(ids), labels.toArray(new String[0]), toIntArray(icons), null, 236, PLAYER_PANEL_HEIGHT_DP, this::onMoreItem);
+        mBinding.playbackPanel.show(anchor, getString(R.string.play_more), toIntArray(ids), labels.toArray(new String[0]), toIntArray(icons), null, 208, PLAYER_PANEL_MAX_HEIGHT_DP, this::onMoreItem);
         refreshBackHandling();
         App.removeCallbacks(mR1);
     }
@@ -1942,7 +1965,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             if (tracks.get(i).isSelected()) selected.add(i);
         }
         String title = ResUtil.getStringArray(R.array.select_track)[type - 1];
-        mBinding.playbackPanel.show(anchor, title, ids, labels, null, toIntArray(selected), 268, PLAYER_PANEL_HEIGHT_DP, id -> {
+        mBinding.playbackPanel.show(anchor, title, ids, labels, null, toIntArray(selected), 232, PLAYER_PANEL_MAX_HEIGHT_DP, id -> {
             Track item = tracks.get(id);
             if (item.isAuto()) {
                 Track.delete(mPlayers.getKey(), type);
@@ -2046,7 +2069,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             ids[i] = i;
             labels[i] = mParseAdapter.get(i).getName();
         }
-        mBinding.playbackPanel.show(anchor, getString(R.string.parse), ids, labels, null, new int[]{mParseAdapter.getPosition()}, 236, PLAYER_PANEL_HEIGHT_DP, id -> {
+        mBinding.playbackPanel.show(anchor, getString(R.string.parse), ids, labels, null, new int[]{mParseAdapter.getPosition()}, 208, PLAYER_PANEL_MAX_HEIGHT_DP, id -> {
             onItemClick(mParseAdapter.get(id));
             mBinding.playbackPanel.dismiss();
             setR1Callback();
@@ -2067,7 +2090,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             ids = new int[]{5, 15, 30, 60, 120, 180};
             labels = new String[]{getString(R.string.timer_5), getString(R.string.timer_15), getString(R.string.timer_30), getString(R.string.timer_60), getString(R.string.timer_120), getString(R.string.timer_180)};
         }
-        mBinding.playbackPanel.show(anchor, getString(R.string.play_timer), ids, labels, null, null, 220, PLAYER_PANEL_HEIGHT_DP, id -> {
+        mBinding.playbackPanel.show(anchor, getString(R.string.play_timer), ids, labels, null, null, 196, PLAYER_PANEL_MAX_HEIGHT_DP, id -> {
             if (id == delay) Timer.get().delay();
             else if (id == cancel) Timer.get().reset();
             else Timer.get().set(TimeUnit.MINUTES.toMillis(id));
@@ -2096,7 +2119,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         String[] labels = ResUtil.getStringArray(R.array.select_scale);
         int[] ids = new int[labels.length];
         for (int i = 0; i < ids.length; i++) ids[i] = i;
-        mBinding.playbackPanel.show(anchor, getString(R.string.player_scale), ids, labels, null, new int[]{getScale()}, 184, PLAYER_PANEL_HEIGHT_DP, id -> {
+        mBinding.playbackPanel.show(anchor, getString(R.string.player_scale), ids, labels, null, new int[]{getScale()}, 184, PLAYER_PANEL_MAX_HEIGHT_DP, id -> {
             if (mKeyDown.getScale() != 1.0f) mKeyDown.resetScale();
             setScale(id);
             mBinding.playbackPanel.dismiss();
@@ -2115,7 +2138,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             ids[i] = i;
             if (Math.abs(values[i] - mPlayers.getSpeed()) < Math.abs(values[selected] - mPlayers.getSpeed())) selected = i;
         }
-        mBinding.playbackPanel.show(anchor, getString(R.string.control_speed), ids, labels, null, new int[]{selected}, 188, PLAYER_PANEL_HEIGHT_DP, id -> {
+        mBinding.playbackPanel.show(anchor, getString(R.string.control_speed), ids, labels, null, new int[]{selected}, 188, PLAYER_PANEL_MAX_HEIGHT_DP, id -> {
             mBinding.control.action.speed.setText(mPlayers.setSpeed(values[id]));
             mHistory.setSpeed(mPlayers.getSpeed());
             syncCastSpeed();
@@ -2337,7 +2360,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void showControl() {
         if (mPiP.isInMode(this)) return;
         int widthDp = getPlayerWidthDp();
-        mBinding.control.danmaku.setVisibility(isLock() || !mPlayers.haveDanmaku() ? View.GONE : View.VISIBLE);
+        mBinding.control.danmaku.setVisibility(!isFullscreen() || isLock() || !mPlayers.haveDanmaku() ? View.GONE : View.VISIBLE);
         mBinding.control.playerMore.setVisibility(mPlayers.isEmpty() ? View.GONE : View.VISIBLE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.keep.setVisibility(mHistory == null || isFullscreen() || widthDp < 380 ? View.GONE : View.VISIBLE);
@@ -2598,7 +2621,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onRefreshEvent(RefreshEvent event) {
         if (isRedirect()) return;
-        if (event.getType() == RefreshEvent.Type.DETAIL) getDetail();
+        if (event.getType() == RefreshEvent.Type.NETWORK || event.getType() == RefreshEvent.Type.CONFIG) retryDetailAfterNetwork();
+        else if (event.getType() == RefreshEvent.Type.DETAIL) getDetail();
         else if (event.getType() == RefreshEvent.Type.PLAYER) onRefresh();
         else if (event.getType() == RefreshEvent.Type.DOWNLOAD) onDownloadRefresh();
         else if (event.getType() == RefreshEvent.Type.SUBTITLE) mPlayers.setSub(Sub.from(event.getPath()));
@@ -3989,6 +4013,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         }
         if (isRedirect() && !isCasting()) onPlay();
         setRedirect(false);
+        retryDetailAfterNetwork();
     }
 
     @Override

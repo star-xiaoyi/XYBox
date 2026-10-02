@@ -75,7 +75,7 @@ class LiquidGlassSliderView @JvmOverloads constructor(
     @Composable
     override fun Content() {
         val backdrop = rememberCanvasBackdrop { }
-        val accent = Color(ContextCompat.getColor(context, ThemeUtil.getAccentColorResource()))
+        val accent = Color(ContextCompat.getColor(context, com.fongmi.android.tv.R.color.progress_primary))
         Box(
             modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
             contentAlignment = Alignment.Center

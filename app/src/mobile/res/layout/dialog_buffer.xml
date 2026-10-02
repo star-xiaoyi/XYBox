@@ -15,10 +15,10 @@
         android:stepSize="1"
         android:valueFrom="1"
         android:valueTo="10"
-        app:thumbColor="@color/accent"
+        app:thumbColor="@color/progress_primary"
         app:thumbRadius="9dp"
         app:tickVisible="false"
-        app:trackColorActive="@color/accent"
+        app:trackColorActive="@color/progress_primary"
         app:trackColorInactive="@color/white_30" />
 
 </LinearLayout>

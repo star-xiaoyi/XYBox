@@ -24,18 +24,20 @@
 
     <ImageView
         android:id="@+id/playing"
+        android:duplicateParentState="true"
         android:layout_width="12dp"
         android:layout_height="12dp"
         android:layout_gravity="start|center_vertical"
         android:layout_marginStart="7dp"
         android:contentDescription="@string/download_current_episode"
         android:src="@drawable/ic_episode_playing"
-        android:tint="?attr/colorPrimary"
+        android:tint="@color/selector_download_episode_text"
         android:visibility="gone"
         tools:visibility="visible" />
 
     <ImageView
         android:id="@+id/done"
+        android:duplicateParentState="true"
         android:layout_width="14dp"
         android:layout_height="14dp"
         android:layout_gravity="end|center_vertical"
@@ -47,7 +49,23 @@
         tools:visibility="visible" />
 
     <TextView
+        android:id="@+id/selectionMark"
+        android:layout_width="16dp"
+        android:layout_height="18dp"
+        android:layout_gravity="end|center_vertical"
+        android:layout_marginEnd="6dp"
+        android:duplicateParentState="true"
+        android:gravity="center"
+        android:importantForAccessibility="no"
+        android:text="✓"
+        android:textColor="@color/selector_download_episode_text"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/state"
+        android:duplicateParentState="true"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="end|top"

@@ -89,16 +89,23 @@ public class Updater implements Download.Callback {
     }
 
     public void start(Activity activity) {
+        start(activity, () -> true);
+    }
+
+    /** Automatic checks may finish after the user has left the home page. */
+    public void start(Activity activity, java.util.function.BooleanSupplier canPrompt) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        if (silent && (!canPrompt.getAsBoolean() || DownloadService.isUpdateBusy())) return;
+        if (dialog != null && dialog.isShowing()) return;
         if (!CHECKING.compareAndSet(false, true)) {
             if (!silent) Notify.tip("正在检查更新，请稍候");
             return;
         }
         if (!silent) Notify.tip(App.get().getString(R.string.update_check));
-        App.execute(() -> { try { checkUpdate(activity); } finally { CHECKING.set(false); } });
+        App.execute(() -> { try { checkUpdate(activity, canPrompt); } finally { CHECKING.set(false); } });
     }
 
-    private void checkUpdate(Activity activity) {
+    private void checkUpdate(Activity activity, java.util.function.BooleanSupplier canPrompt) {
         try {
             JSONObject release = fetchRelease();
             String tagName = release.optString("tag_name");
@@ -116,7 +123,9 @@ public class Updater implements Download.Callback {
                 return;
             }
 
-            App.post(() -> show(activity, version, body));
+            App.post(() -> {
+                if (!silent || canPrompt.getAsBoolean()) show(activity, version, body);
+            });
         } catch (Exception e) {
             Logger.e("Updater: " + e.getMessage());
             tipError("检查更新失败：" + e.getMessage());
@@ -225,13 +234,16 @@ public class Updater implements Download.Callback {
      */
     private JSONObject parseRelease(String response) throws Exception {
         String trimmed = response.trim();
-        if (!trimmed.startsWith("[")) return new JSONObject(trimmed);
+        if (!trimmed.startsWith("[")) {
+            JSONObject release = new JSONObject(trimmed);
+            return acceptsRelease(release) ? release : null;
+        }
         JSONArray releases = new JSONArray(trimmed);
         JSONObject latest = null;
         String latestVersion = null;
         for (int i = 0; i < releases.length(); i++) {
             JSONObject release = releases.optJSONObject(i);
-            if (release == null || release.optBoolean("draft")) continue;
+            if (!acceptsRelease(release)) continue;
             String version = normalizeVersion(release.optString("tag_name"));
             if (TextUtils.isEmpty(version)) continue;
             if (latest == null || compare(version, latestVersion) > 0) {
@@ -240,6 +252,13 @@ public class Updater implements Download.Callback {
             }
         }
         return latest;
+    }
+
+    private boolean acceptsRelease(JSONObject release) {
+        if (release == null || release.optBoolean("draft")) return false;
+        String tag = release.optString("tag_name");
+        if (!validTag(tag)) return false;
+        return dev || (!release.optBoolean("prerelease") && !isPre(normalizeVersion(tag)));
     }
 
     private String normalizeVersion(String tagName) {
@@ -356,6 +375,8 @@ public class Updater implements Download.Callback {
      */
     private void show(Activity activity, String version, String desc) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        if (dialog != null && dialog.isShowing()) return;
+        if (silent && DownloadService.isUpdateBusy()) return;
         targetVersion = version;
         binding = DialogUpdateBinding.inflate(LayoutInflater.from(activity));
         binding.title.setText(App.get().getString(R.string.update_version, version));

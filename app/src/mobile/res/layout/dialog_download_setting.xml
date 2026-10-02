@@ -69,7 +69,7 @@
                 android:id="@+id/taskValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/accent"
+                android:textColor="@color/feature_download"
                 android:textSize="15sp"
                 android:textStyle="bold"
                 tools:text="3 集" />

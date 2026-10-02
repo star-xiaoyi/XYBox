@@ -25,9 +25,10 @@
         app:bar_height="2dp"
         app:scrubber_enabled_size="14dp"
         app:scrubber_disabled_size="14dp"
-        app:played_color="#FFEB3B"
-        app:scrubber_color="#FFEB3B"
-        app:buffered_color="#80FFEB3B" />
+        app:played_color="@color/playback_progress"
+        app:scrubber_color="@color/playback_scrubber"
+        app:buffered_color="@color/playback_buffered"
+        app:unplayed_color="@color/playback_unplayed" />
 
     <TextView
         android:id="@+id/duration"

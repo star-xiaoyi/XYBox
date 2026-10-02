@@ -45,7 +45,6 @@ public abstract class BaseActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         ThemeUtil.applyNightMode();
         super.onCreate(savedInstanceState);
-        ThemeUtil.applyAccent(this);
         if (transparent()) setTransparent(this);
         ViewBinding binding = getBinding();
         mContentRoot = binding.getRoot();

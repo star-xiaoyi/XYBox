@@ -22,6 +22,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -55,6 +58,22 @@ internal fun LiquidToggle(
     val light = !isSystemInDarkTheme()
     val trackColor = if (light) Color(0xFF787878).copy(alpha = 0.20f)
     else Color(0xFF787880).copy(alpha = 0.36f)
+    if (com.fongmi.android.tv.utils.PlaybackUi.isPlain(LocalContext.current)) {
+        AndroidView(
+            factory = { androidx.appcompat.widget.SwitchCompat(it).apply { text = ""; showText = false } },
+            modifier = modifier.size(56.dp, 32.dp),
+            update = { toggle ->
+                toggle.setOnCheckedChangeListener(null)
+                toggle.isChecked = selected()
+                toggle.thumbTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+                toggle.trackTintList = android.content.res.ColorStateList(
+                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                    intArrayOf(accentColor.toArgb(), trackColor.toArgb()))
+                toggle.setOnCheckedChangeListener { _, checked -> onSelect(checked) }
+            }
+        )
+        return
+    }
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val dragWidth = with(density) { 16.dp.toPx() }

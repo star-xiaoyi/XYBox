@@ -101,10 +101,10 @@ class AiSettingsActivity : BaseActivity() {
     }
     @Composable private fun Action(text: String, enabled: Boolean = true, primary: Boolean = false, action: () -> Unit) {
         Box(Modifier.clip(RoundedCornerShape(16.dp))
-            .background(if (primary) Color(0xFF1677FF).copy(alpha = if (enabled) 1f else .4f) else aiSurface())
+            .background(if (primary) aiControlFill().copy(alpha = if (enabled) 1f else .4f) else aiSurface())
             .clickable(enabled = enabled, onClick = action).padding(horizontal = 15.dp, vertical = 12.dp)) {
             androidx.compose.foundation.text.BasicText(text, style = androidx.compose.ui.text.TextStyle(
-                color = if (primary) Color.White else aiTextColor().copy(alpha = if (enabled) 1f else .4f), fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp)))
+                color = if (primary) aiControlText() else aiTextColor().copy(alpha = if (enabled) 1f else .4f), fontSize = androidx.compose.ui.unit.TextUnit(14f, androidx.compose.ui.unit.TextUnitType.Sp)))
         }
     }
     @Composable private fun Link(label: String, url: String) { AiText(label, 12, true, modifier = Modifier.clickable { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.padding(vertical = 4.dp)) }

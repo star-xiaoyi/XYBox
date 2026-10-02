@@ -313,7 +313,7 @@ class SettingsPlayerGlassContentView @JvmOverloads constructor(
                     valueRange = range,
                     visibilityThreshold = step / 10f,
                     backdrop = backdrop,
-                    accentColor = palette.accent,
+                    accentColor = Color(ContextCompat.getColor(androidx.compose.ui.platform.LocalContext.current, R.color.control_toggle)),
                     modifier = Modifier.fillMaxWidth().height(38.dp)
                 )
             }
@@ -654,7 +654,7 @@ private fun ToggleSettingRow(
             selected = { checked },
             onSelect = onToggle,
             backdrop = backdrop,
-            accentColor = palette.accent,
+            accentColor = Color(ContextCompat.getColor(androidx.compose.ui.platform.LocalContext.current, R.color.control_toggle)),
             modifier = Modifier.size(60.dp, 38.dp)
         )
     }

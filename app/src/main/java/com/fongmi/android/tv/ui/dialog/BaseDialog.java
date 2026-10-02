@@ -25,8 +25,7 @@ public abstract class BaseDialog extends BottomSheetDialogFragment {
     protected abstract ViewBinding getBinding(@NonNull LayoutInflater inflater, @Nullable ViewGroup container);
 
     /**
-     * 底部弹窗用的是自己那套主题，Activity 上的强调色叠加层进不来，
-     * 这里按当前强调色挑对应的弹窗主题，否则弹窗里的胶囊/按钮会一直是默认色。
+     * 底部弹窗共用固定功能配色，深浅色资源随当前外观切换。
      */
     @Override
     public int getTheme() {

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 线路/剧集胶囊：选中态，底色跟随设置里的主题强调色 -->
+<!-- 线路/剧集胶囊：浅粉选中态，文字使用独立的深色以保持清晰 -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
     android:color="@color/black_20">
     <item android:id="@android:id/mask">
@@ -10,7 +10,7 @@
     </item>
     <item android:id="@android:id/background">
         <shape android:shape="rectangle">
-            <solid android:color="?attr/colorPrimary" />
+            <solid android:color="@color/playback_selected_surface" />
             <corners android:radius="10dp" />
         </shape>
     </item>

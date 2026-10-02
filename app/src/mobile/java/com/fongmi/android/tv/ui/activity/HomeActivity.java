@@ -77,6 +77,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     private boolean aiRecording;
     private boolean aiThinking;
     private com.fongmi.android.tv.ai.VoiceEntryController voiceEntry;
+    private final Updater automaticUpdater = Updater.create().release().auto();
     private boolean openVoiceAfterRecognition;
     private FrameLayout aiNavigationHost;
     private View aiNavigationBackdrop;
@@ -120,7 +121,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         currentPosition = savedInstanceState == null ? 0 : savedInstanceState.getInt(STATE_POSITION, 0);
         bottomNavigationVisible = true;
         if (currentPosition == POSITION_VOD) getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
-        // Updater.create().release().start(this); // 移除自动检查更新，只在点击版本号时检查
         initFragment(savedInstanceState);
         Server.get().start();
         initConfig();
@@ -309,6 +309,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mBinding.glassNavigation.setSelectedItemId(itemId);
         updateGlassActionForCurrentPage();
         refreshBackHandling();
+        if (position == POSITION_RECOMMEND) checkAutomaticUpdate();
     }
 
     private void setSettingsChrome(boolean settings) {
@@ -709,6 +710,17 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     protected void onResume() {
         super.onResume();
         if (mBinding != null) applyNavigationMode();
+        // Lifecycle reaches RESUMED after this callback; defer the initial home check.
+        if (mBinding != null) mBinding.getRoot().post(this::checkAutomaticUpdate);
+    }
+
+    private boolean canShowAutomaticUpdate() {
+        return currentPosition == POSITION_RECOMMEND && !isFinishing() && !isDestroyed()
+                && getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED);
+    }
+
+    private void checkAutomaticUpdate() {
+        if (canShowAutomaticUpdate()) automaticUpdater.start(this, this::canShowAutomaticUpdate);
     }
 
     @Override

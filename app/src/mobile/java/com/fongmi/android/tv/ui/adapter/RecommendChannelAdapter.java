@@ -51,7 +51,7 @@ public class RecommendChannelAdapter extends RecyclerView.Adapter<RecommendChann
         boolean selected = position == mSelected;
         holder.binding.getRoot().setActivated(selected);
         holder.binding.text.setText(mItems[position]);
-        holder.binding.text.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), selected ? R.color.black : R.color.text_secondary));
+        holder.binding.text.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), selected ? R.color.home_category_text : R.color.text_secondary));
         holder.binding.text.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL);
         holder.binding.indicator.setVisibility(View.GONE);
         holder.binding.getRoot().setOnClickListener(view -> {

@@ -13,6 +13,7 @@ import com.fongmi.android.tv.bean.Parse;
 import com.fongmi.android.tv.bean.Rule;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Doh;
@@ -38,6 +39,7 @@ public class VodConfig {
     private Parse parse;
     private Site home;
     private volatile boolean isLoading = false; // 添加加载状态标记
+    private volatile boolean retryAfterNetwork;
 
     private VodConfig() {
         // 在构造函数中初始化列表，防止空指针异常
@@ -119,6 +121,7 @@ public class VodConfig {
     }
 
     public VodConfig init() {
+        retryAfterNetwork = false;
         this.home = null;
         this.parse = null;
         this.config = Config.vod();
@@ -152,7 +155,38 @@ public class VodConfig {
     }
 
     public void load(Callback callback) {
-        App.execute(() -> loadConfig(callback));
+        isLoading = true;
+        App.execute(() -> {
+            try {
+                loadConfig(callback);
+            } catch (Throwable error) {
+                // A malformed local fallback must not leave all later retries locked out.
+                retryAfterNetwork = getSites().isEmpty() && !TextUtils.isEmpty(getConfig().getUrl());
+                isLoading = false;
+                Logger.e("Error", error);
+                App.post(() -> callback.error(Notify.getError(R.string.error_config_parse, error)));
+            }
+        });
+    }
+
+    /** Retry only a failed, empty configuration; never tear down a working source on a network switch. */
+    public synchronized void recoverIfNeeded() {
+        if (!retryAfterNetwork || isLoading || !getSites().isEmpty()
+                || TextUtils.isEmpty(getConfig().getUrl())
+                || !com.fongmi.android.tv.utils.Util.isNetworkAvailable()) return;
+        Logger.i("VodConfig: recovering configuration after network became available");
+        load(new Callback() {
+            private void recovered() {
+                Logger.i("VodConfig: recovery completed, sites=" + getSites().size());
+                RefreshEvent.config();
+                RefreshEvent.video();
+            }
+            @Override public void success() { recovered(); }
+            @Override public void success(String notice) { recovered(); }
+            @Override public void error(String message) {
+                Logger.w("VodConfig: recovery failed; a later reconnect or retry can try again");
+            }
+        });
     }
 
     private void loadConfig(Callback callback) {
@@ -161,6 +195,7 @@ public class VodConfig {
             checkJson(Json.parse(Decoder.getJson(UrlUtil.convert(config.getUrl()), "vod")).getAsJsonObject(), callback);
         } catch (Throwable e) {
             if (TextUtils.isEmpty(config.getUrl())) {
+                retryAfterNetwork = false;
                 isLoading = false;
                 App.post(() -> callback.error(""));
             } else {
@@ -174,6 +209,7 @@ public class VodConfig {
         if (!TextUtils.isEmpty(config.getJson())) {
             checkJson(Json.parse(config.getJson()).getAsJsonObject(), callback);
         } else {
+            retryAfterNetwork = getSites().isEmpty();
             isLoading = false;
             App.post(() -> callback.error(Notify.getError(R.string.error_config_get, e)));
         }
@@ -181,6 +217,8 @@ public class VodConfig {
 
     private void checkJson(JsonObject object, Callback callback) {
         if (object.has("msg")) {
+            retryAfterNetwork = getSites().isEmpty();
+            isLoading = false;
             App.post(() -> callback.error(object.get("msg").getAsString()));
         } else if (object.has("urls")) {
             parseDepot(object, callback);
@@ -209,6 +247,7 @@ public class VodConfig {
             config.json(object.toString()).update();
             
             // 重置加载状态
+            retryAfterNetwork = false;
             isLoading = false;
             
             // 只调用一次success回调，优先显示通知消息
@@ -220,6 +259,7 @@ public class VodConfig {
         } catch (Throwable e) {
             Logger.e("Error", e);
             // 重置加载状态
+            retryAfterNetwork = getSites().isEmpty();
             isLoading = false;
             App.post(() -> callback.error(Notify.getError(R.string.error_config_parse, e)));
         }
