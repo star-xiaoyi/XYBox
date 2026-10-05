@@ -61,7 +61,7 @@ public class JarLoader {
 
     private DexClassLoader dex(File file) {
         DexClassLoader loader = new DexClassLoader(file.getAbsolutePath(), Path.jar().getAbsolutePath(), null, App.get().getClassLoader());
-        SourceUiOrigin.register(loader);
+        SourceUiOrigin.register(loader, file.getName());
         return loader;
     }
 

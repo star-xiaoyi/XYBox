@@ -333,13 +333,14 @@
     <string name="log_loading">正在讀取記錄…</string>
     <string name="log_empty">暫時沒有記錄</string>
     <string name="log_refresh">重新整理</string>
-    <string name="log_copy">複製</string>
+    <string name="log_save">儲存 TXT</string>
+    <string name="log_saving">儲存中…</string>
     <string name="log_share">分享</string>
     <string name="log_clear">清空</string>
     <string name="log_cancel">取消</string>
     <string name="log_clear_confirm">確定清空全部診斷記錄嗎？</string>
     <string name="log_size_summary">已記錄 %1$s · 達到 2 MB 後自動輪替</string>
-    <string name="log_copied">記錄已複製</string>
+    <string name="log_saved">記錄已儲存</string>
     <string name="log_cleared">記錄已清空</string>
     <string name="log_clear_failed">部分記錄未能清空</string>
     <string name="log_export_failed">記錄匯出失敗</string>

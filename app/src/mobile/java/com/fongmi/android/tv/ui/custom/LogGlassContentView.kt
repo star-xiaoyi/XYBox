@@ -73,7 +73,8 @@ class LogGlassContentView @JvmOverloads constructor(
         val text: String = "",
         val summary: String = "",
         val loading: Boolean = true,
-        val lineWrap: Boolean = true
+        val lineWrap: Boolean = true,
+        val savingLog: Boolean = false
     )
 
     private var state by mutableStateOf(LogState())
@@ -98,6 +99,10 @@ class LogGlassContentView @JvmOverloads constructor(
     }
 
     fun isLineWrapEnabled(): Boolean = state.lineWrap
+
+    fun setSavingLog(saving: Boolean) {
+        state = state.copy(savingLog = saving)
+    }
 
     fun toggleLineWrap(): Boolean {
         state = state.copy(lineWrap = !state.lineWrap)
@@ -184,7 +189,7 @@ class LogGlassContentView @JvmOverloads constructor(
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LogActionButton(stringResource(R.string.log_refresh), ACTION_REFRESH, backdrop, frameNanos, palette, Modifier.weight(1f))
-                LogActionButton(stringResource(R.string.log_copy), ACTION_COPY, backdrop, frameNanos, palette, Modifier.weight(1f))
+                LogActionButton(stringResource(if (state.savingLog) R.string.log_saving else R.string.log_save), ACTION_SAVE, backdrop, frameNanos, palette, Modifier.weight(1f))
                 LogActionButton(stringResource(R.string.log_share), ACTION_SHARE, backdrop, frameNanos, palette, Modifier.weight(1f))
                 LiquidButton(
                     onClick = { clearConfirmation = true },
@@ -309,7 +314,7 @@ class LogGlassContentView @JvmOverloads constructor(
 
     companion object {
         const val ACTION_REFRESH = 1
-        const val ACTION_COPY = 2
+        const val ACTION_SAVE = 2
         const val ACTION_SHARE = 3
         const val ACTION_CLEAR = 4
         private const val ACTION_CANCEL = 5

@@ -9,8 +9,8 @@ import java.util.*;
 public final class SiteHealth {
     private static SharedPreferences prefs() { return App.get().getSharedPreferences("site-health", 0); }
     private static String key(Site site) { return site.getKey(); }
-    public static boolean isPriority(Site site) { return prefs().getBoolean("priority:" + key(site), false); }
-    public static void setPriority(Site site, boolean value) { prefs().edit().putBoolean("priority:" + key(site), value).apply(); }
+    public static boolean isPriority(Site site) { return com.fongmi.android.tv.utils.SourcePreferences.isPriority(key(site)); }
+    public static void setPriority(Site site, boolean value) { com.fongmi.android.tv.utils.SourcePreferences.setPriority(key(site), value); }
     public static synchronized void search(Site site, String keyword, long elapsed, boolean failed, boolean found) {
         SharedPreferences p = prefs(); String key = key(site);
         long average = p.getLong("search:" + key, elapsed);

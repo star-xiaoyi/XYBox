@@ -159,6 +159,7 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         AppLog.install(this);
+        com.fongmi.android.tv.utils.PermissionUtil.installAudit();
         // A running version has already been installed successfully. Its source APK and
         // earlier update packages can now be removed; newer pending packages stay intact.
         App.execute(com.fongmi.android.tv.utils.UpdatePackages::cleanInstalled);

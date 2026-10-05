@@ -147,7 +147,7 @@ public final class AppLog {
         if (bytes.length <= DISPLAY_LIMIT_BYTES) return all;
         int start = bytes.length - DISPLAY_LIMIT_BYTES;
         while (start < bytes.length && (bytes[start] & 0xC0) == 0x80) start++;
-        return "……仅显示最近 320 KB，分享日志可导出全部内容……\n\n"
+        return "……仅显示最近 320 KB，保存 TXT 或分享日志可导出全部内容……\n\n"
                 + new String(bytes, start, bytes.length - start, StandardCharsets.UTF_8);
     }
 
@@ -172,6 +172,10 @@ public final class AppLog {
         }, 0L);
     }
 
+    public static String exportFileName() {
+        return "XY影视-log-" + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date()) + ".txt";
+    }
+
     public static File createShareFile(Context context) {
         // LogActivity calls this on a worker. Keep the directory scan off WRITER so a large
         // WebView/download directory cannot block persistent logging or its five-second timeout.
@@ -179,12 +183,13 @@ public final class AppLog {
         return callOnWriter(() -> {
             File shareDir = new File(context.getCacheDir(), "log-share");
             if (!shareDir.exists() && !shareDir.mkdirs()) return null;
-            File target = new File(shareDir, "XY影视-log-"
-                    + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date()) + ".txt");
+            File target = new File(shareDir, exportFileName());
+            if (target.exists()) target = File.createTempFile("XY影视-log-", ".txt", shareDir);
             String header = "XY影视 " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")\n"
                     + Build.MANUFACTURER + " " + Build.MODEL + " · Android " + Build.VERSION.RELEASE
                     + " (SDK " + Build.VERSION.SDK_INT + ")\n"
-                    + "导出时间：" + timestamp() + "\n\n";
+                    + "导出时间：" + timestamp() + "\n"
+                    + "文件权限：" + PermissionUtil.fileState(context) + "\n\n";
             try (FileOutputStream output = new FileOutputStream(target)) {
                 output.write(header.getBytes(StandardCharsets.UTF_8));
                 output.write(storageReport.getBytes(StandardCharsets.UTF_8));
@@ -198,6 +203,7 @@ public final class AppLog {
                     }
                     output.write('\n');
                 }
+                output.write("===== 日志导出结束 =====\n".getBytes(StandardCharsets.UTF_8));
             }
             return target;
         }, null);
