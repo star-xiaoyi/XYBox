@@ -26,6 +26,7 @@ import com.fongmi.android.tv.utils.AutoSyncManager;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ThemeUtil;
 import com.fongmi.android.tv.utils.ToastFilter;
+import com.fongmi.android.tv.utils.SourceUiGuard;
 import com.fongmi.android.tv.utils.WebDAVSyncManager;
 import com.fongmi.hook.Hook;
 import com.github.catvod.Init;
@@ -49,7 +50,7 @@ public class App extends Application {
     private final ExecutorService executor;
     private final Handler handler;
     private static App instance;
-    private Activity activity;
+    private volatile Activity activity;
     private final Gson gson;
     private final long time;
     private Hook hook;
@@ -87,6 +88,11 @@ public class App extends Application {
 
     public static App get() {
         return instance;
+    }
+
+    @Override
+    public Object getSystemService(String name) {
+        return SourceUiGuard.filterService(name, super.getSystemService(name));
     }
 
     public static Gson gson() {
@@ -153,6 +159,9 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         AppLog.install(this);
+        // A running version has already been installed successfully. Its source APK and
+        // earlier update packages can now be removed; newer pending packages stay intact.
+        App.execute(com.fongmi.android.tv.utils.UpdatePackages::cleanInstalled);
         // 必须在任何 Activity 创建之前应用日夜模式，否则冷启动时系统栏/导航栏颜色与内容区不一致
         ThemeUtil.applyNightMode();
         // 动态源可能绕过 Notify 直接调用 Toast；先安装进程内过滤器，再初始化其它组件。
@@ -162,11 +171,14 @@ public class App extends Application {
         // EventBus.builder().addIndex(new EventIndex()).installDefaultEventBus(); // 暂时注释，如果EventIndex不存在则删除
         EventBus.getDefault(); // 使用默认EventBus
         CaocConfig.Builder.create().backgroundMode(CaocConfig.BACKGROUND_MODE_SILENT).errorActivity(CrashActivity.class).apply();
+        AppLog.installCrashHandler();
         // Ensure default notification channel exists for foreground playback service (TV flavor too)
         Notify.createChannel();
         
         // 初始化自动缓存清理
         initCacheCleaner();
+        // Activity 的 initView 先于 onActivityStarted；冷启动的首次本地查询也必须知道云同步尚未完成。
+        webdavForegroundSyncPending = WebDAVSyncManager.get().isAutoSyncEnabled();
         registerWebDAVNetworkCallback();
         
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {

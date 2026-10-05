@@ -6,6 +6,29 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 
 public class Migrations {
 
+    /** 0 表示自动；正数保存该影片最后一次手动选择的清晰度档位。 */
+    public static final Migration MIGRATION_40_41 = new Migration(40, 41) {
+        @Override public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("ALTER TABLE History ADD COLUMN qualityHeight INTEGER NOT NULL DEFAULT 0");
+        }
+    };
+
+    public static final Migration MIGRATION_39_40 = new Migration(39, 40) {
+        @Override public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("ALTER TABLE History ADD COLUMN filmId TEXT DEFAULT NULL");
+            database.execSQL("ALTER TABLE History ADD COLUMN sourceKeys TEXT DEFAULT NULL");
+        }
+    };
+
+    /** Keep every old record; grouping and resume recovery happen without rewriting legacy progress. */
+    public static final Migration MIGRATION_38_39 = new Migration(38, 39) {
+        @Override public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("ALTER TABLE History ADD COLUMN vodYear TEXT DEFAULT NULL");
+            database.execSQL("ALTER TABLE History ADD COLUMN vodType TEXT DEFAULT NULL");
+            database.execSQL("ALTER TABLE History ADD COLUMN sharedProgress INTEGER NOT NULL DEFAULT 0");
+        }
+    };
+
     public static final Migration MIGRATION_30_31 = new Migration(30, 31) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {

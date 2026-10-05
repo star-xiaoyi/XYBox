@@ -8,6 +8,7 @@ import com.github.catvod.utils.Json;
 import com.github.catvod.utils.Util;
 
 import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -27,6 +28,19 @@ public class Decoder {
             HttpUrl httpUrl = res.request().url();
             int size = HttpUrl.parse(url).querySize();
             if (httpUrl.querySize() == size) url = httpUrl.toString();
+            return verify(url, res.body().string());
+        }
+    }
+
+    /** A bounded, status-aware read for testing an address without changing active sources. */
+    public static String testJson(String url, String tag, long timeoutMs) throws Exception {
+        okhttp3.OkHttpClient client = OkHttp.client(timeoutMs).newBuilder()
+                .callTimeout(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS).build();
+        try (Response res = OkHttp.newCall(client, url, tag).execute()) {
+            if (!res.isSuccessful()) throw new IOException("服务器返回 HTTP " + res.code());
+            if (res.body() == null) throw new IOException("服务器没有返回配置内容");
+            HttpUrl finalUrl = res.request().url();
+            if (finalUrl.querySize() == HttpUrl.get(url).querySize()) url = finalUrl.toString();
             return verify(url, res.body().string());
         }
     }

@@ -203,6 +203,13 @@ public class Config {
     }
 
     public static Config vod() {
+        // Saving a new address must not select it at the next launch. Preserve the
+        // old time-based fallback only for installations without a selection key.
+        if (Prefers.getPrefers().contains("config_0")) {
+            String selected = Prefers.getString("config_0");
+            Config item = TextUtils.isEmpty(selected) ? null : AppDatabase.get().getConfigDao().find(selected, 0);
+            return item == null ? create(0) : item;
+        }
         Config item = AppDatabase.get().getConfigDao().findOne(0);
         return item == null ? create(0) : item;
     }

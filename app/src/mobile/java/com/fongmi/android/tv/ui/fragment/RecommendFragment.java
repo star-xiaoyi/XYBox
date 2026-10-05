@@ -296,7 +296,7 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
             if (!focused) { hideSuggestions(); return; }
             mHandler.removeCallbacks(mAutoAdvance);
             mBinding.headerBar.setExpanded(true);
-            setBottomNavigationVisible(false);
+            setBottomNavigationVisible(true);
             scheduleSuggestions(mBinding.headerBar.getQuery().trim());
         });
         mBinding.headerBar.setOnSearchSubmittedListener(this::submitSearch);
@@ -711,7 +711,7 @@ public class RecommendFragment extends BaseFragment implements RecommendAdapter.
         mBinding.headerBar.setExpanded(true);
         mBinding.scroll.setVisibility(View.GONE);
         mBinding.searchContent.setVisibility(View.VISIBLE);
-        setBottomNavigationVisible(false);
+        setBottomNavigationVisible(true);
         HomeSearchFragment fragment = getSearchFragment();
         if (fragment == null) {
             fragment = HomeSearchFragment.newInstance(keyword, year);

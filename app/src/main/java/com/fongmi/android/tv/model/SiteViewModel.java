@@ -212,7 +212,7 @@ public class SiteViewModel extends ViewModel {
             return result;
         } else if (site.getType() == 3) {
             Spider spider = site.recent().spider();
-            String playerContent = spider.playerContent(flag, id, VodConfig.get().getFlags());
+            String playerContent = spider.playerContent(flag, id, VodConfig.get().getFlags(key));
             SpiderDebug.log(playerContent);
             Result result = Result.fromJson(playerContent);
             if (result.getFlag().isEmpty()) result.setFlag(flag);
@@ -261,7 +261,7 @@ public class SiteViewModel extends ViewModel {
     public static Result probePlayer(Site site, String flag, String id) throws Exception {
         Result result;
         if (site.getType() == 3) {
-            result = Result.fromJson(site.spider().playerContent(flag, id, VodConfig.get().getFlags()));
+            result = Result.fromJson(site.spider().playerContent(flag, id, VodConfig.get().getFlags(site.getKey())));
         } else if (site.getType() == 4) {
             ArrayMap<String, String> params = new ArrayMap<>();
             params.put("play", id);
@@ -274,6 +274,8 @@ public class SiteViewModel extends ViewModel {
             result.setParse(Sniffer.isVideoFormat(id) && result.getPlayUrl().isEmpty() ? 0 : 1);
         }
         result.setHeader(site.getHeader());
+        result.setKey(site.getKey());
+        if (result.getFlag().isEmpty()) result.setFlag(flag);
         return bindProxyJar(result, site);
     }
 

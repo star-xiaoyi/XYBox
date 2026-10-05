@@ -91,6 +91,20 @@
                 android:scaleType="fitXY"
                 android:visibility="gone" />
 
+            <TextView
+                android:id="@+id/seekPreviewLoading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="4dp"
+                android:background="@drawable/shape_widget"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="3dp"
+                android:text="@string/preview_loading"
+                android:textColor="@color/white"
+                android:textSize="10sp"
+                android:visibility="gone" />
+
         </FrameLayout>
 
         <LinearLayout

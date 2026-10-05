@@ -108,6 +108,7 @@ import com.fongmi.android.tv.player.exo.PlaybackCache;
 import com.fongmi.android.tv.player.exo.TrackNameProvider;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.search.GroupCache;
+import com.fongmi.android.tv.search.PlaybackRoutePolicy;
 import com.fongmi.android.tv.search.SearchTask;
 import com.fongmi.android.tv.search.TitleKey;
 import com.fongmi.android.tv.search.VodGroup;
@@ -187,10 +188,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private static final int MORE_TEXT = 1007;
     private static final int MORE_AUDIO = 1008;
     private static final int MORE_VIDEO = 1009;
-    private static final int MORE_PARSE = 1010;
     private static final int MORE_PIP = 1011;
     private static final int MORE_KEEP = 1012;
-    private static final int MORE_RESET = 1013;
     private static final int MORE_EXIT = 1014;
     private static final int MORE_EPISODES = 1015;
     private static final int MORE_ENDING = 1016;
@@ -229,12 +228,29 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private float mSpeedPhase;
     private long mSpeedTime;
     private SearchTask mSourceTask;
+    private boolean mSourceBackground;
+    private final Runnable mQualityMaintenance = this::maintainQualityWork;
+    private final Runnable mPlaybackWatchdog = this::watchPlayback;
+    private final Runnable mFinishInitialSelection = this::finishInitialSelection;
+    private com.fongmi.android.tv.search.PlaybackPolicy mPlaybackPolicy = new com.fongmi.android.tv.search.PlaybackPolicy();
+    private History mFilmIdentity;
+    private String mPlaybackEpisode = "", mSessionId = Long.toHexString(System.nanoTime()), mEntry = "detail";
+    private boolean mPlaybackWanted = true, mRecoveryPending, mRecoveryManual, mInitialSelection, mInitialSelectionDone;
+    private String mRecoveryReason = "fallback";
+    private Flag mInitialFlag;
+    private int mAutoWidth, mAutoHeight, mAutomaticSwitches, mManualSwitches;
+    private long mLastHealthLog;
+    private long mSourceProbeUntil, mCurrentStartupMs = -1;
+    private View mSourceAnchor;
     /** 用户是否明确点了某个片源；自动流程绝不进入只有网盘线路的源。 */
     private boolean mManualSourceSelection;
     private int mRatingGeneration;
+    private int mRatingAttempts;
     private String mRatingKey = "";
+    private long mRatingRetryAt;
     private List<String> mDoubanGenres = new ArrayList<>();
     private Douban.Subject mDoubanSubject;
+    private Vod mMetadataVod;
     /** 片源比对的目标：规整后的片名、年份、片种，详情加载后以详情为准。 */
     private String mTargetKey = "";
     private int mTargetYear;
@@ -246,6 +262,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private List<Dialog> mDialogs;
     private History mHistory;
     private History mPendingCloudHistory;
+    private History mPendingResumeHistory;
+    private com.fongmi.android.tv.search.QualityCatalog mQualityCatalog;
+    private com.fongmi.android.tv.search.QualityOption mSelectedQuality;
+    private boolean mAutomaticQuality = true;
+    private int mQualityHeight;
+    private boolean mQualityPreferenceLoaded, mQualityRestorePending;
+    private View mQualityAnchor;
+    private boolean mDoubanLoading;
     private long mCloudResumePosition = -1;
     /** 当前选中的剧集已经真正进入可播放状态，避免失败片源覆盖或合并掉旧记录。 */
     private boolean mHistoryPlaybackConfirmed;
@@ -260,6 +284,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private androidx.appcompat.app.AlertDialog mCloudProgressDialog;
     private Players mPlayers;
     private Vod mCurrentVod;  // 保存当前视频对象，用于演职人员跳转
+    private final Runnable mDoubanRetry = () -> {
+        if (mCurrentVod != null && !isFinishing() && !isDestroyed())
+            loadDoubanDetails(metadataName(mCurrentVod), metadataYear(mCurrentVod));
+    };
     private boolean fullscreen;
     private boolean initAuto;
     private boolean autoMode;
@@ -267,10 +295,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean redirect;
     private boolean rotate;
     private boolean castExpanded;
-    private static final int DETAIL_EPISODE = 0;
-    private static final int DETAIL_SOURCE = 1;
-    private static final int DETAIL_FLAG = 2;
-    private int mDetailPanel = DETAIL_EPISODE;
     /** 投屏中电视是否已经放到本集末尾，避免自动切下一集被轮询触发多次。 */
     private boolean castEnded;
     /**
@@ -333,7 +357,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     public static void cast(Activity activity, History history) {
-        start(activity, history.getSiteKey(), history.getVodId(), history.getVodName(), history.getVodPic());
+        resume(activity, history);
     }
 
     /**
@@ -356,16 +380,25 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     /**
-     * 从搜索结果进来：整组同名片源交给详情页，先播排在最前的那个，其余的列在"片源"里。
+     * 搜索组是候选集合；作品和续看进度先固定，再由播放决策选择可用来源。
      */
     public static void group(Activity activity, VodGroup group) {
         Vod vod = group.best().getVod();
+        History hint = new History(); hint.setVodName(group.getName()); hint.setVodYear(group.getYear() == 0 ? "" : String.valueOf(group.getYear())); hint.setVodType(vod.getTypeName());
+        History resume = null;
+        for (History record : hint.find()) resume = com.fongmi.android.tv.search.HistoryIdentity.prefer(resume, record);
         Intent intent = new Intent(activity, VideoActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         intent.putExtra("group", GroupCache.put(group));
-        intent.putExtra("name", vod.getVodName());
+        intent.putExtra("name", group.getName());
         intent.putExtra("pic", vod.getVodPic().isEmpty() ? group.getPic() : vod.getVodPic());
         intent.putExtra("key", vod.getSiteKey());
         intent.putExtra("id", vod.getVodId());
+        intent.putExtra("entry", "search").putExtra("year", hint.getVodYear()).putExtra("type", hint.getVodType());
+        if (resume != null) {
+            intent.putExtra("resumeHistory", resume.toString());
+            Site saved = VodConfig.get().getSite(resume.getCid(), resume.getSiteKey());
+            if (!saved.isEmpty()) intent.putExtra("key", saved.getKey()).putExtra("id", resume.getVodId());
+        }
         activity.startActivity(intent);
     }
 
@@ -383,6 +416,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         intent.putExtra("name", name);
         intent.putExtra("pic", pic);
         intent.putExtra("rating", rating);
+        intent.putExtra("entry", "discovery");
         intent.putExtra("key", "");
         intent.putExtra("id", "msearch:" + name);
         activity.startActivity(intent);
@@ -398,6 +432,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     public static void start(Activity activity, String key, String id, String name, String pic) {
         start(activity, key, id, name, pic, null);
+    }
+
+    public static void resume(Activity activity, History history) {
+        Site site = VodConfig.get().getSite(history.getCid(), history.getSiteKey());
+        String key = site.isEmpty() ? history.getSiteKey() : site.getKey();
+        Intent intent = new Intent(activity, VideoActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.putExtra("key", key).putExtra("id", history.getVodId()).putExtra("name", history.getVodName())
+                .putExtra("pic", history.getVodPic()).putExtra("year", history.getVodYear()).putExtra("type", history.getVodType())
+                .putExtra("entry", "history").putExtra("resumeHistory", history.toString());
+        activity.startActivity(intent);
     }
 
     public static void start(Activity activity, String key, String id, String name, String pic, String mark) {
@@ -431,7 +475,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private String getHistoryKey() {
-        return getKey().concat(AppDatabase.SYMBOL).concat(getId()).concat(AppDatabase.SYMBOL) + VodConfig.getCid();
+        int cid = getSite().getSourceId() > 0 ? getSite().getSourceId() : VodConfig.getCid();
+        return getKey().concat(AppDatabase.SYMBOL).concat(getId()).concat(AppDatabase.SYMBOL) + cid;
     }
 
     private Site getSite() {
@@ -484,18 +529,32 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         return mBinding = ActivityVideoBinding.inflate(getLayoutInflater());
     }
 
+    /** Dynamic source packages may try to attach their own progress bars or buttons to the player window. */
+    @Override
+    public void addContentView(View view, ViewGroup.LayoutParams params) {
+        if (mBinding != null) {
+            Logger.i("PlayerOverlay: blocked-added-view class=" + (view == null ? "null" : view.getClass().getName()));
+            return;
+        }
+        super.addContentView(view, params);
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         String id = Objects.toString(intent.getStringExtra("id"), "");
-        if (TextUtils.isEmpty(id) || id.equals(getId())) return;
+        String key = Objects.toString(intent.getStringExtra("key"), "");
+        if (TextUtils.isEmpty(id) || id.equals(getId()) && key.equals(getKey())) return;
+        flushProgress();
         mBinding.swipeLayout.setRefreshing(true);
         // putExtras 只覆盖不删除：新入口没带的片源组和年份不能沿用上一部片的
         GroupCache.remove(getGroupToken());
         getIntent().removeExtra("group");
         getIntent().removeExtra("year");
+        getIntent().removeExtra("type"); getIntent().removeExtra("entry"); getIntent().removeExtra("resumeHistory");
         getIntent().removeExtra("offline");
         getIntent().removeExtra("offline_group");
+        getIntent().removeExtra("mark");
         getIntent().putExtras(intent);
         resetSources();
         setOrient();
@@ -504,6 +563,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     protected void initView(Bundle savedInstanceState) {
+        com.fongmi.android.tv.utils.ToastFilter.enterPlayback(this);
+        com.fongmi.android.tv.utils.SourceUiGuard.protect(mBinding.video, "player");
         getWindow().setBackgroundDrawableResource(R.color.black);
         mBinding.exo.setBackgroundColor(Color.BLACK);
         mBinding.exo.setShutterBackgroundColor(Color.BLACK);
@@ -689,12 +750,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.download.setOnClickListener(view -> onDownload());
         mBinding.content.setOnClickListener(view -> onContent());
         mBinding.reverse.setOnClickListener(view -> onReverse());
-        mBinding.episodeTab.setOnClickListener(view -> setDetailPanel(DETAIL_EPISODE));
-        mBinding.sourceTab.setOnClickListener(view -> {
-            setDetailPanel(DETAIL_SOURCE);
-            checkQuick();
-        });
-        mBinding.flagTab.setOnClickListener(view -> setDetailPanel(DETAIL_FLAG));
         mBinding.name.setOnLongClickListener(view -> onChange());
         mBinding.content.setOnLongClickListener(view -> onCopy());
         mBinding.control.cast.setOnClickListener(view -> onCast());
@@ -717,14 +772,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.action.video.setOnClickListener(this::onTrack);
         mBinding.control.action.scale.setOnClickListener(this::onScale);
         mBinding.control.action.speed.setOnClickListener(this::onSpeed);
-        mBinding.control.action.reset.setOnClickListener(view -> onReset());
+        mBinding.control.action.reset.setOnClickListener(this::showSourcePanel);
         mBinding.control.action.ending.setOnClickListener(view -> onEnding());
         mBinding.control.action.opening.setOnClickListener(view -> onOpening());
         mBinding.control.action.episodes.setOnClickListener(view -> onEpisodes());
         mBinding.control.action.exit.setOnClickListener(view -> exitFullscreen());
         mBinding.control.action.text.setOnLongClickListener(view -> onTextLong());
         mBinding.control.action.speed.setOnLongClickListener(view -> onSpeedLong());
-        mBinding.control.action.reset.setOnLongClickListener(view -> onResetToggle());
         mBinding.control.action.ending.setOnLongClickListener(view -> onEndingReset());
         mBinding.control.action.opening.setOnLongClickListener(view -> onOpeningReset());
         mBinding.video.setOnTouchListener((view, event) -> mKeyDown.onTouchEvent(view, event));
@@ -733,6 +787,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.seek.setListener(mPlayers);
         mBinding.control.seek.setScrubListener(this);
         mBinding.playbackPanel.setOnPanelDismissListener(() -> {
+            mQualityAnchor = null;
+            mSourceAnchor = null;
             setR1Callback();
             refreshBackHandling();
         });
@@ -744,13 +800,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void setRecyclerView() {
-        mBinding.flag.setHasFixedSize(true);
-        mBinding.flag.setItemAnimator(null);
-        mBinding.flag.addItemDecoration(new SpaceItemDecoration(8));
-        mBinding.flag.setAdapter(mFlagAdapter = new FlagAdapter(this));
-        mBinding.sourceList.setItemAnimator(null);
-        mBinding.sourceList.addItemDecoration(new SpaceItemDecoration(8));
-        mBinding.sourceList.setAdapter(mSourceAdapter = new SourceAdapter(this));
+        mFlagAdapter = new FlagAdapter(this);
+        mSourceAdapter = new SourceAdapter(this);
         mBinding.related.setHasFixedSize(true);
         mBinding.related.setItemAnimator(null);
         mBinding.related.setAdapter(mRelatedAdapter = new RecommendAdapter(item -> VideoActivity.find(this, item.getTitle(), item.getPic(), item.getYear(), item.getRating())));
@@ -774,7 +825,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mPlayers.setDanmakuView(mBinding.danmaku);
         mPlayers.setTag(tag = UUID.randomUUID().toString());
         applyOrientation();
-        mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
+        mBinding.control.action.reset.setText(R.string.play_change_source);
         mBinding.video.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> mPiP.update(getActivity(), view));
     }
 
@@ -803,8 +854,26 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void checkId() {
+        mEntry = Objects.toString(getIntent().getStringExtra("entry"), "detail");
+        String resume = getIntent().getStringExtra("resumeHistory");
+        if (!TextUtils.isEmpty(resume)) {
+            mPendingResumeHistory = History.objectFrom(resume);
+            mPendingResumeHistory.setAccountId(com.fongmi.android.tv.utils.LocalProfile.id());
+        getIntent().removeExtra("resumeHistory");
+        }
+        History saved = mPendingCloudHistory == null ? mPendingResumeHistory : mPendingCloudHistory;
+        mFilmIdentity = saved == null ? new History() : History.objectFrom(saved.toString());
+        mFilmIdentity.setAccountId(com.fongmi.android.tv.utils.LocalProfile.id());
+        if (saved == null) {
+            mFilmIdentity.setKey(getHistoryKey()); mFilmIdentity.setVodName(getName()); mFilmIdentity.setVodYear(getYear());
+            mFilmIdentity.setVodType(Objects.toString(getIntent().getStringExtra("type"), ""));
+        }
+        Logger.i("PlaySession: event=enter session=" + mSessionId + " entry=" + mEntry + " title=" + getName()
+                + " savedFilm=" + mFilmIdentity.getFilmId() + " savedEpisode=" + mFilmIdentity.getVodRemarks());
+        VodConfig.get().activate(getKey());
+        mParseAdapter.reload();
         if (getId().startsWith("push://")) getIntent().putExtra("key", "push_agent").putExtra("id", getId().substring(7));
-        setTarget(getName(), getYear(), "");
+        setTarget(mFilmIdentity.getVodName(), mFilmIdentity.getVodYear(), mFilmIdentity.getVodType());
         initSources();
         boolean hasLocal = OfflinePlayback.matching(getKey(), getId(), getName(), getYear(), "").stream().anyMatch(Download::isPlayable);
         if (hasLocal) {
@@ -818,6 +887,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (!Util.isNetworkAvailable() || hasLocal) getDetail();
         else if (getId().isEmpty() || getId().startsWith("msearch:")) setEmpty();
         else getDetail();
+        App.removeCallbacks(mPlaybackWatchdog); App.post(mPlaybackWatchdog, 1000);
     }
 
     private boolean mDetailLoading;
@@ -857,9 +927,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void getDetail(Vod item) {
+        App.removeCallbacks(mFinishInitialSelection); mInitialSelection = false;
+        captureSourceProgress();
+        mPlaybackPolicy.switching(SystemClock.elapsedRealtime());
         getIntent().putExtra("key", item.getSiteKey());
         getIntent().putExtra("pic", item.getVodPic());
         getIntent().putExtra("id", item.getVodId());
+        VodConfig.get().activate(item.getSiteKey());
+        mParseAdapter.reload();
         mBinding.swipeLayout.setRefreshing(true);
         mBinding.swipeLayout.setEnabled(false);
         mBinding.scroll.scrollTo(0, 0);
@@ -884,10 +959,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (offline != null) { mLocalDetail = true; setDetail(offline); }
         else if (result.getList().isEmpty()) setEmpty();
         else setDetail(result.getList().get(0));
-        // 只在有错误或重要消息时显示提示
-        if (result.hasMsg() && result.getList().isEmpty()) {
-            Notify.show(result.getMsg());
-        }
+        // Provider messages are internal diagnostics. Recovery and the final player state own the UI.
+        if (result.hasMsg() && result.getList().isEmpty())
+            Logger.i("VideoDetail: provider-message suppressed msg=" + result.getMsg().replace('\n', ' '));
         retryDetailAfterNetwork();
     }
 
@@ -928,10 +1002,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 List<Download> local = OfflinePlayback.matching(key, id, vod.getVodName(), vod.getVodYear(), vod.getTypeName());
                 OfflinePlayback.remember(key, id, vod);
                 OfflinePlayback.merge(vod, local);
+                removeRestrictedFlags(vod);
                 prioritizePlayableFlags(vod);
                 Flag selected = null;
                 for (Flag flag : vod.getVodFlags()) {
-                    if (flag.isCloudDrive() || flag.getEpisodes().isEmpty()) continue;
+                    if (flag.isCloudDrive() || PlaybackRoutePolicy.isRestricted(flag) || flag.getEpisodes().isEmpty()) continue;
                     if (selected == null || flag.getFlag().equals(line)) selected = flag;
                 }
                 if (selected == null || playing == null) return;
@@ -976,32 +1051,37 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void setDetail(Vod item) {
+        if (!mLocalDetail && !acceptsDetail(item)) {
+            VodSource rejected = mSourceAdapter.getCurrent(); if (rejected != null) rejected.setBroken(true);
+            Logger.i("PlayIdentity: action=reject-detail session=" + mSessionId + " title=" + item.getVodName()
+                    + " expectedYear=" + mTargetYear + " actualYear=" + item.getVodYear()
+                    + " expectedKind=" + mTargetKind + " actualType=" + item.getTypeName());
+            checkSearch(false); return;
+        }
         List<Download> local = OfflinePlayback.matching(getKey(), getId(), item.getVodName(getName()), item.getVodYear(), item.getTypeName());
         if (!mLocalDetail && !local.isEmpty()) OfflinePlayback.remember(getKey(), getId(), item);
         OfflinePlayback.merge(item, local);
+        int restricted = removeRestrictedFlags(item);
+        if (!isOffline() && restricted > 0 && item.getVodFlags().isEmpty()) {
+            skipUnplayableSource("restricted-only");
+            return;
+        }
         prioritizePlayableFlags(item);
         if (!isOffline() && !mManualSourceSelection && hasOnlyCloudFlags(item)) {
-            skipCloudSource();
+            skipUnplayableSource("cloud-only");
             return;
         }
         mCurrentVod = item;  // 保存当前视频对象
+        if (mMetadataVod == null) mMetadataVod = item;
         mBinding.swipeLayout.setEnabled(false);
         mBinding.progressLayout.showContent();
-        mDetailPanel = DETAIL_EPISODE;
         mBinding.video.setTag(item.getVodPic(getPic()));
-        mBinding.name.setText(item.getVodName(getName()));
+        mBinding.name.setText(getName().isEmpty() ? item.getVodName() : getName());
         mBinding.name.playOnce();
-        loadDoubanDetails(item.getVodName(getName()), item.getVodYear().isEmpty() ? getYear() : item.getVodYear());
+        loadDoubanDetails(metadataName(item), metadataYear(item));
         mBinding.poster.setContentDescription(item.getVodName(getName()));
-        ImgUtil.rect(item.getVodName(getName()), item.getVodPic(getPic()), mBinding.poster);
-        setText(mBinding.content, 0, Html.fromHtml(item.getVodContent()).toString());
-        setCast(item);
-        updateContentExpand();
-        mBinding.contentLayout.setVisibility(mBinding.content.getVisibility());
+        renderDetailMetadata();
         mFlagAdapter.addAll(item.getVodFlags());
-        setMeta(item);
-        setTags(mDoubanGenres);
-        setArtwork(item.getVodPic());
         App.removeCallbacks(mR4);
         setTarget(item.getVodName(getName()), item.getVodYear().isEmpty() ? getYear() : item.getVodYear(), item.getTypeName());
         setCurrentSource(item);
@@ -1019,6 +1099,18 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         item.getVodFlags().sort((left, right) -> Boolean.compare(left.isCloudDrive(), right.isCloudDrive()));
     }
 
+    private int removeRestrictedFlags(Vod item) {
+        if (isOffline() || item == null) return 0;
+        int before = item.getVodFlags().size();
+        List<String> blocked = new ArrayList<>();
+        for (Flag flag : item.getVodFlags()) if (PlaybackRoutePolicy.isRestricted(flag)) blocked.add(flag.getFlag());
+        item.getVodFlags().removeIf(PlaybackRoutePolicy::isRestricted);
+        int removed = before - item.getVodFlags().size();
+        if (removed > 0) Logger.i("PlayRoute: action=block-restricted session=" + mSessionId
+                + " source=" + getKey() + " lines=" + String.join(",", blocked));
+        return removed;
+    }
+
     private boolean hasOnlyCloudFlags(Vod item) {
         if (item.getVodFlags().isEmpty()) return false;
         for (Flag flag : item.getVodFlags()) if (!flag.isCloudDrive()) return false;
@@ -1026,12 +1118,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     /** 当前站点只有网盘线路时不请求播放地址，直接继续找下一个普通源。 */
-    private void skipCloudSource() {
+    private void skipUnplayableSource(String reason) {
         VodSource current = mSourceAdapter.getCurrent();
         if (current != null) current.setBroken(true);
+        Logger.i("PlayDecision: action=skip-source session=" + mSessionId + " reason=" + reason + " source=" + getKey());
         mManualSourceSelection = false;
         if (nextSite()) return;
         if (mSourceTask != null && !mSourceTask.isFinished()) setInitAuto(true);
+        else if (mSourceTask != null && mSourceTask.hasMore()) { setInitAuto(true); mSourceTask.searchMore(); }
         else startSourceSearch(true);
     }
     
@@ -1040,6 +1134,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
      * 默认最多两行，超出时右下角出现展开按钮；这一整行位于下方主滚动区的顶部。
      */
     private void setCast(Vod item) {
+        if (mDoubanLoading) { showMetadataPlaceholder(); return; }
         List<CastMember> members = new ArrayList<>();
         List<String> directorsFromDouban = mDoubanSubject == null ? new ArrayList<>() : mDoubanSubject.getDirectors();
         List<String> actorsFromDouban = mDoubanSubject == null ? new ArrayList<>() : mDoubanSubject.getActors();
@@ -1173,6 +1268,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
      * 年份只取前 4 位数字，站源常见的 "2019-01-18" 这类完整日期在这一行显得太长。
      */
     private void setMeta(Vod item) {
+        if (mDoubanLoading) { showMetadataPlaceholder(); return; }
         List<String> parts = new ArrayList<>();
         String year = mDoubanSubject != null && !mDoubanSubject.getYear().isEmpty() ? mDoubanSubject.getYear() : item.getVodYear().trim();
         if (year.length() >= 4 && TextUtils.isDigitsOnly(year.substring(0, 4))) year = year.substring(0, 4);
@@ -1180,18 +1276,19 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         String area = mDoubanSubject != null && !mDoubanSubject.getCountries().isEmpty() ? TextUtils.join(" / ", mDoubanSubject.getCountries()) : item.getVodArea().trim();
         if (!area.isEmpty()) parts.add(area);
         if (!item.getVodRemarks().trim().isEmpty()) parts.add(item.getVodRemarks().trim());
-        if (!getSite().getName().trim().isEmpty()) parts.add(getSite().getName().trim());
         mBinding.meta.setText(TextUtils.join("  ·  ", parts));
         mBinding.metaScroll.setVisibility(parts.isEmpty() ? View.INVISIBLE : View.VISIBLE);
     }
 
     /** 优先使用豆瓣类型；确实没有时才回退片源分类。 */
     private void setTags(List<String> doubanGenres) {
+        if (mDoubanLoading) { showMetadataPlaceholder(); return; }
         mBinding.tags.removeAllViews();
         List<String> tags = new ArrayList<>();
         if (doubanGenres != null) for (String tag : doubanGenres) if (!tag.trim().isEmpty() && !tags.contains(tag.trim())) tags.add(tag.trim());
-        if (tags.isEmpty() && mCurrentVod != null) {
-            for (String type : mCurrentVod.getTypeName().split("[,，/、\\s]+")) {
+        Vod metadata = mMetadataVod == null ? mCurrentVod : mMetadataVod;
+        if (tags.isEmpty() && metadata != null) {
+            for (String type : metadata.getTypeName().split("[,，/、\\s]+")) {
                 if (!type.isEmpty() && !type.matches("[0-9]+") && type.length() <= 12 && !tags.contains(type)) tags.add(type);
             }
         }
@@ -1209,7 +1306,24 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void getPlayer(Flag flag, Episode episode, boolean replay) {
+        if (flag == null || episode == null) return;
+        if (mSelectedQuality != null && !isQualityMovie()
+                && !com.fongmi.android.tv.search.EpisodeKey.key(mSelectedQuality.episode.getName()).equals(com.fongmi.android.tv.search.EpisodeKey.key(episode.getName())))
+            mSelectedQuality = null;
+        prepareQualityCatalog(episode.getName());
+        if (mQualityCatalog != null) mQualityCatalog.budget(0);
         mPlaybackRequestedAt = SystemClock.elapsedRealtime();
+        mCurrentStartupMs = -1;
+        String semanticEpisode = isQualityMovie() ? "movie" : com.fongmi.android.tv.search.EpisodeKey.key(episode.getName());
+        if (!semanticEpisode.equals(mPlaybackEpisode)) {
+            mPlaybackPolicy.episode(mPlaybackRequestedAt); mPlaybackEpisode = semanticEpisode;
+            mAutoWidth = 0; mAutoHeight = 0; mRecoveryPending = false; mPlaybackWanted = true;
+            for (VodSource source : mSourceAdapter.getRanked()) source.setBroken(false);
+        }
+        mPlaybackPolicy.begin(mPlaybackRequestedAt);
+        Logger.i("PlayDecision: action=start session=" + mSessionId + " film=" + mHistory.getFilmId()
+                + " episode=" + semanticEpisode + " source=" + getKey() + " line=" + flag.getFlag()
+                + " positionMs=" + mHistory.getPosition() + " automatic=" + mAutomaticQuality);
         mLoggedPlaybackReady = false;
         mBinding.control.title.setText(getString(R.string.detail_title, mBinding.name.getText(), episode.getName()));
         List<Download> local = getLocalDownloads();
@@ -1246,20 +1360,55 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         } else mViewModel.playerContent(getKey(), flag.getFlag(), episode.getUrl());
     }
 
-    private void setPlayer(Result result) {
+    private void setPlayer(Result result) { setPlayer(result, false); }
+
+    private void setPlayer(Result result, boolean addressChecked) {
         Logger.i("OfflineStart: player-result local=" + OfflinePlayback.isLocal(result.getUrl().v())
                 + " elapsedMs=" + (SystemClock.elapsedRealtime() - mPlaybackRequestedAt));
-        result.getUrl().set(mQualityAdapter.getPosition());
-        if (!result.getDesc().isEmpty() && (mDoubanSubject == null || mDoubanSubject.getIntro().isEmpty())) {
+        result.getUrl().set(mSelectedQuality != null && mSelectedQuality.source.same(getKey(), getId()) ? mSelectedQuality.valueIndex : 0);
+        if (!addressChecked && !mAutomaticQuality && mSelectedQuality != null && mQualityCatalog != null
+                && mSelectedQuality.source.same(getKey(), getId()) && getFlag() != null
+                && mSelectedQuality.flag.getFlag().equals(getFlag().getFlag())
+                && (isQualityMovie() || com.fongmi.android.tv.search.EpisodeKey.key(mSelectedQuality.episode.getName()).equals(com.fongmi.android.tv.search.EpisodeKey.key(mHistory.getVodRemarks())))
+                && (mSelectedQuality.verifiedUrl.isEmpty() || System.currentTimeMillis() - mSelectedQuality.verifiedAt > 120000)
+                && !result.getUrl().isEmpty()) {
+            com.fongmi.android.tv.search.QualityOption selected = mSelectedQuality;
+            long request = mPlaybackRequestedAt; Result original = result;
+            mQualityCatalog.refreshSelection(selected, original, success -> {
+                if (isFinishing() || isDestroyed() || request != mPlaybackRequestedAt || selected != mSelectedQuality) return;
+                if (!success) { mSelectedQuality = null; mQualityHeight = 0; mAutomaticQuality = true; }
+                setPlayer(original, true);
+            });
+            return;
+        }
+        if (mSelectedQuality != null && !mSelectedQuality.verifiedUrl.isEmpty()
+                && mSelectedQuality.source.same(getKey(), getId()) && getFlag() != null
+                && mSelectedQuality.flag.getFlag().equals(getFlag().getFlag())
+                && (isQualityMovie()
+                    || com.fongmi.android.tv.search.EpisodeKey.key(mSelectedQuality.episode.getName()).equals(com.fongmi.android.tv.search.EpisodeKey.key(mHistory.getVodRemarks())))
+                && System.currentTimeMillis() - mSelectedQuality.verifiedAt <= 120000 && !result.getUrl().isEmpty()) {
+            // This URL is already resolved and was verified with its own required headers.
+            com.google.gson.JsonObject direct = App.gson().toJsonTree(result).getAsJsonObject();
+            direct.add("header", App.gson().toJsonTree(mSelectedQuality.verifiedHeaders));
+            result = Result.objectFrom(direct.toString());
+            result.getUrl().replace(mSelectedQuality.verifiedUrl);
+            result.setParse(0); result.setPlayUrl("");
+            direct = App.gson().toJsonTree(result).getAsJsonObject(); direct.addProperty("jx", 0);
+            result = Result.objectFrom(direct.toString());
+        }
+        if (!mDoubanLoading && mCurrentVod == mMetadataVod && !result.getDesc().isEmpty()
+                && (mDoubanSubject == null || mDoubanSubject.getIntro().isEmpty())) {
             setText(mBinding.content, R.string.detail_content, Html.fromHtml(result.getDesc()).toString());
             updateContentExpand();
         }
-        setUseParse(!OfflinePlayback.isLocal(result.getUrl().v()) && VodConfig.hasParse() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags().contains(result.getFlag())) || result.getJx() == 1));
+        setUseParse(!OfflinePlayback.isLocal(result.getUrl().v()) && !VodConfig.get().getSourceParses(getKey()).isEmpty() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags(getKey()).contains(result.getFlag())) || result.getJx() == 1));
         if (mControlDialog != null && mControlDialog.isVisible()) mControlDialog.setParseVisible(isUseParse());
         mBinding.control.parse.setVisibility(View.GONE);
         stopPlaybackCache();
+        mPlayers.setKey(getHistoryKey());
+        if (mAutomaticQuality || mSelectedQuality != null) { Track.delete(mPlayers.getKey(), C.TRACK_TYPE_VIDEO); mPlayers.resetTrack(C.TRACK_TYPE_VIDEO); }
         mPlayers.start(result, isUseParse(), getPlayerTimeout());
-        if (mAwaitingCloudSync || mCloudChoicePending) mPlayers.pause();
+        if (mAwaitingCloudSync || mCloudChoicePending || !mPlaybackWanted) mPlayers.pause();
         setQualityVisible(result.getUrl().isMulti());
         mBinding.swipeLayout.setRefreshing(false);
         mBinding.swipeLayout.setEnabled(false);
@@ -1269,6 +1418,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onItemClick(Flag item) {
+        mAutomaticQuality = false; mSelectedQuality = null; mQualityHeight = 0;
         selectFlag(item, false);
     }
 
@@ -1276,7 +1426,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (item.isActivated()) return false;
         int previousPosition = mEpisodeAdapter.isEmpty() ? -1 : mEpisodeAdapter.getPosition();
         mFlagAdapter.setActivated(item);
-        mBinding.flag.scrollToPosition(mFlagAdapter.getPosition());
         setEpisodeAdapter(item.getEpisodes());
         setQualityVisible(false);
         updateDetailPanels();
@@ -1307,8 +1456,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onItemClick(VodSource item) {
+        Logger.i("PlayDecision: action=source-mode session=" + mSessionId + " mode=manual source=" + item.getSiteKey());
         if (mSourceAdapter.isCurrent(item)) return;
-        setAutoMode(false);
         switchSource(item, false);
     }
 
@@ -1447,15 +1596,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private boolean seamless(Flag flag, boolean autoSwitch, int previousPosition) {
-        Episode episode = autoSwitch ? flag.findByRemarks(mHistory.getVodRemarks()) : flag.find(mHistory.getVodRemarks(), getMark().isEmpty());
+        Episode episode = com.fongmi.android.tv.search.QualityCatalog.match(flag, mHistory.getVodRemarks(), isQualityMovie());
         if ((isOffline() || !Util.isNetworkAvailable()) && (episode == null || !episode.isCached())) {
             for (Episode cached : flag.getEpisodes()) if (cached.isCached()) { episode = cached; break; }
         }
-        // 国语/粤语等电影线路常用不同集名，无法靠文字匹配；自动换线时按原线路
-        // 的同一序号承接。序号超出目标线路范围则不乱播，由换源流程继续找下一条。
-        if (episode == null && autoSwitch && previousPosition >= 0 && previousPosition < flag.getEpisodes().size()) episode = flag.getEpisodes().get(previousPosition);
         setQualityVisible(episode != null && episode.isActivated() && mQualityAdapter.getItemCount() > 1);
         if (episode == null) return false;
+        if (autoSwitch && mHistory.getPosition() >= 0) mCloudResumePosition = mHistory.getPosition();
         if (episode.isActivated()) {
             if (autoSwitch) onRefresh();
             return true;
@@ -1471,8 +1618,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void setQualityVisible(boolean visible) {
-        mBinding.qualityText.setVisibility(visible ? View.VISIBLE : View.GONE);
-        mBinding.quality.setVisibility(visible ? View.VISIBLE : View.GONE);
+        // Provider value labels may claim fake HD/4K; use the verified quality menu instead.
+        mBinding.qualityText.setVisibility(View.GONE);
+        mBinding.quality.setVisibility(View.GONE);
     }
 
     private void reverseEpisode(boolean scroll) {
@@ -1711,7 +1859,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             return;
         }
         if (mPlayers.isPlayRequested()) onPaused();
-        else if (mPlayers.isEmpty()) onRefresh();
+        else if (mPlayers.isEmpty()) { mPlaybackWanted = true; onRefresh(); }
         else onPlay();
     }
 
@@ -1722,14 +1870,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void checkNext(boolean notify) {
         setR1Callback();
         Episode item = mEpisodeAdapter.getNext();
-        if (!item.isActivated()) onItemClick(item);
+        if (item != null && !item.isActivated()) onItemClick(item);
         else if (notify) Notify.show(R.string.error_play_next);
     }
 
     private void checkPrev() {
         setR1Callback();
         Episode item = mEpisodeAdapter.getPrev();
-        if (!item.isActivated()) onItemClick(item);
+        if (item != null && !item.isActivated()) onItemClick(item);
         else Notify.show(R.string.error_play_prev);
     }
 
@@ -1744,14 +1892,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (!isActionShown(mBinding.control.action.speed)) addMore(ids, labels, icons, MORE_SPEED, R.string.control_speed, 0);
         if (mPlayers.haveTrack(C.TRACK_TYPE_TEXT)) addMore(ids, labels, icons, MORE_TEXT, R.string.play_track_text, R.drawable.ic_control_subtitle);
         if (mPlayers.haveTrack(C.TRACK_TYPE_AUDIO)) addMore(ids, labels, icons, MORE_AUDIO, R.string.play_track_audio, R.drawable.ic_control_audio_track);
-        if (mPlayers.haveTrack(C.TRACK_TYPE_VIDEO) && !isActionShown(mBinding.control.action.video)) addMore(ids, labels, icons, MORE_VIDEO, getString(R.string.play_quality_value, getCurrentQualityLabel()), 0);
-        if (isUseParse() && !mParseAdapter.isEmpty()) addMore(ids, labels, icons, MORE_PARSE, R.string.parse, R.drawable.ic_action_refresh);
+        if (mCurrentVod != null && !isActionShown(mBinding.control.action.video)) addMore(ids, labels, icons, MORE_VIDEO, getString(R.string.play_quality_value, getCurrentQualityLabel()), 0);
         if (!isFullscreen() && mEpisodeAdapter.getItemCount() > 1) addMore(ids, labels, icons, MORE_EPISODES, R.string.detail_episode, R.drawable.ic_action_list);
         if (isFullscreen() && !PiP.noPiP() && !isVisible(mBinding.control.pip)) addMore(ids, labels, icons, MORE_PIP, R.string.play_pip, R.drawable.ic_control_pip);
         if (!isFullscreen() && mHistory != null && !isVisible(mBinding.control.keep)) addMore(ids, labels, icons, MORE_KEEP, R.string.keep, R.drawable.ic_control_keep_off);
-        if (isFullscreen() && !isActionShown(mBinding.control.action.reset)) addMore(ids, labels, icons, MORE_RESET, R.string.live_refresh, R.drawable.ic_action_refresh);
         if (isFullscreen() && !isActionShown(mBinding.control.action.ending)) addMore(ids, labels, icons, MORE_ENDING, R.string.play_ed, 0);
         if (isFullscreen() && !isActionShown(mBinding.control.action.exit)) addMore(ids, labels, icons, MORE_EXIT, R.string.play_exit_full, R.drawable.ic_control_exit_full);
+        mQualityAnchor = null;
         mBinding.playbackPanel.show(anchor, getString(R.string.play_more), toIntArray(ids), labels.toArray(new String[0]), toIntArray(icons), null, 208, PLAYER_PANEL_MAX_HEIGHT_DP, this::onMoreItem);
         refreshBackHandling();
         App.removeCallbacks(mR1);
@@ -1801,17 +1948,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             case MORE_VIDEO:
                 anchor.postDelayed(() -> showTrackPanel(anchor, C.TRACK_TYPE_VIDEO), 160);
                 break;
-            case MORE_PARSE:
-                anchor.postDelayed(() -> showParsePanel(anchor), 160);
-                break;
             case MORE_PIP:
                 enterPiP();
                 break;
             case MORE_KEEP:
                 onKeep();
-                break;
-            case MORE_RESET:
-                onReset();
                 break;
             case MORE_ENDING:
                 onEnding();
@@ -2074,6 +2215,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void showTrackPanel(View anchor, int type) {
+        if (type == C.TRACK_TYPE_VIDEO) { showQualityPanel(anchor, false); return; }
+        mQualityAnchor = null;
         List<Track> tracks = getTracks(type);
         if (tracks.isEmpty()) return;
         int[] ids = new int[tracks.size()];
@@ -2103,6 +2246,631 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         });
         refreshBackHandling();
         App.removeCallbacks(mR1);
+    }
+
+    private void captureSourceProgress() {
+        if (mHistory == null) return;
+        if (mHistoryPlaybackConfirmed && mPlayers.getPosition() >= 0 && mPlayers.getDuration() > 0) {
+            mHistory.setPosition(mPlayers.getPosition()); mHistory.setDuration(mPlayers.getDuration());
+            savePlaybackProgress();
+        }
+        mPendingResumeHistory = History.objectFrom(mHistory.toString());
+        mPendingResumeHistory.setAccountId(mHistory.getAccountId());
+    }
+
+    private boolean canChooseSource() {
+        return mCurrentVod != null && mHistory != null && !isOffline() && !isCasting()
+                && mPlayingDownload == null && !OfflinePlayback.isLocal(mPlayers.getUrl());
+    }
+
+    private void showSourcePanel(View anchor) {
+        if (!canChooseSource()) return;
+        mQualityAnchor = null;
+        mSourceAnchor = anchor;
+        mSourceProbeUntil = SystemClock.elapsedRealtime() + 45000;
+        prepareQualityCatalog(mHistory.getVodRemarks());
+        if (mQualityCatalog != null) {
+            mQualityCatalog.budget(0);
+            mQualityCatalog.refreshMeasurements(false, mSourceAdapter.getCurrent(), getFlag() == null ? "" : getFlag().getFlag());
+            mQualityCatalog.budget(1);
+        }
+        renderSourcePanel(anchor, false);
+        ensureSourceDiscovery();
+        Logger.i("SourceChoice: action=open session=" + mSessionId + " source=" + getKey()
+                + " line=" + (getFlag() == null ? "" : getFlag().getFlag()) + " episode=" + mPlaybackEpisode);
+        refreshBackHandling(); App.removeCallbacks(mR1);
+        checkQuick();
+    }
+
+    private String currentSourceRoute() {
+        return getKey() + "\n" + getId() + "\n" + (getFlag() == null ? "" : getFlag().getFlag())
+                + "\n" + mQualityAdapter.getPosition();
+    }
+
+    private List<com.fongmi.android.tv.search.QualityOption> sourceOptions() {
+        List<com.fongmi.android.tv.search.QualityOption> values = mQualityCatalog == null ? new ArrayList<>() : mQualityCatalog.items();
+        values.removeIf(item -> {
+            VodSource live = mSourceAdapter.find(item.source.getSiteKey(), item.source.getVodId());
+            return live != null && live.isBroken();
+        });
+        return com.fongmi.android.tv.search.SourceSelection.routes(values, System.currentTimeMillis());
+    }
+
+    private String sourceMetrics(com.fongmi.android.tv.search.QualityOption item, boolean measuring) {
+        if (item == null || item.measuredAt <= 0) return measuring ? "测速中…" : "暂无测速结果";
+        boolean fresh = com.fongmi.android.tv.search.SourceSelection.fresh(item.measuredAt, System.currentTimeMillis());
+        String latency = item.latencyMs >= 0 ? "响应 " + item.latencyMs + " ms" : "响应未测得";
+        String speed = item.speed > 0 ? String.format(Locale.ROOT, "%.2f MB/s", item.speed / (1024d * 1024d)) : "速度未测得";
+        return (fresh ? "" : "上次：") + latency + " · " + speed;
+    }
+
+    private void renderSourcePanel(View anchor, boolean update) {
+        if (!canChooseSource()) return;
+        List<com.fongmi.android.tv.search.QualityOption> routes = sourceOptions();
+        boolean measuring = mQualityCatalog != null && mQualityCatalog.isInspecting()
+                && SystemClock.elapsedRealtime() < mSourceProbeUntil;
+        com.fongmi.android.tv.search.QualityOption current = null;
+        for (com.fongmi.android.tv.search.QualityOption item : routes) if (item.route().equals(currentSourceRoute())) { current = item; break; }
+        routes.removeIf(item -> item.route().equals(currentSourceRoute()));
+        List<VodSource> unmeasured = new ArrayList<>();
+        for (VodSource source : mSourceAdapter.getRanked()) {
+            if (source.isBroken() || source.getSite().isCloudDrive() || !source.getSite().isChangeable()
+                    || !VodConfig.isSiteEnabled(source.getSite()) || source.same(getKey(), getId())) continue;
+            boolean measured = false;
+            for (com.fongmi.android.tv.search.QualityOption item : routes) if (item.source.same(source.getSiteKey(), source.getVodId())) { measured = true; break; }
+            if (!measured) unmeasured.add(source);
+        }
+        int[] ids = new int[3 + routes.size() + unmeasured.size()];
+        String[] labels = new String[ids.length], subtitles = new String[ids.length];
+        ids[0] = 0; ids[1] = -1; ids[2] = -2;
+        labels[0] = getSite().getName() + (getFlag() == null ? "" : " / " + getFlag().getFlag());
+        String health = !mLoggedPlaybackReady ? "正在连接" : "缓冲 " + Math.max(0, mPlayers.getBuffered() - mPlayers.getPosition()) / 1000 + " 秒"
+                + (mCurrentStartupMs >= 0 ? String.format(Locale.ROOT, " · 起播 %.1f 秒", mCurrentStartupMs / 1000d) : "");
+        subtitles[0] = health + "\n" + sourceMetrics(current, measuring);
+        labels[1] = "自动找源";
+        subtitles[1] = "";
+        labels[2] = "重新测速";
+        subtitles[2] = "";
+        boolean recommended = false;
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < routes.size(); i++) {
+            com.fongmi.android.tv.search.QualityOption item = routes.get(i);
+            int row = i + 3; ids[row] = row;
+            int grade = com.fongmi.android.tv.search.SourceSelection.grade(item.speed, item.bitrate, item.measuredAt, now);
+            boolean recommend = !recommended && grade < 2;
+            recommended |= recommend;
+            labels[row] = (recommend ? "推荐 · " : "") + item.source.getSiteName() + " / " + item.flag.getFlag();
+            subtitles[row] = sourceMetrics(item, measuring && item.measuredAt <= 0) + "\n" + (grade == 0 ? "速度有余量" : grade == 3 ? "速度可能不足，容易缓冲"
+                    : grade == 1 ? "已测速度，码率未知" : "等待本次测速");
+        }
+        for (int i = 0; i < unmeasured.size(); i++) {
+            int row = 3 + routes.size() + i; ids[row] = row;
+            labels[row] = unmeasured.get(i).getSiteName();
+            subtitles[row] = "尚未测速 · 可手动尝试";
+        }
+        com.fongmi.android.tv.ui.custom.PlaybackGlassPanelView.OnItemClickListener click = id -> {
+            if (mDetailLoading || !canChooseSource()) return;
+            if (id == -2) {
+                mSourceProbeUntil = SystemClock.elapsedRealtime() + 45000;
+                prepareQualityCatalog(mHistory.getVodRemarks());
+                if (mQualityCatalog != null) {
+                    mQualityCatalog.budget(0);
+                    mQualityCatalog.refreshMeasurements(true, mSourceAdapter.getCurrent(), getFlag() == null ? "" : getFlag().getFlag());
+                    mQualityCatalog.budget(sourceProbeBudget());
+                }
+                ensureSourceDiscovery();
+                Logger.i("SourceChoice: action=retest session=" + mSessionId + " episode=" + mPlaybackEpisode);
+                renderSourcePanel(anchor, true);
+                return;
+            }
+            mBinding.playbackPanel.dismiss();
+            if (id == -1) recoverPlayback("source-request", true, false);
+            else if (id >= 3 && id < 3 + routes.size()) {
+                com.fongmi.android.tv.search.QualityOption item = routes.get(id - 3);
+                Logger.i("SourceChoice: action=select session=" + mSessionId + " source=" + item.source.getSiteKey()
+                        + " line=" + item.flag.getFlag() + " latencyMs=" + item.latencyMs + " bytesPerSecond=" + item.speed
+                        + " measuredAt=" + item.measuredAt + " episode=" + mPlaybackEpisode);
+                mRecoveryPending = true; mRecoveryManual = true; mRecoveryReason = "source-selection";
+                selectQuality(item, mAutomaticQuality);
+            } else if (id >= 3 + routes.size()) onItemClick(unmeasured.get(id - 3 - routes.size()));
+            setR1Callback();
+        };
+        if (update) mBinding.playbackPanel.updateSources("换源 · 流畅优先", ids, labels, subtitles, new int[]{0}, click);
+        else mBinding.playbackPanel.showSources(anchor, "换源 · 流畅优先", ids, labels, subtitles, new int[]{0}, click);
+    }
+
+    private int sourceProbeBudget() {
+        long buffered = mPlayers == null ? 0 : mPlayers.getBuffered() - mPlayers.getPosition();
+        return buffered >= 25000 ? 4 : buffered >= 10000 ? 2 : 1;
+    }
+
+    private void ensureSourceDiscovery() {
+        if (mSourceTask == null) startSourceSearch(false);
+        else {
+            mSourceTask.resume();
+            if (mSourceTask.isFinished() && mSourceTask.hasMore()) mSourceTask.searchMore();
+        }
+    }
+
+    private boolean isQualityMovie() {
+        if (mHistory != null && mHistory.getEpisodeCount() > 1) return false;
+        if (mCurrentVod != null) for (Flag flag : mCurrentVod.getVodFlags()) if (flag.getEpisodes().size() > 1) return false;
+        if (mTargetKind == TitleKey.KIND_UNKNOWN && mCurrentVod != null)
+            for (Flag flag : mCurrentVod.getVodFlags()) if (flag.getEpisodes().size() == 1
+                    && com.fongmi.android.tv.search.EpisodeKey.movieLabel(flag.getEpisodes().get(0).getName())) return true;
+        return mQualityCatalog != null && mQualityCatalog.isMovie()
+                || mTargetKind == TitleKey.KIND_MOVIE;
+    }
+
+    private void prepareQualityCatalog(String episode) {
+        if (mCurrentVod == null || isOffline()) return;
+        if (mQualityCatalog == null) {
+            mQualityCatalog = new com.fongmi.android.tv.search.QualityCatalog(this::onQualityCatalogChanged, values -> {
+                for (VodSource source : values) if (!mSourceAdapter.contains(source.getSiteKey(), source.getVodId()) && isTarget(source.getVod()))
+                    mSourceAdapter.add(source);
+                if (mHistory != null) prepareQualityCatalog(mHistory.getVodRemarks());
+                updateSourceView();
+            });
+            History film = mFilmIdentity == null ? mHistory : mFilmIdentity;
+            mQualityCatalog.film(film == null ? "" : film.getFilmId(), film == null ? getName() : film.getVodName(),
+                    film == null ? getYear() : film.getVodYear(), film == null ? mCurrentVod.getTypeName() : film.getVodType(),
+                    film == null ? "" : film.getSourceKeys());
+        }
+        String identity = isQualityMovie() ? "movie" : com.fongmi.android.tv.search.EpisodeKey.key(episode);
+        mQualityCatalog.episode(identity);
+        mQualityCatalog.setActive(!isStop());
+        mQualityCatalog.budget(qualityWorkBudget());
+        List<VodSource> sources = mSourceAdapter.getRanked();
+        VodSource current = mSourceAdapter.getCurrent(); if (current != null) sources.add(0, current);
+        for (VodSource source : sources)
+            mQualityCatalog.inspect(source, source.same(getKey(), getId()) ? mCurrentVod : null, episode);
+        App.removeCallbacks(mQualityMaintenance); App.post(mQualityMaintenance, 3000);
+    }
+
+    private int qualityWorkBudget() {
+        if (isStop() || !Util.isNetworkAvailable() || isCasting()) return 0;
+        boolean requested = SystemClock.elapsedRealtime() < mSourceProbeUntil
+                && (mSourceAnchor != null && mBinding.playbackPanel.isPanelVisible() || mRecoveryPending && mRecoveryManual);
+        if (requested) return 1;
+        if (!mPlaybackWanted) return 0;
+        if (mInitialSelection) return 2;
+        if (!mPlayers.isReady()) return mRecoveryPending || !mLoggedPlaybackReady && SystemClock.elapsedRealtime() - mPlaybackRequestedAt >= 4000 ? 2 : 0;
+        long buffered = mPlayers.getBuffered() - mPlayers.getPosition();
+        return buffered >= 25000 ? 4 : buffered >= 10000 ? 2 : mRecoveryPending ? 1 : 0;
+    }
+
+    private void maintainQualityWork() {
+        if (isFinishing() || isDestroyed() || isStop() || mQualityCatalog == null) return;
+        int budget = qualityWorkBudget();
+        mQualityCatalog.budget(budget);
+        if (mSourceBackground && mSourceTask != null) {
+            if (budget == 0) mSourceTask.pause(); else mSourceTask.resume();
+        }
+        com.fongmi.android.tv.search.QualityOption current = currentVerifiedQuality();
+        if (current != null) mQualityCatalog.record(current);
+        if (mSourceAnchor != null && mBinding.playbackPanel.isPanelVisible()) renderSourcePanel(mSourceAnchor, true);
+        if (mSourceBackground && mSourceTask != null && mSourceTask.isFinished() && mSourceTask.hasMore()
+                && qualityWorkBudget() > 0) mSourceTask.searchMore();
+        App.removeCallbacks(mQualityMaintenance); App.post(mQualityMaintenance, 3000);
+    }
+
+    private void onQualityCatalogChanged() {
+        if (isFinishing() || isDestroyed() || mQualityCatalog == null) return;
+        boolean learned = false;
+        for (com.fongmi.android.tv.search.QualityOption option : mQualityCatalog.items()) {
+            VodSource live = mSourceAdapter.find(option.source.getSiteKey(), option.source.getVodId());
+            if (live != null && option.verified) live.setResult(VodSource.OK, Math.max(live.getSpeed(), option.speed));
+            if (mHistory != null && option.verified && option.isAvailable()) {
+                String old = mHistory.getSourceKeys();
+                com.fongmi.android.tv.search.HistoryIdentity.remember(mHistory, sourceHistoryKey(option.source));
+                learned |= !old.equals(mHistory.getSourceKeys());
+            }
+        }
+        mSourceAdapter.sort();
+        if (learned && mHistoryPlaybackConfirmed) queueHistorySnapshot(false, false);
+        if (restoreSavedQuality()) return;
+        if (mInitialSelection && !playbackQualities().isEmpty()) finishInitialSelection();
+        else if (mRecoveryPending) recoverPlayback(mRecoveryReason, mRecoveryManual, false);
+        if (mQualityAnchor != null && mBinding.playbackPanel.isPanelVisible()) showQualityPanel(mQualityAnchor, true);
+        else if (mSourceAnchor != null && mBinding.playbackPanel.isPanelVisible()) renderSourcePanel(mSourceAnchor, true);
+    }
+
+    /** 历史只保存清晰度档位；恢复时重新从当前仍可用的线路里选该档位的最优项。 */
+    private boolean restoreSavedQuality() {
+        if (!mQualityRestorePending || mAutomaticQuality || mQualityHeight <= 0 || !mLoggedPlaybackReady
+                || mDetailLoading || mInitialSelection) return false;
+        com.fongmi.android.tv.search.QualityOption current = currentVerifiedQuality();
+        if (current != null && current.tierHeight() == mQualityHeight) {
+            mQualityRestorePending = false;
+            Logger.i("QualityPreference: action=keep session=" + mSessionId + " tier=" + mQualityHeight
+                    + " source=" + getKey() + " actual=" + current.rank());
+            applyQualityTrack();
+            return false;
+        }
+        for (com.fongmi.android.tv.search.QualityOption item : verifiedQualities()) {
+            if (item.tierHeight() != mQualityHeight) continue;
+            mQualityRestorePending = false;
+            Logger.i("QualityPreference: action=restore session=" + mSessionId + " tier=" + mQualityHeight
+                    + " source=" + item.source.getSiteKey() + " actual=" + item.rank());
+            selectQuality(item, false);
+            return true;
+        }
+        return false;
+    }
+
+    private com.fongmi.android.tv.search.QualityOption currentVerifiedQuality() {
+        if (!mLoggedPlaybackReady || mDetailLoading || mCurrentVod == null || mPlayers.get() == null
+                || mFlagAdapter.isEmpty() || mEpisodeAdapter.isEmpty() || getFlag() == null || getEpisode() == null) return null;
+        androidx.media3.common.VideoSize size = mPlayers.get().getVideoSize();
+        VodSource current = mSourceAdapter.getCurrent();
+        if (current == null || size.width <= 0 || size.height <= 0) return null;
+        androidx.media3.common.Format format = mPlayers.get().getVideoFormat();
+        com.fongmi.android.tv.search.QualityOption measured = null;
+        if (mQualityCatalog != null) for (com.fongmi.android.tv.search.QualityOption option : mQualityCatalog.items())
+            if (option.route().equals(currentSourceRoute()) && option.width == size.width && option.height == size.height
+                    && (measured == null || option.measuredAt > measured.measuredAt)) measured = option;
+        com.fongmi.android.tv.search.QualityOption item = new com.fongmi.android.tv.search.QualityOption(current, mCurrentVod, getFlag(), getEpisode(), "",
+                mQualityAdapter.getPosition(), size.width, size.height, true, measured == null ? 0 : measured.speed,
+                format != null && format.bitrate > 0 ? format.bitrate : measured == null ? 0 : measured.bitrate);
+        if (measured != null) { item.latencyMs = measured.latencyMs; item.measuredAt = measured.measuredAt; }
+        item.verifiedUrl = mPlayers.getUrl(); item.verifiedHeaders = new HashMap<>(mPlayers.getHeaders());
+        return item;
+    }
+
+    private List<com.fongmi.android.tv.search.QualityOption> verifiedQualities() {
+        List<com.fongmi.android.tv.search.QualityOption> values = mQualityCatalog == null ? new ArrayList<>() : mQualityCatalog.items();
+        com.fongmi.android.tv.search.QualityOption current = currentVerifiedQuality();
+        if (current != null) {
+            values.add(current);
+            addCurrentTrackQualities(values, current);
+        }
+        values.removeIf(item -> {
+            VodSource live = mSourceAdapter.find(item.source.getSiteKey(), item.source.getVodId());
+            return live != null && live.isBroken();
+        });
+        boolean healthy = mPlayers.isReady() && mPlayers.getBuffered() - mPlayers.getPosition() >= 10000;
+        return com.fongmi.android.tv.search.QualitySelection.tiers(values, current == null ? "" : current.identity(), healthy);
+    }
+
+    /** Adaptive manifests expose selectable decoder tracks before background source probes finish. */
+    private void addCurrentTrackQualities(List<com.fongmi.android.tv.search.QualityOption> values,
+                                          com.fongmi.android.tv.search.QualityOption current) {
+        if (mPlayers.get() == null || current == null) return;
+        for (Tracks.Group group : mPlayers.get().getCurrentTracks().getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_VIDEO) continue;
+            for (int i = 0; i < group.length; i++) {
+                androidx.media3.common.Format format = group.getTrackFormat(i);
+                if (!group.isTrackSupported(i) || format.width <= 0 || format.height <= 0) continue;
+                com.fongmi.android.tv.search.QualityOption option = new com.fongmi.android.tv.search.QualityOption(
+                        current.source, mCurrentVod, getFlag(), getEpisode(), current.valueName, current.valueIndex,
+                        format.width, format.height, true, current.speed, format.bitrate > 0 ? format.bitrate : current.bitrate);
+                option.latencyMs = current.latencyMs; option.measuredAt = current.measuredAt;
+                option.verifiedUrl = mPlayers.getUrl(); option.verifiedHeaders = new HashMap<>(mPlayers.getHeaders());
+                values.add(option);
+            }
+        }
+    }
+
+    private void selectQuality(com.fongmi.android.tv.search.QualityOption item, boolean automatic) {
+        mAutomaticQuality = automatic; mSelectedQuality = item;
+        if (automatic) mQualityHeight = 0;
+        else if (mQualityHeight <= 0 && item.verified) mQualityHeight = item.tierHeight();
+        mQualityAnchor = null; mBinding.playbackPanel.dismiss();
+        if (item.source.same(getKey(), getId()) && getFlag() != null
+                && item.flag.getFlag().equals(getFlag().getFlag()) && item.valueIndex == mQualityAdapter.getPosition()
+                && mPlayers.get() != null && mLoggedPlaybackReady
+                && (hasQualityTrack(item) || mPlayers.get().getVideoSize().width == item.width
+                    && mPlayers.get().getVideoSize().height == item.height)) {
+            if (automatic && mRecoveryPending) { mAutoWidth = item.width; mAutoHeight = item.height; }
+            if (mRecoveryPending) recordPlaybackSwitch(item.source, mRecoveryReason, mRecoveryManual);
+            mPlaybackPolicy.adjusted(SystemClock.elapsedRealtime());
+            mRecoveryPending = false;
+            applyQualityTrack(); updateQualityLabel(); return;
+        }
+        // Reload the selected provider's own catalog, preserving semantic episode and playback time.
+        captureSourceProgress();
+        recordPlaybackSwitch(item.source, mRecoveryPending ? mRecoveryReason : automatic ? "initial-selection" : "quality-selection", mRecoveryManual && mRecoveryPending);
+        mRecoveryPending = false;
+        if (mSourceTask != null && !mSourceTask.isBackground()) stopSourceSearch();
+        mSourceBackground = true;
+        mSourceAdapter.setCurrent(item.source);
+        mManualSourceSelection = true; setInitAuto(false);
+        getDetail(item.source.getVod());
+    }
+
+    private boolean hasQualityTrack(com.fongmi.android.tv.search.QualityOption item) {
+        if (mPlayers.get() == null) return false;
+        for (Tracks.Group group : mPlayers.get().getCurrentTracks().getGroups()) if (group.getType() == C.TRACK_TYPE_VIDEO)
+            for (int i = 0; i < group.length; i++) if (group.isTrackSupported(i)
+                    && group.getTrackFormat(i).width == item.width && group.getTrackFormat(i).height == item.height) return true;
+        return false;
+    }
+
+    private String sourceHistoryKey(VodSource source) {
+        return source.getSiteKey() + AppDatabase.SYMBOL + source.getVodId() + AppDatabase.SYMBOL + source.getSite().getSourceId();
+    }
+
+    private String sourceRoute(String key, String id) { return "provider\n" + key + "\n" + id; }
+
+    private String playbackRoute() {
+        com.fongmi.android.tv.search.QualityOption current = currentVerifiedQuality();
+        return current == null ? sourceRoute(getKey(), getId()) + "\n" + (getFlag() == null ? "" : getFlag().getFlag()) : current.identity();
+    }
+
+    private List<com.fongmi.android.tv.search.QualityOption> playbackQualities() {
+        List<com.fongmi.android.tv.search.QualityOption> values = mQualityCatalog == null ? new ArrayList<>() : mQualityCatalog.items();
+        long now = SystemClock.elapsedRealtime();
+        values.removeIf(item -> {
+            VodSource live = mSourceAdapter.find(item.source.getSiteKey(), item.source.getVodId());
+            return !item.verified || !item.canAuto() || live != null && live.isBroken()
+                    || !mPlaybackPolicy.available(item.identity(), now)
+                    || !mPlaybackPolicy.available(sourceRoute(item.source.getSiteKey(), item.source.getVodId()), now);
+        });
+        return values;
+    }
+
+    private boolean acceptsDetail(Vod vod) {
+        if (mFilmIdentity == null || mFilmIdentity.getVodName() == null || mFilmIdentity.getVodName().isEmpty()) return true;
+        if (!com.fongmi.android.tv.search.HistoryIdentity.sameTitle(mFilmIdentity.getVodName(), vod.getVodName(getName()))) return false;
+        String key = vod.getSiteKey().isEmpty() ? getKey() : vod.getSiteKey();
+        String id = vod.getVodId().isEmpty() ? getId() : vod.getVodId();
+        String provider = key + AppDatabase.SYMBOL + id + AppDatabase.SYMBOL
+                + (vod.getSite() == null ? getSite().getSourceId() : vod.getSite().getSourceId());
+        String alias = com.fongmi.android.tv.search.HistoryIdentity.sourceToken(provider);
+        boolean learned = com.fongmi.android.tv.search.FilmIdentity.aliases(mFilmIdentity.getSourceKeys()).contains(alias);
+        int kind = TitleKey.kind(vod.getTypeName()), count = 0;
+        for (Flag flag : vod.getVodFlags()) if (!flag.isCloudDrive() && !PlaybackRoutePolicy.isRestricted(flag))
+            count = Math.max(count, flag.getEpisodes().size());
+        if (count > 1 && kind == TitleKey.KIND_MOVIE) kind = TitleKey.KIND_UNKNOWN;
+        return learned || TitleKey.sameYear(mTargetYear, TitleKey.year(vod.getVodYear())) && TitleKey.sameKind(mTargetKind, kind);
+    }
+
+    private void finishInitialSelection() {
+        if (!mInitialSelection || isFinishing() || isDestroyed() || isStop()) return;
+        App.removeCallbacks(mFinishInitialSelection);
+        mInitialSelection = false; mInitialSelectionDone = true;
+        if (mQualityCatalog != null) mQualityCatalog.budget(0);
+        Flag flag = mInitialFlag; mInitialFlag = null;
+        com.fongmi.android.tv.search.QualityOption best = bestMeasuredSource(playbackQualities());
+        Logger.i("PlayDecision: action=initial-result session=" + mSessionId + " verified=" + (best != null)
+                + " source=" + (best == null ? getKey() : best.source.getSiteKey()));
+        if (best != null && !best.source.same(getKey(), getId())) { selectQuality(best, true); return; }
+        if (best != null) {
+            mSelectedQuality = best;
+            Flag preferred = mFlagAdapter.find(best.flag.getFlag());
+            if (preferred != null) flag = preferred;
+        }
+        if (flag != null) {
+            selectFlag(flag, false);
+            if (mHistory.isRevSort()) reverseEpisode(true);
+        }
+    }
+
+    private void watchPlayback() {
+        if (isFinishing() || isDestroyed() || isStop()) return;
+        if (mRecoveryPending && mRecoveryManual && "source-request".equals(mRecoveryReason)
+                && SystemClock.elapsedRealtime() >= mSourceProbeUntil) {
+            mRecoveryPending = false;
+            Notify.show("暂未测到更流畅的源，可在换源中手动选择或重新测速");
+            Logger.i("SourceChoice: action=no-measured-alternative session=" + mSessionId + " episode=" + mPlaybackEpisode);
+        }
+        if (mPlayers != null && mHistory != null && !mInitialSelection && !mDetailLoading) {
+            long now = SystemClock.elapsedRealtime();
+            boolean excluded = isCasting() || mPlayingDownload != null || OfflinePlayback.isLocal(mPlayers.getUrl())
+                    || mAwaitingCloudSync || mCloudChoicePending || mScrubbing || mGestureSeeking || !Util.isNetworkAvailable();
+            boolean buffering = mPlayers.get() != null && mPlayers.get().getPlaybackState() == Player.STATE_BUFFERING;
+            String reason = mPlaybackPolicy.reason(now, mPlaybackWanted, excluded, mPlayers.isReady(), buffering,
+                    Math.max(0, mPlayers.getBuffered() - mPlayers.getPosition()));
+            if (mRecoveryPending && mRecoveryManual && "source-request".equals(mRecoveryReason) && !excluded)
+                recoverPlayback(mRecoveryReason, true, false);
+            else if (!reason.isEmpty()) recoverPlayback(reason, false, false);
+            if (now - mLastHealthLog >= 30000 && mHistoryPlaybackConfirmed) {
+                mLastHealthLog = now;
+                Logger.i("PlayHealth: session=" + mSessionId + " film=" + mHistory.getFilmId() + " episode=" + mPlaybackEpisode
+                        + " source=" + getKey() + " requested=" + mPlaybackWanted + " ready=" + mPlayers.isReady()
+                        + " positionMs=" + mPlayers.getPosition() + " bufferMs=" + Math.max(0, mPlayers.getBuffered() - mPlayers.getPosition())
+                        + " stalls=" + mPlaybackPolicy.stallCount() + " stalledMs=" + mPlaybackPolicy.stalledMs());
+            }
+        }
+        App.post(mPlaybackWatchdog, 1000);
+    }
+
+    private void recordPlaybackSwitch(VodSource next, String reason, boolean manual) {
+        long now = SystemClock.elapsedRealtime();
+        mPlaybackPolicy.switched(playbackRoute(), now);
+        if (!next.same(getKey(), getId())) mPlaybackPolicy.failed(sourceRoute(getKey(), getId()), now);
+        if (manual) mManualSwitches++; else if (!"initial-selection".equals(reason)) mAutomaticSwitches++;
+        Logger.i("PlayDecision: action=switch session=" + mSessionId + " film=" + (mHistory == null ? "" : mHistory.getFilmId())
+                + " reason=" + reason + " from=" + getKey() + " to=" + next.getSiteKey()
+                + " episode=" + (mHistory == null ? "" : mHistory.getVodRemarks())
+                + " positionMs=" + (mHistory == null ? -1 : mHistory.getPosition()) + " speed=" + next.getSpeed());
+    }
+
+    private boolean lowerCurrentTrack(String reason) {
+        if (!mAutomaticQuality || mPlayers.get() == null || !mLoggedPlaybackReady) return false;
+        androidx.media3.common.VideoSize current = mPlayers.get().getVideoSize();
+        int currentHeight = Math.min(current.width, current.height);
+        androidx.media3.common.Format lower = null;
+        for (Tracks.Group group : mPlayers.get().getCurrentTracks().getGroups()) if (group.getType() == C.TRACK_TYPE_VIDEO)
+            for (int i = 0; i < group.length; i++) {
+                androidx.media3.common.Format format = group.getTrackFormat(i);
+                int height = Math.min(format.width, format.height);
+                if (group.isTrackSupported(i) && height > 0 && height < currentHeight
+                        && (lower == null || height > Math.min(lower.width, lower.height))) lower = format;
+            }
+        if (lower == null || mAutoWidth == lower.width && mAutoHeight == lower.height) return false;
+        mPlaybackPolicy.switched(playbackRoute(), SystemClock.elapsedRealtime());
+        mAutoWidth = lower.width; mAutoHeight = lower.height; mAutomaticSwitches++;
+        Logger.i("PlayDecision: action=lower-track session=" + mSessionId + " reason=" + reason
+                + " fromHeight=" + currentHeight + " width=" + lower.width + " height=" + lower.height);
+        mPlaybackPolicy.adjusted(SystemClock.elapsedRealtime()); applyQualityTrack(); mRecoveryPending = false;
+        return true;
+    }
+
+    private boolean recoverPlayback(String reason, boolean manual, boolean hardFailure) {
+        if (!manual && !mPlaybackWanted) return false;
+        if (mHistory == null || mCurrentVod == null || isFinishing() || isDestroyed() || isStop() || isCasting()
+                || mAwaitingCloudSync || mCloudChoicePending || !Util.isNetworkAvailable() || mPlayingDownload != null
+                || OfflinePlayback.isLocal(mPlayers.getUrl())) return false;
+        if (mDetailLoading || mInitialSelection) return false;
+        if (mScrubbing || mGestureSeeking) return false;
+        long now = SystemClock.elapsedRealtime();
+        if (!mPlaybackPolicy.canSwitch(now, manual, hardFailure)) return false;
+        if (!manual && !hardFailure && lowerCurrentTrack(reason)) return true;
+        boolean newRequest = !mRecoveryPending || !mRecoveryReason.equals(reason);
+        mRecoveryPending = true; mRecoveryReason = reason; mRecoveryManual = manual;
+        if ("source-request".equals(reason)) {
+            List<com.fongmi.android.tv.search.QualityOption> alternatives = playbackQualities();
+            alternatives.removeIf(item -> item.route().equals(currentSourceRoute()));
+            com.fongmi.android.tv.search.QualityOption best = bestMeasuredSource(alternatives);
+            if (best != null) {
+                Logger.i("SourceChoice: action=recommend session=" + mSessionId + " source=" + best.source.getSiteKey()
+                        + " line=" + best.flag.getFlag() + " latencyMs=" + best.latencyMs + " bytesPerSecond=" + best.speed);
+                selectQuality(best, mAutomaticQuality);
+                return true;
+            }
+            if (newRequest) {
+                mSourceProbeUntil = now + 45000;
+                prepareQualityCatalog(mHistory.getVodRemarks());
+                if (mQualityCatalog != null) {
+                    mQualityCatalog.budget(0);
+                    mQualityCatalog.refreshMeasurements(true, mSourceAdapter.getCurrent(), getFlag() == null ? "" : getFlag().getFlag());
+                }
+                Notify.show(R.string.play_finding_source);
+            }
+            if (mSourceTask != null) {
+                mSourceTask.resume();
+                if (mSourceTask.isFinished() && mSourceTask.hasMore()) mSourceTask.searchMore();
+            } else startSourceSearch(false);
+            if (mQualityCatalog != null) mQualityCatalog.budget(1);
+            return false;
+        }
+        String currentRoute = playbackRoute();
+        List<com.fongmi.android.tv.search.QualityOption> values = playbackQualities();
+        values.removeIf(item -> item.identity().equals(currentRoute)
+                || item.source.same(getKey(), getId()) && getFlag() != null && item.flag.equals(getFlag())
+                    && item.valueIndex == mQualityAdapter.getPosition() && (!mLoggedPlaybackReady || !hasQualityTrack(item)));
+        // Fixed quality selections are preferences for a tier, not for a particular provider.
+        if (!mAutomaticQuality && mQualityHeight > 0) {
+            int requested = mQualityHeight;
+            final int tier = requested <= 480 ? 480 : requested <= 720 ? 720 : requested <= 1080 ? 1080 : requested <= 1440 ? 1440 : requested <= 2160 ? 2160 : 4320;
+            values.removeIf(item -> item.identity().equals(currentRoute) || item.tierHeight() != tier);
+        }
+        if (manual) {
+            List<com.fongmi.android.tv.search.QualityOption> others = new ArrayList<>(values);
+            others.removeIf(item -> item.source.same(getKey(), getId()));
+            if (!others.isEmpty()) values = others;
+        }
+        com.fongmi.android.tv.search.QualityOption best = bestMeasuredSource(values);
+        if (best == null) best = com.fongmi.android.tv.search.QualitySelection.best(values, "", false);
+        captureSourceProgress();
+        if (best != null) {
+            if (manual) Notify.show(R.string.play_changing_source);
+            selectQuality(best, mAutomaticQuality); return true;
+        }
+        for (VodSource source : mSourceAdapter.getRanked()) {
+            if (source.isBroken() || source.getSite().isCloudDrive() || !source.getSite().isChangeable()
+                    || !mPlaybackPolicy.available(sourceRoute(source.getSiteKey(), source.getVodId()), now)) continue;
+            if (manual) Notify.show(R.string.play_changing_source);
+            switchSource(source, true); return true;
+        }
+        // Keep a still working foreground player while discovering a usable same-episode alternative.
+        if (mSourceTask != null) {
+            mSourceTask.resume();
+            if (mSourceTask.isFinished() && mSourceTask.hasMore()) mSourceTask.searchMore();
+        } else startSourceSearch(false);
+        if (mQualityCatalog != null) mQualityCatalog.budget(2);
+        if (manual && newRequest) Notify.show(R.string.play_finding_source);
+        if (newRequest) Logger.i("PlayDecision: action=wait-alternative session=" + mSessionId + " reason=" + reason
+                + " episode=" + mPlaybackEpisode + " candidates=" + mSourceAdapter.getItemCount());
+        return false;
+    }
+
+    private com.fongmi.android.tv.search.QualityOption bestMeasuredSource(List<com.fongmi.android.tv.search.QualityOption> values) {
+        long now = System.currentTimeMillis();
+        for (com.fongmi.android.tv.search.QualityOption item : com.fongmi.android.tv.search.SourceSelection.routes(values, now))
+            if (com.fongmi.android.tv.search.SourceSelection.grade(item.speed, item.bitrate, item.measuredAt, now) < 2) return item;
+        return null;
+    }
+
+    private void applyQualityTrack() {
+        if (mPlayers.get() == null) return;
+        androidx.media3.common.TrackSelectionParameters.Builder builder = mPlayers.get().getTrackSelectionParameters().buildUpon();
+        if (mAutomaticQuality) {
+            builder.clearOverridesOfType(C.TRACK_TYPE_VIDEO).clearVideoSizeConstraints().setMaxVideoBitrate(Integer.MAX_VALUE)
+                    .setForceHighestSupportedBitrate(false).setForceLowestBitrate(false);
+            if (mAutoWidth > 0 && mAutoHeight > 0) builder.setMaxVideoSize(mAutoWidth, mAutoHeight);
+            mPlayers.get().setTrackSelectionParameters(builder.build());
+            return;
+        }
+        if (mQualityHeight <= 0) return;
+        List<Tracks.Group> groups = mPlayers.get().getCurrentTracks().getGroups();
+        Tracks.Group selectedGroup = null; int selectedTrack = -1; int selectedHeight = -1;
+        for (Tracks.Group group : groups) {
+            if (group.getType() != C.TRACK_TYPE_VIDEO) continue;
+            for (int i = 0; i < group.length; i++) {
+                androidx.media3.common.Format format = group.getTrackFormat(i);
+                int height = Math.min(format.width, format.height);
+                if (group.isTrackSupported(i) && com.fongmi.android.tv.search.QualityOption.tierHeight(height) == mQualityHeight
+                        && height > selectedHeight) {
+                    selectedGroup = group; selectedTrack = i; selectedHeight = height;
+                }
+            }
+        }
+        if (selectedGroup != null) mPlayers.get().setTrackSelectionParameters(builder.clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                .clearVideoSizeConstraints().setMaxVideoBitrate(Integer.MAX_VALUE)
+                .setForceHighestSupportedBitrate(false).setForceLowestBitrate(false)
+                .setOverrideForType(new androidx.media3.common.TrackSelectionOverride(selectedGroup.getMediaTrackGroup(), selectedTrack)).build());
+    }
+
+    private void showQualityPanel(View anchor, boolean update) {
+        mSourceAnchor = null;
+        mQualityAnchor = anchor;
+        if (mHistory != null) prepareQualityCatalog(mHistory.getVodRemarks());
+        List<com.fongmi.android.tv.search.QualityOption> choices = verifiedQualities();
+        List<String> labels = new ArrayList<>(); List<Integer> selected = new ArrayList<>();
+        labels.add("自动 · 流畅优先"); if (mAutomaticQuality) selected.add(0);
+        com.fongmi.android.tv.search.QualityOption current = currentVerifiedQuality();
+        for (com.fongmi.android.tv.search.QualityOption item : choices) {
+            labels.add(item.label());
+            if (!mAutomaticQuality && (mSelectedQuality != null && mSelectedQuality.tierHeight() == item.tierHeight()
+                    || mSelectedQuality == null && current != null && current.tierHeight() == item.tierHeight())) selected.add(labels.size()-1);
+        }
+        int[] ids = new int[labels.size()]; for (int i=0;i<ids.length;i++) ids[i]=i;
+        com.fongmi.android.tv.ui.custom.PlaybackGlassPanelView.OnItemClickListener listener = id -> {
+            mQualityAnchor = null; mBinding.playbackPanel.dismiss();
+            if (id == 0) {
+                rememberQualityPreference(0);
+                mSelectedQuality = null; mAutoWidth = 0; mAutoHeight = 0;
+                Track.delete(mPlayers.getKey(), C.TRACK_TYPE_VIDEO); mPlayers.resetTrack(C.TRACK_TYPE_VIDEO);
+                // Explicitly selecting Auto may choose one sustainable candidate; passive discovery never switches.
+                boolean healthy = mPlayers.isReady() && mPlayers.getBuffered() - mPlayers.getPosition() >= 10000;
+                com.fongmi.android.tv.search.QualityOption best = com.fongmi.android.tv.search.QualitySelection.best(
+                        playbackQualities(), current == null ? "" : current.identity(), healthy);
+                if (best != null && (current == null || !best.identity().equals(current.identity()))) selectQuality(best, true);
+                else applyQualityTrack();
+            } else {
+                com.fongmi.android.tv.search.QualityOption choice = choices.get(id - 1);
+                rememberQualityPreference(choice.tierHeight());
+                selectQuality(choice, false);
+            }
+            updateQualityLabel(); setR1Callback();
+        };
+        String title = "清晰度";
+        if (update) mBinding.playbackPanel.updateItems(title, ids, labels.toArray(new String[0]), toIntArray(selected), listener);
+        else mBinding.playbackPanel.show(anchor, title, ids, labels.toArray(new String[0]), null, toIntArray(selected), 248, PLAYER_PANEL_MAX_HEIGHT_DP, listener);
+        refreshBackHandling(); App.removeCallbacks(mR1);
+    }
+
+    private void rememberQualityPreference(int height) {
+        int tier = com.fongmi.android.tv.search.QualityOption.tierHeight(height);
+        mQualityPreferenceLoaded = true; mQualityRestorePending = false;
+        mAutomaticQuality = tier == 0; mQualityHeight = tier;
+        if (mHistory != null) mHistory.setQualityHeight(tier);
+        if (mFilmIdentity != null) mFilmIdentity.setQualityHeight(tier);
+        Logger.i("QualityPreference: action=save session=" + mSessionId + " film="
+                + (mHistory == null ? "" : mHistory.getFilmId()) + " mode=" + (tier == 0 ? "auto" : "fixed") + " tier=" + tier);
+        if (mHistoryPlaybackConfirmed) queueHistorySnapshot(false, false);
     }
 
     private List<Track> getTracks(int type) {
@@ -2135,14 +2903,17 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void updateQualityLabel() {
+        applyQualityTrack();
         mBinding.control.action.video.setText(getCurrentQualityLabel());
     }
 
     private String getCurrentQualityLabel() {
-        for (Track item : getTracks(C.TRACK_TYPE_VIDEO)) {
-            if (item.isSelected()) return item.isAuto() ? getString(R.string.quality_auto) : getQualityTier(item.getName());
-        }
-        return getString(R.string.quality_auto);
+        if (mAutomaticQuality) return getString(R.string.quality_auto);
+        com.fongmi.android.tv.search.QualityOption current = currentVerifiedQuality();
+        if (current != null) return com.fongmi.android.tv.search.QualityOption.tier(current.rank());
+        if (mSelectedQuality != null) return com.fongmi.android.tv.search.QualityOption.tier(mSelectedQuality.rank());
+        if (mQualityHeight > 0) return com.fongmi.android.tv.search.QualityOption.tier(mQualityHeight);
+        return getString(R.string.play_quality);
     }
 
     private String getQualityOptionLabel(Track item) {
@@ -2181,6 +2952,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void showParsePanel(View anchor) {
+        mQualityAnchor = null;
         int count = mParseAdapter.getItemCount();
         if (count == 0) return;
         int[] ids = new int[count];
@@ -2199,6 +2971,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void showTimerPanel(View anchor) {
+        mQualityAnchor = null;
         final int delay = -1;
         final int cancel = -2;
         int[] ids;
@@ -2236,6 +3009,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onScale(View anchor) {
+        mQualityAnchor = null;
         String[] labels = ResUtil.getStringArray(R.array.select_scale);
         int[] ids = new int[labels.length];
         for (int i = 0; i < ids.length; i++) ids[i] = i;
@@ -2250,6 +3024,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onSpeed(View anchor) {
+        mQualityAnchor = null;
         float[] values = new float[]{0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 3.0f, 4.0f, 5.0f};
         String[] labels = new String[]{"0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "1.75x", "2.0x", "3.0x", "4.0x", "5.0x"};
         int[] ids = new int[values.length];
@@ -2292,12 +3067,6 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (mFlagAdapter.isEmpty()) return;
         if (mEpisodeAdapter.isEmpty()) return;
         getPlayer(getFlag(), getEpisode(), replay);
-    }
-
-    private boolean onResetToggle() {
-        Setting.putReset(Math.abs(Setting.getReset() - 1));
-        mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
-        return true;
     }
 
     private void onEnding() {
@@ -2482,7 +3251,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void showControl() {
         if (mPiP.isInMode(this)) return;
         int widthDp = getPlayerWidthDp();
-        mBinding.control.danmaku.setVisibility(!isFullscreen() || isLock() || !mPlayers.haveDanmaku() ? View.GONE : View.VISIBLE);
+        mBinding.control.danmaku.setVisibility(View.GONE);
         mBinding.control.playerMore.setVisibility(mPlayers.isEmpty() ? View.GONE : View.VISIBLE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.keep.setVisibility(mHistory == null || isFullscreen() || widthDp < 380 ? View.GONE : View.VISIBLE);
@@ -2509,13 +3278,23 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         checkPlayImg();
         // 起播和弱网阶段优先给主画面。已有 15 秒余量时再预热；否则第一次拖动仍会
         // 现场创建预览播放器，功能不会消失。
-        if (!isCasting() && mPlayers.getBuffered() - mPlayers.getPosition() >= 15000) mPreview.prepare(mPlayers.getPosition());
+        warmPreviewIfReady();
         refreshBackHandling();
+    }
+
+    private void warmPreviewIfReady() {
+        if (isCasting() || mScrubbing || mGestureSeeking || !mPlayers.isReady()
+                || !isVisible(mBinding.control.getRoot())) return;
+        long position = mPlayers.getPosition();
+        long buffered = mPlayers.getBuffered();
+        long duration = mPlayers.getDuration();
+        if (buffered - position >= 15000 || duration > 0 && buffered >= duration) mPreview.prepare(position);
     }
 
     private void setActionVisible() {
         int widthDp = getPlayerWidthDp();
         boolean portraitFull = isFullscreen() && !isLand();
+        mBinding.control.action.getRoot().setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
         mBinding.control.detailPlay.setVisibility(isFullscreen() ? View.GONE : View.VISIBLE);
         mBinding.control.action.player.setVisibility(View.GONE);
         mBinding.control.action.scale.setVisibility(isFullscreen() ? View.VISIBLE : View.GONE);
@@ -2526,8 +3305,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mBinding.control.action.danmaku.setVisibility(View.GONE);
         mBinding.control.action.text.setVisibility(View.GONE);
         mBinding.control.action.audio.setVisibility(View.GONE);
-        mBinding.control.action.reset.setVisibility(!portraitFull && isFullscreen() && widthDp >= 620 ? View.VISIBLE : View.GONE);
-        mBinding.control.action.video.setVisibility(!portraitFull && isFullscreen() && widthDp >= 560 && mPlayers.haveTrack(C.TRACK_TYPE_VIDEO) ? View.VISIBLE : View.GONE);
+        mBinding.control.action.reset.setVisibility(isFullscreen() && canChooseSource() ? View.VISIBLE : View.GONE);
+        mBinding.control.action.video.setVisibility(!portraitFull && isFullscreen() && widthDp >= 560 && mCurrentVod != null ? View.VISIBLE : View.GONE);
         // 竖屏全屏固定把退出键放在选集右侧；横屏仍按可用宽度决定是否直显。
         mBinding.control.action.exit.setVisibility(isFullscreen() && (portraitFull || widthDp >= 640) ? View.VISIBLE : View.GONE);
     }
@@ -2581,30 +3360,75 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void checkFlag(Vod item) {
-        boolean empty = item.getVodFlags().isEmpty();
-        if (empty) {
-            ErrorEvent.flag(tag);
-        } else {
-            Flag preferred = mFlagAdapter.find(mHistory.getVodFlag());
-            if (preferred == null || preferred.isCloudDrive()) {
-                preferred = null;
-                for (Flag flag : item.getVodFlags()) {
-                    if (flag.isCloudDrive()) continue;
-                    preferred = flag;
-                    break;
-                }
-            }
-            onItemClick(preferred == null ? item.getVodFlags().get(0) : preferred);
-            if (mHistory.isRevSort()) reverseEpisode(true);
+        if (item.getVodFlags().isEmpty()) { ErrorEvent.flag(tag); return; }
+        boolean movie = isQualityMovie();
+        String episode = mHistory.getVodRemarks();
+        Flag preferred = mSelectedQuality != null && mSelectedQuality.source.same(getKey(), getId()) ? mFlagAdapter.find(mSelectedQuality.flag.getFlag()) : mFlagAdapter.find(mHistory.getVodFlag());
+        if (preferred != null && (PlaybackRoutePolicy.isRestricted(preferred)
+                || com.fongmi.android.tv.search.QualityCatalog.match(preferred, episode, movie) == null)) preferred = null;
+        for (Flag flag : item.getVodFlags()) {
+            if (PlaybackRoutePolicy.isRestricted(flag) || flag.isCloudDrive() && !mManualSourceSelection) continue;
+            if (com.fongmi.android.tv.search.QualityCatalog.match(flag, episode, movie) == null) continue;
+            if (preferred == null) preferred = flag;
         }
+        if (preferred == null) {
+            captureSourceProgress();
+            VodSource current = mSourceAdapter.getCurrent(); if (current != null) current.setBroken(true);
+            showProgress();
+            Logger.i("PlayDecision: action=missing-episode session=" + mSessionId + " episode=" + episode + " source=" + getKey());
+            checkSearch(false); return;
+        }
+        Episode mapped = com.fongmi.android.tv.search.QualityCatalog.match(preferred, episode, movie);
+        if (mapped != null) {
+            mHistory.setVodRemarks(mapped.getName()); mHistory.setEpisodeUrl(mapped.getUrl());
+        }
+        if (!mInitialSelectionDone && !mLocalDetail && mPendingResumeHistory == null && "search".equals(mEntry) && mHistory.getPosition() < 0) {
+            mInitialFlag = preferred; mInitialSelection = true;
+            prepareQualityCatalog(mHistory.getVodRemarks());
+            Logger.i("PlayDecision: action=compare-initial session=" + mSessionId + " film=" + mHistory.getFilmId() + " budgetMs=1800 candidates=" + mSourceAdapter.getItemCount());
+            App.post(mFinishInitialSelection, 1800);
+        } else { mInitialSelectionDone = true; selectFlag(preferred, false); }
+        if (mHistory.isRevSort() && !mInitialSelection) reverseEpisode(true);
         updateDetailPanels();
     }
 
     private void checkHistory(Vod item) {
         mHistoryPlaybackConfirmed = false;
-        mHistory = mPendingCloudHistory != null ? mPendingCloudHistory : History.find(getHistoryKey());
+        History target = new History(); target.setKey(getHistoryKey());
+        target.setVodName(mFilmIdentity == null || mFilmIdentity.getVodName() == null || mFilmIdentity.getVodName().isEmpty() ? item.getVodName(getName()) : mFilmIdentity.getVodName());
+        target.setVodYear(mFilmIdentity == null || mFilmIdentity.getVodYear().isEmpty() ? item.getVodYear() : mFilmIdentity.getVodYear());
+        target.setVodType(mFilmIdentity == null || mFilmIdentity.getVodType().isEmpty() ? item.getTypeName() : mFilmIdentity.getVodType());
+        if (mFilmIdentity != null) { target.setFilmId(mFilmIdentity.getFilmId()); target.setSourceKeys(mFilmIdentity.getSourceKeys()); }
+        History latest = null;
+        for (History record : target.find()) latest = com.fongmi.android.tv.search.HistoryIdentity.prefer(latest, record);
+        History carried = mPendingResumeHistory;
+        mPendingResumeHistory = null;
+        if (carried != null && com.fongmi.android.tv.search.HistoryIdentity.sameTitle(target.getVodName(), carried.getVodName())
+                && (latest == null || latest.getCreateTime() <= carried.getCreateTime())) latest = carried;
+        mHistory = mPendingCloudHistory != null ? mPendingCloudHistory : latest;
         mPendingCloudHistory = null;
-        mHistory = mHistory == null ? createHistory(item) : mHistory;
+        mHistory = mHistory == null ? createHistory(item) : History.objectFrom(mHistory.toString());
+        mHistory.setAccountId(com.fongmi.android.tv.utils.LocalProfile.id());
+        mHistory.setKey(getHistoryKey());
+        mHistory.setCid(getSite().getSourceId() > 0 ? getSite().getSourceId() : VodConfig.getCid());
+        mHistory.setVodName(target.getVodName()); mHistory.setVodYear(target.getVodYear()); mHistory.setVodType(target.getVodType());
+        com.fongmi.android.tv.search.HistoryIdentity.bind(mHistory, target.find());
+        com.fongmi.android.tv.search.HistoryIdentity.remember(mHistory, getHistoryKey());
+        if (!mQualityPreferenceLoaded) {
+            mQualityHeight = com.fongmi.android.tv.search.QualityOption.tierHeight(mHistory.getQualityHeight());
+            mAutomaticQuality = mQualityHeight == 0;
+            mSelectedQuality = null;
+            mQualityRestorePending = !mAutomaticQuality;
+            mQualityPreferenceLoaded = true;
+            Logger.i("QualityPreference: action=load session=" + mSessionId + " film=" + mHistory.getFilmId()
+                    + " entry=" + mEntry + " mode=" + (mAutomaticQuality ? "auto" : "fixed") + " tier=" + mQualityHeight);
+        }
+        mFilmIdentity = History.objectFrom(mHistory.toString()); mFilmIdentity.setAccountId(mHistory.getAccountId());
+        Logger.i("PlayIdentity: action=bind session=" + mSessionId + " film=" + mHistory.getFilmId()
+                + " title=" + mHistory.getVodName() + " year=" + mHistory.getVodYear() + " type=" + mHistory.getVodType()
+                + " providerYear=" + item.getVodYear() + " providerType=" + item.getTypeName()
+                + " carried=" + (carried != null) + " episode=" + mHistory.getVodRemarks() + " positionMs=" + mHistory.getPosition());
+        if (mHistory.getPosition() >= 0) mCloudResumePosition = mHistory.getPosition();
         synchronized (mHistoryWriteLock) {
             mHistoryWriteGeneration++;
             mKnownHistoryVersion = mHistory.getCreateTime();
@@ -2622,8 +3446,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private History createHistory(Vod item) {
         History history = new History();
         history.setKey(getHistoryKey());
-        history.setCid(VodConfig.getCid());
+        history.setCid(getSite().getSourceId() > 0 ? getSite().getSourceId() : VodConfig.getCid());
         history.setVodName(item.getVodName());
+        history.setVodYear(item.getVodYear()); history.setVodType(item.getTypeName());
         history.findEpisode(item.getVodFlags());
         return history;
     }
@@ -2647,10 +3472,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void updateHistoryEpisodeNumbers(Episode item) {
         int count = mEpisodeAdapter.getItemCount();
-        int kind = mCurrentVod == null ? TitleKey.KIND_UNKNOWN : TitleKey.kind(mCurrentVod.getTypeName());
-        boolean series = kind != TitleKey.KIND_MOVIE && (count > 1 || kind == TitleKey.KIND_TV);
+        int kind = mTargetKind;
+        boolean series = count > 1 || kind == TitleKey.KIND_TV;
         int index = mEpisodeAdapter.getPosition(item);
         int number = mHistory.isRevSort() ? count - index : index + 1;
+        int semanticNumber = com.fongmi.android.tv.search.EpisodeKey.number(item.getName());
+        if (semanticNumber > 0) number = semanticNumber;
         if (mLocalDetail && item.getNumber() > 0) {
             number = item.getNumber();
             count = Math.max(count, mHistory.getEpisodeCount());
@@ -2697,7 +3524,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void createKeep() {
         Keep keep = new Keep();
         keep.setKey(getHistoryKey());
-        keep.setCid(VodConfig.getCid());
+        keep.setCid(getSite().getSourceId() > 0 ? getSite().getSourceId() : VodConfig.getCid());
         keep.setSiteName(getSite().getName());
         keep.setVodPic(mBinding.video.getTag().toString());
         keep.setVodName(mBinding.name.getText().toString());
@@ -2713,6 +3540,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onTimeChanged() {
+        // The controls may have opened before there was enough buffer to prewarm.
+        // Retry once playback has caught up, instead of leaving the first drag cold.
+        warmPreviewIfReady();
         if (isCasting() || mHistory == null) return;
         long position = mPlayers.getPosition(), duration = mPlayers.getDuration();
         boolean changed = com.fongmi.android.tv.utils.PlaybackProgressPolicy.shouldRecord(
@@ -2782,6 +3612,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 else setPosition();
                 break;
             case Player.STATE_BUFFERING:
+                mPlaybackPolicy.buffering(SystemClock.elapsedRealtime(), mPlaybackWanted,
+                        mScrubbing || mGestureSeeking || mAwaitingCloudSync || mCloudChoicePending || isCasting());
+                if (mQualityCatalog != null) mQualityCatalog.budget(0);
+                if (mSourceBackground && mSourceTask != null) mSourceTask.pause();
                 App.removeCallbacks(mCacheWarmup);
                 mPlaybackCache.pause();
                 mPreview.suspend();
@@ -2796,8 +3630,15 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 }
                 break;
             case Player.STATE_READY:
+                long wait = mPlaybackPolicy.ready(SystemClock.elapsedRealtime());
+                Logger.i("PlayHealth: event=ready session=" + mSessionId + " waitMs=" + wait
+                        + " positionMs=" + mPlayers.getPosition() + " bufferMs=" + Math.max(0, mPlayers.getBuffered() - mPlayers.getPosition())
+                        + " stalls=" + mPlaybackPolicy.stallCount() + " stalledMs=" + mPlaybackPolicy.stalledMs());
+                if (!mRecoveryManual || !"source-request".equals(mRecoveryReason)) mRecoveryPending = false;
                 if (!mLoggedPlaybackReady) {
                     mLoggedPlaybackReady = true;
+                    mCurrentStartupMs = SystemClock.elapsedRealtime() - mPlaybackRequestedAt;
+                    com.fongmi.android.tv.search.SiteHealth.playback(getSite(), true, SystemClock.elapsedRealtime() - mPlaybackRequestedAt);
                     Logger.i("OfflineStart: ready local=" + OfflinePlayback.isLocal(mPlayers.getUrl())
                             + " elapsedMs=" + (SystemClock.elapsedRealtime() - mPlaybackRequestedAt) + " cloudWait=" + mAwaitingCloudSync);
                     if (mLocalDetail) App.post(this::refreshLocalCatalog, 400);
@@ -2816,20 +3657,22 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 checkControl();
                 checkPlayImg();
                 startPlaybackNotification();
+                updateQualityLabel(); App.post(mQualityMaintenance); App.post(this::onQualityCatalogChanged);
                 break;
             case Player.STATE_ENDED:
                 checkEnded(true);
                 break;
             case PlayerEvent.TRACK:
-                confirmHistoryPlayback();
+                if (isCasting()) confirmHistoryPlayback();
                 setMetadata();
                 setTrackVisible();
+                updateQualityLabel(); App.post(mQualityMaintenance); App.post(this::onQualityCatalogChanged);
                 mClock.setCallback(this);
                 startPlaybackNotification();
                 break;
             case PlayerEvent.SIZE:
                 checkOrientation();
-                updateQualityLabel();
+                updateQualityLabel(); App.post(mQualityMaintenance); App.post(this::onQualityCatalogChanged);
                 break;
         }
     }
@@ -2913,7 +3756,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         boolean portraitFull = isFullscreen() && !isLand();
         mBinding.control.action.text.setVisibility(View.GONE);
         mBinding.control.action.audio.setVisibility(View.GONE);
-        mBinding.control.action.video.setVisibility(!portraitFull && isFullscreen() && widthDp >= 560 && mPlayers.haveTrack(C.TRACK_TYPE_VIDEO) ? View.VISIBLE : View.GONE);
+        mBinding.control.action.video.setVisibility(!portraitFull && isFullscreen() && widthDp >= 560 && mCurrentVod != null ? View.VISIBLE : View.GONE);
         updateQualityLabel();
         if (mControlDialog != null && mControlDialog.isVisible()) mControlDialog.setTrackVisible();
     }
@@ -2936,6 +3779,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             onRefresh();
             return;
         }
+        if (!mPlaybackWanted) { showError(event.getMsg()); return; }
+        com.fongmi.android.tv.search.SiteHealth.playback(getSite(), false, SystemClock.elapsedRealtime() - mPlaybackRequestedAt);
+        captureSourceProgress();
+        mPlaybackPolicy.failed(playbackRoute(), SystemClock.elapsedRealtime());
+        Logger.i("PlayDecision: action=error session=" + mSessionId + " episode=" + mPlaybackEpisode
+                + " positionMs=" + (mHistory == null ? -1 : mHistory.getPosition()) + " type=" + event.getType());
+        if (mPlaybackWanted && recoverPlayback("playback-error", false, true)) return;
         if (mPlayers.retried()) onError(event);
         else onRefresh();
     }
@@ -2960,6 +3810,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void startFlow() {
         if (!Util.isNetworkAvailable()) return;
         if (!getSite().isChangeable()) return;
+        if (!mPlaybackPolicy.canSwitch(SystemClock.elapsedRealtime(), false, true)) return;
         if (isUseParse()) checkParse();
         else checkFlag();
     }
@@ -2997,21 +3848,21 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void checkSearch(boolean force) {
         if (nextSite()) return;
         if (mSourceTask != null && !mSourceTask.isFinished()) setInitAuto(true);
+        else if (mSourceTask != null && mSourceTask.hasMore()) { setInitAuto(true); mSourceTask.searchMore(); }
         else startSourceSearch(true);
     }
 
-    /** Additional source scripts run when the user opens sources; playback failures still auto-switch. */
+    /** All enabled configurations contribute sources and qualities, even when the episode panel is open. */
     private void checkQuick() {
-        if (mDetailPanel != DETAIL_SOURCE) return;
         if (!Util.isNetworkAvailable()) return;
         if (mSourceTask != null) return;
-        if (GroupCache.get(getGroupToken()) == null) App.post(mR5, 1000);
+        App.post(mR5, 1000);
     }
 
     /** 从搜索结果页带过来的整组片源。 */
     private void initSources() {
         VodGroup group = GroupCache.get(getGroupToken());
-        if (group != null) mSourceAdapter.addAll(group.getSources());
+        if (group != null) for (VodSource source : group.getSources()) if (isTarget(source.getVod())) mSourceAdapter.add(source);
         VodSource current = mSourceAdapter.find(getKey(), getId());
         if (current != null) mSourceAdapter.setCurrent(current);
         updateSourceView();
@@ -3019,6 +3870,22 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 换了一部片（通知栏、投屏接收等从外部再次打开详情页）：清掉上一部片的片源。 */
     private void resetSources() {
+        logPlaybackSummary("new-entry");
+        mClock.setCallback(null); mPlayers.reset(); mPlayers.stop();
+        App.removeCallbacks(mQualityMaintenance, mPlaybackWatchdog, mFinishInitialSelection);
+        if (mQualityCatalog != null) mQualityCatalog.release();
+        mQualityCatalog = null; mSelectedQuality = null; mAutomaticQuality = true; mQualityHeight = 0; mQualityAnchor = null;
+        mQualityPreferenceLoaded = false; mQualityRestorePending = false;
+        mPendingResumeHistory = null;
+        mCloudResumePosition = -1; mHistoryPlaybackConfirmed = false; mLoggedPlaybackReady = false;
+        mFilmIdentity = null; mHistory = null;
+        mTargetKey = ""; mTargetYear = 0; mTargetKind = TitleKey.KIND_UNKNOWN;
+        mInitialSelection = false; mInitialSelectionDone = false; mInitialFlag = null;
+        mRecoveryPending = false; mRecoveryManual = false; mRecoveryReason = "fallback"; mPlaybackEpisode = "";
+        mAutoWidth = 0; mAutoHeight = 0; mPlaybackWanted = true;
+        mSourceAnchor = null; mSourceProbeUntil = 0; mCurrentStartupMs = -1;
+        mPlaybackPolicy = new com.fongmi.android.tv.search.PlaybackPolicy();
+        mSessionId = Long.toHexString(System.nanoTime()); mManualSwitches = 0; mAutomaticSwitches = 0; mLastHealthLog = 0;
         mLocalDetailGeneration++;
         mRefreshingLocalDetail = false;
         mLocalDetail = false;
@@ -3026,60 +3893,130 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mFailedLocalPaths.clear();
         stopSourceSearch();
         mSourceAdapter.clear();
-        mCurrentVod = null;
+        mCurrentVod = null; mMetadataVod = null;
+        App.removeCallbacks(mDoubanRetry);
+        mRatingGeneration++; mRatingAttempts = 0; mRatingKey = ""; mRatingRetryAt = 0; mDoubanLoading = false; mDoubanSubject = null;
+        mDoubanGenres = new ArrayList<>();
+        if (mRelatedAdapter != null) mRelatedAdapter.setItems(new ArrayList<>());
         mManualSourceSelection = false;
         setInitAuto(false);
         updateSourceView();
     }
 
     private void setTarget(String name, String year, String type) {
-        mTargetKey = TitleKey.normalize(name);
-        mTargetYear = TitleKey.year(year);
-        mTargetKind = TitleKey.kind(type);
+        if (mTargetKey.isEmpty()) mTargetKey = TitleKey.normalize(name);
+        if (mTargetYear == 0) mTargetYear = TitleKey.year(year);
+        if (mTargetKind == TitleKey.KIND_UNKNOWN) mTargetKind = TitleKey.kind(type);
+    }
+
+    private String metadataName(Vod item) {
+        if (mFilmIdentity != null && !TextUtils.isEmpty(mFilmIdentity.getVodName())) return mFilmIdentity.getVodName();
+        if (!getName().isEmpty()) return getName();
+        return item == null ? "" : item.getVodName();
+    }
+
+    private String metadataYear(Vod item) {
+        if (mFilmIdentity != null && !TextUtils.isEmpty(mFilmIdentity.getVodYear())) return mFilmIdentity.getVodYear();
+        if (!getYear().isEmpty()) return getYear();
+        return item == null ? "" : item.getVodYear();
     }
 
     private void loadDoubanDetails(String name, String year) {
-        String key = TitleKey.normalize(name) + "#" + TitleKey.year(year);
-        if (key.equals(mRatingKey)) return;
-        mRatingKey = key;
-        mDoubanSubject = null;
+        String titleKey = TitleKey.normalize(name);
+        if (titleKey.isEmpty()) { mDoubanLoading = false; return; }
+        String key = titleKey + "#" + TitleKey.year(year);
+        long now = SystemClock.elapsedRealtime();
+        if (key.equals(mRatingKey) && (mDoubanLoading || mDoubanSubject != null || now < mRatingRetryAt || mRatingAttempts >= 2)) return;
+        boolean changed = !key.equals(mRatingKey);
+        if (changed) mRatingAttempts = 0;
+        mRatingAttempts++;
+        mRatingKey = key; mDoubanLoading = true;
         int generation = ++mRatingGeneration;
-        mDoubanGenres = new ArrayList<>();
-        mRelatedAdapter.setItems(new ArrayList<>());
-        mBinding.relatedSection.setVisibility(View.GONE);
-        double provided = getIntent().getDoubleExtra("rating", 0);
-        boolean sameTitle = TitleKey.normalize(name).equals(TitleKey.normalize(getName()));
-        if (provided > 0 && sameTitle) showDoubanRating(provided);
-        else mBinding.ratingLayout.setVisibility(View.GONE);
+        if (changed) {
+            mDoubanSubject = null; mDoubanGenres = new ArrayList<>();
+            mRelatedAdapter.setItems(new ArrayList<>());
+            mBinding.relatedSection.setVisibility(View.GONE);
+            mBinding.ratingLayout.setVisibility(View.GONE);
+        }
+        showMetadataPlaceholder();
+        Logger.i("DoubanDetail: action=lookup session=" + mSessionId + " title=" + name + " year=" + year + " retry=" + !changed);
         App.execute(() -> {
             Douban.Subject subject = null;
-            List<Douban.Item> related = new ArrayList<>();
-            try {
-                subject = Douban.subject(name, year);
-                related = Douban.related(subject.getId(), 12);
-            } catch (Exception e) {
-                Logger.e("DoubanDetail", e);
-            }
+            try { subject = Douban.subject(name, year); }
+            catch (Exception error) { Logger.e("DoubanDetail", error); }
             Douban.Subject result = subject;
+            App.post(() -> {
+                if (isFinishing() || isDestroyed() || generation != mRatingGeneration) return;
+                mDoubanLoading = false;
+                mDoubanSubject = result != null && !result.getId().isEmpty() ? result : null;
+                mRatingRetryAt = mDoubanSubject == null ? SystemClock.elapsedRealtime() + 30000 : Long.MAX_VALUE;
+                App.removeCallbacks(mDoubanRetry);
+                if (mDoubanSubject == null && mRatingAttempts < 2) App.post(mDoubanRetry, 30000);
+                mDoubanGenres = mDoubanSubject == null ? new ArrayList<>() : mDoubanSubject.getGenres();
+                if (mDoubanSubject != null && mDoubanSubject.getRating() > 0) showDoubanRating(mDoubanSubject.getRating());
+                Logger.i("DoubanDetail: action=" + (mDoubanSubject == null ? "miss" : "matched") + " session=" + mSessionId
+                        + " title=" + name + " year=" + year + " id=" + (mDoubanSubject == null ? "" : mDoubanSubject.getId()));
+                renderDetailMetadata();
+            });
+            // Recommendations must not delay the first metadata render.
+            if (result == null || result.getId().isEmpty()) return;
+            List<Douban.Item> related = new ArrayList<>();
+            try { related = Douban.related(result.getId(), 12); }
+            catch (Exception error) { Logger.e("DoubanRelated", error); }
             List<Douban.Item> recommendations = related;
             App.post(() -> {
                 if (isFinishing() || isDestroyed() || generation != mRatingGeneration) return;
-                if (result != null && result.getRating() > 0) showDoubanRating(result.getRating());
-                if (result != null) {
-                    mDoubanGenres = result.getGenres();
-                    setTags(mDoubanGenres);
-                    mDoubanSubject = result;
-                    applyDoubanMetadata();
-                }
                 mRelatedAdapter.setItems(recommendations);
                 mBinding.relatedSection.setVisibility(recommendations.isEmpty() ? View.GONE : View.VISIBLE);
+                Logger.i("DoubanDetail: action=related session=" + mSessionId + " id=" + result.getId()
+                        + " count=" + recommendations.size());
             });
         });
     }
 
+    private void showMetadataPlaceholder() {
+        for (TextView view : new TextView[]{mBinding.meta, mBinding.castText, mBinding.content}) {
+            android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+            shape.setColor(getColor(R.color.surface_secondary)); shape.setCornerRadius(ResUtil.dp2px(8));
+            view.setBackground(shape); view.setText("");
+            view.setMinimumHeight(ResUtil.dp2px(view == mBinding.content ? 64 : view == mBinding.castText ? 40 : 20));
+            view.setVisibility(View.VISIBLE);
+        }
+        mBinding.metaScroll.setVisibility(View.VISIBLE); mBinding.contentLayout.setVisibility(View.VISIBLE);
+        mBinding.castExpand.setVisibility(View.GONE); mBinding.contentExpand.setVisibility(View.GONE);
+        mBinding.tags.removeAllViews();
+        for (int i = 0; i < 3; i++) {
+            TextView tag = new TextView(this); tag.setText("　　　"); tag.setBackgroundResource(R.drawable.shape_detail_tag);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, ResUtil.dp2px(20)); params.setMarginEnd(ResUtil.dp2px(8));
+            mBinding.tags.addView(tag, params);
+        }
+        mBinding.tagScroll.setVisibility(View.VISIBLE);
+        com.bumptech.glide.Glide.with(this).clear(mBinding.poster);
+        mBinding.poster.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);
+        mBinding.poster.setImageDrawable(new android.graphics.drawable.ColorDrawable(getColor(R.color.surface_secondary)));
+    }
+
+    private void renderDetailMetadata() {
+        if (mDoubanLoading) { showMetadataPlaceholder(); return; }
+        if (mCurrentVod == null) return;
+        for (TextView view : new TextView[]{mBinding.meta, mBinding.castText, mBinding.content}) {
+            view.setBackground(null); view.setMinimumHeight(0);
+        }
+        Vod item = mMetadataVod == null ? mCurrentVod : mMetadataVod;
+        String pic = mDoubanSubject != null && !mDoubanSubject.getPic().isEmpty() ? mDoubanSubject.getPic() : item.getVodPic(getPic());
+        String intro = mDoubanSubject != null && !mDoubanSubject.getIntro().isEmpty() ? mDoubanSubject.getIntro() : Html.fromHtml(item.getVodContent()).toString();
+        ImgUtil.rect(item.getVodName(getName()), pic, mBinding.poster);
+        setText(mBinding.content, 0, intro);
+        setCast(item); setMeta(item); setTags(mDoubanGenres);
+        updateContentExpand(); mBinding.contentLayout.setVisibility(mBinding.content.getVisibility());
+        setArtwork(pic); mBinding.video.setTag(pic);
+        if (mHistory != null && !pic.isEmpty() && TitleKey.normalize(mHistory.getVodName()).equals(TitleKey.normalize(item.getVodName()))) mHistory.setVodPic(pic);
+    }
+
     private void applyDoubanMetadata() {
-        if (mDoubanSubject == null) return;
-        if (mCurrentVod != null) { setCast(mCurrentVod); setMeta(mCurrentVod); }
+        if (mDoubanLoading || mDoubanSubject == null) return;
+        Vod item = mMetadataVod == null ? mCurrentVod : mMetadataVod;
+        if (item != null) { setCast(item); setMeta(item); }
         setTags(mDoubanSubject.getGenres());
         if (!mDoubanSubject.getIntro().isEmpty()) {
             setText(mBinding.content, 0, mDoubanSubject.getIntro());
@@ -3102,8 +4039,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 同名（规整后）、年份相差不超过一年、片种不冲突，才算同一部片。续集和翻拍不收。 */
     private boolean isTarget(Vod item) {
-        if (mTargetKey.isEmpty() || !mTargetKey.equals(TitleKey.normalize(item.getVodName()))) return false;
-        return TitleKey.sameYear(mTargetYear, TitleKey.year(item.getVodYear())) && TitleKey.sameKind(mTargetKind, TitleKey.kind(item.getTypeName()));
+        return !mTargetKey.isEmpty() && acceptsDetail(item);
     }
 
     /** 当前播放的源也放进列表并高亮。从观看记录进来时列表里原本没有它。 */
@@ -3127,22 +4063,25 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 按片名搜全部站点，同名同年的收进片源列表。auto 为 true 时第一个合适的源一到就切过去。 */
     private void startSourceSearch(boolean auto) {
+        if (!auto && mCurrentVod != null && mHistory != null) {
+            prepareQualityCatalog(mHistory.getVodRemarks());
+            if (mQualityCatalog == null || !mQualityCatalog.isReady() || qualityWorkBudget() == 0) { App.removeCallbacks(mR5); App.post(mR5, 2000); return; }
+        }
         stopSourceSearch();
-        setInitAuto(auto);
+        setInitAuto(auto); mSourceBackground = !auto;
         mStrictUntil = SystemClock.elapsedRealtime() + 2500;
         List<Site> sites = new ArrayList<>();
         for (Site site : VodConfig.get().getSites()) if (site.isSearchable() && !site.isCloudDrive()) sites.add(site);
-        mSourceTask = SearchTask.start(sites, mBinding.name.getText().toString(), false, new SearchTask.Callback() {
-            @Override
-            public void onResult(List<Vod> items, long cost) {
-                addSources(items, cost);
+        if (!auto && mQualityCatalog != null) sites = mQualityCatalog.pendingSites(sites);
+        SearchTask.Callback callback = new SearchTask.Callback() {
+            @Override public void onResult(List<Vod> items, long cost) { addSources(items, cost); }
+            @Override public void onSiteComplete(Site site, boolean failed) {
+                if (mQualityCatalog != null) mQualityCatalog.searchComplete(site, failed);
             }
-
-            @Override
-            public void onFinish() {
-                onSourceSearchFinish();
-            }
-        });
+            @Override public void onFinish() { onSourceSearchFinish(); }
+        };
+        mSourceTask = auto ? SearchTask.start(sites, mBinding.name.getText().toString(), false, callback)
+                : SearchTask.background(sites, mBinding.name.getText().toString(), callback);
         App.post(mR6, 2500);
     }
 
@@ -3162,12 +4101,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         }
         if (sources.isEmpty()) return;
         mSourceAdapter.addAll(sources);
+        if (mHistory != null) prepareQualityCatalog(mHistory.getVodRemarks());
         updateSourceView();
+        if (mSourceAnchor != null && mBinding.playbackPanel.isPanelVisible()) renderSourcePanel(mSourceAnchor, true);
         checkAutoSwitch();
     }
 
     private void onSourceSearchFinish() {
         checkAutoSwitch();
+        if (isInitAuto() && mSourceTask != null && mSourceTask.hasMore()) { mSourceTask.searchMore(); return; }
+        if (mSourceBackground && mSourceTask != null && mSourceTask.hasMore()) App.post(mQualityMaintenance, 1500);
         // 只有片名、搜完一个能播的源都没有：别让转圈一直转下去
         if (isInitAuto() && mCurrentVod == null && mSourceAdapter.next(0) == null) {
             App.removeCallbacks(mR4);
@@ -3177,28 +4120,44 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 自动选源。有目标年份时开搜后 2.5 秒内只认年份对得上的，免得同名的老版本抢先。 */
     private void checkAutoSwitch() {
+        if (mRecoveryPending && !isInitAuto()) { recoverPlayback(mRecoveryReason, mRecoveryManual, false); return; }
         if (!isInitAuto()) return;
+        if (!mPlaybackWanted && mHistory != null) return;
+        if (mHistory != null && !mPlaybackPolicy.canSwitch(SystemClock.elapsedRealtime(), false, true)) return;
         boolean strict = mTargetYear > 0 && mSourceTask != null && !mSourceTask.isFinished() && SystemClock.elapsedRealtime() < mStrictUntil;
-        VodSource next = mSourceAdapter.next(strict ? mTargetYear : 0);
+        VodSource next = nextPlaybackSource(strict ? mTargetYear : 0);
         if (next != null) switchSource(next, true);
     }
 
     private boolean nextSite() {
-        VodSource next = mSourceAdapter.next(0);
+        if (mHistory != null && !mPlaybackPolicy.canSwitch(SystemClock.elapsedRealtime(), false, true)) return false;
+        VodSource next = nextPlaybackSource(0);
         if (next == null) return false;
         switchSource(next, true);
         return true;
     }
 
-    /** 切到另一个源。auto 是播放失败自动换的：当前源记为播挂过，之后自动换源不再选它。 */
+    private VodSource nextPlaybackSource(int year) {
+        long now = SystemClock.elapsedRealtime();
+        for (VodSource source : mSourceAdapter.getRanked()) {
+            if (source.isBroken() || source.getSite().isCloudDrive() || !source.getSite().isChangeable()
+                    || !mPlaybackPolicy.available(sourceRoute(source.getSiteKey(), source.getVodId()), now)) continue;
+            if (year > 0 && TitleKey.year(source.getVod().getVodYear()) != year) continue;
+            return source;
+        }
+        return null;
+    }
+
+    /** Internal provider fallback; the film, semantic episode and time remain pinned. */
     private void switchSource(VodSource next, boolean auto) {
-        VodSource current = mSourceAdapter.getCurrent();
-        if (auto && current != null) current.setBroken(true);
-        if (auto) Notify.show(getString(R.string.play_switch_site, next.getSiteName()));
+        captureSourceProgress();
+        if (mHistory != null) recordPlaybackSwitch(next, mRecoveryPending ? mRecoveryReason : auto ? "fallback" : "manual",
+                !auto || mRecoveryManual && mRecoveryPending);
+        mRecoveryPending = false; mSelectedQuality = null;
+        if (mSourceTask != null && !mSourceTask.isBackground()) stopSourceSearch();
         mManualSourceSelection = !auto;
-        setInitAuto(false);
+        setInitAuto(false); mSourceBackground = true;
         mSourceAdapter.setCurrent(next);
-        mBinding.sourceList.scrollToPosition(0);
         updateSourceView();
         getDetail(next.getVod());
     }
@@ -3207,55 +4166,39 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         updateDetailPanels();
     }
 
-    private void setDetailPanel(int panel) {
-        if (panel == DETAIL_SOURCE && mSourceAdapter.getItemCount() == 0) return;
-        if (panel == DETAIL_FLAG && mFlagAdapter.isEmpty()) return;
-        mDetailPanel = panel;
-        updateDetailPanels();
-    }
-
     private void updateDetailPanels() {
         if (mBinding == null || mEpisodeAdapter == null || mSourceAdapter == null || mFlagAdapter == null) return;
         boolean hasEpisodes = !mEpisodeAdapter.isEmpty();
-        boolean hasSources = mSourceAdapter.getItemCount() > 0;
-        boolean hasFlags = !mFlagAdapter.isEmpty();
-        if (mDetailPanel == DETAIL_SOURCE && !hasSources) mDetailPanel = DETAIL_EPISODE;
-        if (mDetailPanel == DETAIL_FLAG && !hasFlags) mDetailPanel = DETAIL_EPISODE;
-
-        boolean episodes = mDetailPanel == DETAIL_EPISODE;
-        boolean sources = mDetailPanel == DETAIL_SOURCE;
-        boolean flags = mDetailPanel == DETAIL_FLAG;
-        mBinding.episodeTab.setActivated(episodes);
-        mBinding.sourceTab.setActivated(sources);
-        mBinding.flagTab.setActivated(flags);
-        mBinding.episodeTab.setTextColor(getColor(episodes ? R.color.text_primary : R.color.text_secondary));
-        mBinding.sourceTab.setTextColor(getColor(sources ? R.color.text_primary : R.color.text_secondary));
-        mBinding.flagTab.setTextColor(getColor(flags ? R.color.text_primary : R.color.text_secondary));
-        mBinding.sourceTab.setEnabled(hasSources);
-        mBinding.flagTab.setEnabled(hasFlags);
-        mBinding.sourceTab.setAlpha(hasSources ? (sources ? 1f : 0.72f) : 0.32f);
-        mBinding.flagTab.setAlpha(hasFlags ? (flags ? 1f : 0.72f) : 0.32f);
-
-        mBinding.episode.setVisibility(episodes && hasEpisodes ? View.VISIBLE : View.GONE);
-        mBinding.sourceOptions.setVisibility(episodes ? View.GONE : View.VISIBLE);
-        mBinding.sourceList.setVisibility(sources ? View.VISIBLE : View.GONE);
-        mBinding.flag.setVisibility(flags ? View.VISIBLE : View.GONE);
-        mBinding.episodeActions.setVisibility(episodes ? View.VISIBLE : View.GONE);
+        mBinding.episodeTab.setActivated(true);
+        mBinding.episodeTab.setTextColor(getColor(R.color.text_primary));
+        mBinding.episode.setVisibility(hasEpisodes ? View.VISIBLE : View.GONE);
+        mBinding.episodeActions.setVisibility(hasEpisodes ? View.VISIBLE : View.GONE);
     }
 
     private void nextParse(int position) {
         Parse parse = mParseAdapter.get(position + 1);
-        Notify.show(getString(R.string.play_switch_parse, parse.getName()));
+        Logger.i("PlayDecision: action=retry-parser session=" + mSessionId + " index=" + (position + 1));
         onItemClick(parse);
     }
 
     private void nextFlag(int position) {
         Flag flag = mFlagAdapter.get(position + 1);
-        Notify.show(getString(R.string.play_switch_flag, flag.getFlag()));
+        Logger.i("PlayDecision: action=retry-line session=" + mSessionId + " line=" + flag.getFlag());
+        if (com.fongmi.android.tv.search.QualityCatalog.match(flag, mHistory.getVodRemarks(), isQualityMovie()) == null
+                || flag.isCloudDrive() || PlaybackRoutePolicy.isRestricted(flag)) {
+            if (position + 1 < mFlagAdapter.getItemCount() - 1) nextFlag(position + 1); else checkSearch(false); return;
+        }
+        captureSourceProgress();
+        mPlaybackPolicy.switched(playbackRoute(), SystemClock.elapsedRealtime());
+        mAutomaticSwitches++;
         if (!selectFlag(flag, true)) checkFlag();
     }
 
     private void onPaused() {
+        mPlaybackWanted = false;
+        mPlaybackPolicy.suspend(SystemClock.elapsedRealtime());
+        if (mQualityCatalog != null) mQualityCatalog.budget(0);
+        if (mSourceBackground && mSourceTask != null) mSourceTask.pause();
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mPlayers.pause();
         checkPlayImg();
@@ -3263,6 +4206,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onPlay() {
+        mPlaybackWanted = true;
+        if (mSourceBackground && mSourceTask != null && qualityWorkBudget() > 0) mSourceTask.resume();
         if (mAwaitingCloudSync || mCloudChoicePending) { mResumeAfterCloudSync = true; return; }
         if (mHistory != null && mPlayers.isEnded()) mPlayers.seekTo(mHistory.getOpening());
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -3795,6 +4740,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void startGestureSeekPreview() {
         if (mGestureSeeking || mPlayers.isEmpty()) return;
+        mPlaybackPolicy.seek(SystemClock.elapsedRealtime());
         mGestureSeeking = true;
         mGestureSeekPlaying = mPlayers.isPlayRequested();
         mGestureSeekBasePosition = mPlayers.getPosition();
@@ -3843,6 +4789,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onScrubStart(long position) {
+        mPlaybackPolicy.seek(SystemClock.elapsedRealtime());
         mScrubbing = true;
         mPreview.attach(mBinding.control.previewVideo, this);
         Logger.i("Seek: start positionMs=" + position + ", playing=" + mPlayers.isPlaying()
@@ -3870,6 +4817,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onScrubStop(long position, boolean canceled) {
+        mPlaybackPolicy.seek(SystemClock.elapsedRealtime());
         Logger.i("Seek: stop positionMs=" + position + ", canceled=" + canceled
                 + ", playerMs=" + mPlayers.getPosition() + ", bufferedMs=" + mPlayers.getBuffered()
                 + ", ready=" + mPlayers.isReady()
@@ -3938,18 +4886,27 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (mGestureSeeking) {
             mBinding.widget.seekPreviewImage.setImageBitmap(bitmap);
             mBinding.widget.seekPreviewImage.setVisibility(View.VISIBLE);
+            mBinding.widget.seekPreviewLoading.setVisibility(View.GONE);
         } else {
             mBinding.control.previewImage.setImageBitmap(bitmap);
             mBinding.control.previewImage.setVisibility(View.VISIBLE);
+            mBinding.control.previewLoading.setVisibility(View.GONE);
         }
     }
 
     @Override
     public void onPreviewLoading() {
-        // 新目标没有现成 Bitmap 时必须露出下层 TextureView。beta2 一直用旧图片盖住它，
-        // 实际播放器在背后已经换帧，用户看到的却只能隔很久跳一张静态图。
+        // 新帧还没有完成时保留上一帧，并标明正在加载；只有渲染完成才撤掉图片。
+        if (mGestureSeeking) mBinding.widget.seekPreviewLoading.setVisibility(View.VISIBLE);
+        else mBinding.control.previewLoading.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    public void onPreviewReady() {
         if (mGestureSeeking) mBinding.widget.seekPreviewImage.setVisibility(View.GONE);
         else mBinding.control.previewImage.setVisibility(View.GONE);
+        if (mGestureSeeking) mBinding.widget.seekPreviewLoading.setVisibility(View.GONE);
+        else mBinding.control.previewLoading.setVisibility(View.GONE);
     }
 
     @Override
@@ -3957,8 +4914,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         // 换集必须清掉旧画面，否则新片源首帧出来前会短暂显示上一集。
         mBinding.control.previewImage.setImageDrawable(null);
         mBinding.control.previewImage.setVisibility(View.GONE);
+        mBinding.control.previewLoading.setVisibility(View.GONE);
         mBinding.widget.seekPreviewImage.setImageDrawable(null);
         mBinding.widget.seekPreviewImage.setVisibility(View.GONE);
+        mBinding.widget.seekPreviewLoading.setVisibility(View.GONE);
     }
 
     @Override
@@ -4019,6 +4978,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void finishGestureSeekPreview(boolean canceled) {
+        mPlaybackPolicy.seek(SystemClock.elapsedRealtime());
         long position = mGestureSeekPosition;
         boolean resume = mGestureSeekPlaying;
         Logger.i("SeekGesture: stop positionMs=" + position + ", canceled=" + canceled
@@ -4044,6 +5004,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
     
     private void handleLandscapeSeek(long time) {
+        mPlaybackPolicy.seek(SystemClock.elapsedRealtime());
         hideSeek();
         // time 是相对偏移量，先换算成唯一的绝对目标位置，再只跳转一次。
         // 原逻辑把绝对播放位置和相对偏移量比较，几乎必然误判失败并重复 seek，
@@ -4085,6 +5046,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onDoubleTapLeft() {
+        mPlaybackPolicy.seek(SystemClock.elapsedRealtime());
         long seekTime = -TimeUnit.SECONDS.toMillis(Setting.getGestureSeekSeconds());
         if (isCasting()) {
             CastManager.get().seekTo(Math.max(0, CastManager.get().getPosition() + seekTime));
@@ -4098,6 +5060,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     public void onDoubleTapRight() {
+        mPlaybackPolicy.seek(SystemClock.elapsedRealtime());
         long seekTime = TimeUnit.SECONDS.toMillis(Setting.getGestureSeekSeconds());
         if (isCasting()) {
             long duration = CastManager.get().getDuration();
@@ -4206,6 +5169,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     protected void onResume() {
         super.onResume();
         startTimeBatteryUpdates();
+        App.removeCallbacks(mPlaybackWatchdog); App.post(mPlaybackWatchdog, 1000);
+        if (mInitialSelection) App.post(mFinishInitialSelection, 100);
         if (isCasting()) {
             // 从后台回来重新接上投屏会话：期间可能已经换过集或被电视停掉
             CastManager.get().setListener(this);
@@ -4214,6 +5179,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (isRedirect() && !isCasting()) onPlay();
         setRedirect(false);
         retryDetailAfterNetwork();
+        if (mSourceTask != null) mSourceTask.resume();
+        if (mHistory != null && mCurrentVod != null) prepareQualityCatalog(mHistory.getVodRemarks());
+        App.removeCallbacks(mQualityMaintenance); App.post(mQualityMaintenance, 1500);
+        if (mSourceTask == null && mCurrentVod != null) checkQuick();
     }
 
     @Override
@@ -4227,6 +5196,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     protected void onStop() {
         super.onStop();
         flushProgress();
+        mPlaybackPolicy.suspend(SystemClock.elapsedRealtime());
+        if (mSourceTask != null) mSourceTask.pause();
+        App.removeCallbacks(mR5);
+        if (mQualityCatalog != null) mQualityCatalog.setActive(false);
+        App.removeCallbacks(mQualityMaintenance, mPlaybackWatchdog, mFinishInitialSelection);
         if (Setting.isBackgroundOff()) onPaused();
         if (Setting.isBackgroundOff()) mClock.stop();
         setStop(true);
@@ -4301,7 +5275,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean offerCloudProgress() {
         if (mHistory == null || mCloudChoicePending || mAwaitingCloudSync || mSuppressHistorySaves || isStop() || isFinishing() || isDestroyed()) return false;
         History latest = null;
-        for (History record : com.fongmi.android.tv.db.AppDatabase.get().getHistoryDao().findByName(mHistory.getCid(), mHistory.getVodName())) {
+        for (History record : mHistory.find()) {
             if (record.getCreateTime() > mKnownHistoryVersion && (latest == null || record.getCreateTime() > latest.getCreateTime())) latest = record;
         }
         if (latest == null) return false;
@@ -4368,12 +5342,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         }
         mPendingCloudHistory = null;
         mCloudResumePosition = -1;
+        mPlaybackPolicy.seek(SystemClock.elapsedRealtime());
         mPlayers.seekTo(position);
         mCloudChoicePending = false;
         mResumeAfterCloudSync = false;
         // Do not use onPlay(): its ended-state shortcut can overwrite a seek with the opening time.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mPlayers.play();
+        mPlaybackWanted = true;
         checkPlayImg();
         mClock.stop().start();
         queueHistorySnapshot(true, true);
@@ -4389,13 +5365,12 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         String cloud = remote.getVodRemarks().trim();
         if (!local.isEmpty() && local.equalsIgnoreCase(cloud)) return true;
         if (!mHistory.getEpisodeUrl().isEmpty() && mHistory.getEpisodeUrl().equals(remote.getEpisodeUrl())) return true;
-        int localNumber = Util.getDigit(local);
-        int cloudNumber = Util.getDigit(cloud);
+        int localNumber = com.fongmi.android.tv.search.EpisodeKey.number(local);
+        int cloudNumber = com.fongmi.android.tv.search.EpisodeKey.number(cloud);
         boolean series = kind == TitleKey.KIND_TV || mHistory.getEpisodeCount() > 1;
         // Only ordinary numbered episode labels qualify; dates, specials and quality labels do not.
-        String numbered = "(?i)^(?:第\\s*)?[0-9０-９]+\\s*(?:集|话|話|期)?$";
-        return series && local.matches(numbered) && cloud.matches(numbered)
-                && localNumber > 0 && localNumber == cloudNumber;
+        return series && localNumber > 0 && localNumber == cloudNumber
+                && com.fongmi.android.tv.search.EpisodeKey.key(local).equals(com.fongmi.android.tv.search.EpisodeKey.key(cloud));
     }
 
     @Override
@@ -4501,6 +5476,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     protected void onDestroy() {
+        logPlaybackSummary("exit");
+        App.removeCallbacks(mQualityMaintenance, mPlaybackWatchdog, mFinishInitialSelection);
+        if (mQualityCatalog != null) mQualityCatalog.release();
         if (mCloudProgressDialog != null) mCloudProgressDialog.dismiss();
         mRatingGeneration++;
         super.onDestroy();
@@ -4517,10 +5495,21 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         RefreshEvent.history();
         PlaybackService.stop();
         mHandler.removeCallbacksAndMessages(null);
-        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5, mR6, mCacheWarmup, mShowBufferingProgress);
+        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5, mR6, mCacheWarmup, mShowBufferingProgress, mDoubanRetry);
         EventBus.getDefault().unregister(this);
         mViewModel.result.removeObserver(mObserveDetail);
         mViewModel.player.removeObserver(mObservePlayer);
         stopTimeBatteryUpdates();
+        com.fongmi.android.tv.utils.ToastFilter.leavePlayback(this);
+    }
+
+    private void logPlaybackSummary(String reason) {
+        if (mHistory == null) return;
+        Logger.i("PlaySummary: session=" + mSessionId + " reason=" + reason + " entry=" + mEntry
+                + " film=" + mHistory.getFilmId() + " episode=" + mPlaybackEpisode + " positionMs=" + mHistory.getPosition()
+                + " firstReadyMs=" + mPlaybackPolicy.firstReadyMs() + " attempts=" + mPlaybackPolicy.attempts()
+                + " stalls=" + mPlaybackPolicy.stallCount() + " stalledMs=" + mPlaybackPolicy.stalledMs()
+                + " longestStallMs=" + mPlaybackPolicy.longestStallMs() + " autoChanges=" + mAutomaticSwitches
+                + " manualChanges=" + mManualSwitches + " confirmed=" + mHistoryPlaybackConfirmed);
     }
 }

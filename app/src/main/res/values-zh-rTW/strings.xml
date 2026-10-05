@@ -3,6 +3,8 @@
     <!-- App -->
     <string name="app_name">XY影视</string>
     <string name="back">返回</string>
+    <string name="error_live_unsupported">目前版本不支援直播</string>
+    <string name="preview_loading">載入預覽中</string>
 
     <!-- Vod -->
     <string name="vod_last">上次看到<xliff:g name="name">%s</xliff:g></string>

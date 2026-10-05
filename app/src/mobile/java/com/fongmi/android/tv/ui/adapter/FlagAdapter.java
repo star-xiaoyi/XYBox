@@ -51,7 +51,7 @@ public class FlagAdapter extends RecyclerView.Adapter<FlagAdapter.ViewHolder> {
     }
 
     public Flag getActivated() {
-        return mItems.get(getPosition());
+        return com.fongmi.android.tv.search.PlaybackSelection.item(mItems, getPosition());
     }
 
     public void setActivated(Flag flag) {

@@ -14,12 +14,6 @@
         android:visible="true" />
 
     <item
-        android:id="@+id/live"
-        android:icon="@drawable/ic_nav_live"
-        android:title="@string/nav_live"
-        android:visible="true" />
-
-    <item
         android:id="@+id/setting"
         android:icon="@drawable/ic_nav_profile"
         android:title="@string/nav_profile"

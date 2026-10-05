@@ -88,6 +88,11 @@
             android:text="@string/crash_copy" />
 
         <TextView
+            android:id="@+id/share"
+            style="@style/DialogTextButton"
+            android:text="分享日志" />
+
+        <TextView
             android:id="@+id/restart"
             style="@style/DialogTextButton"
             android:layout_marginStart="4dp"

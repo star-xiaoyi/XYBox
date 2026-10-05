@@ -18,17 +18,14 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.Updater;
-import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
-import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.databinding.FragmentSettingBinding;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.impl.ConfigCallback;
-import com.fongmi.android.tv.impl.LiveCallback;
 import com.fongmi.android.tv.impl.ProxyCallback;
 import com.fongmi.android.tv.impl.SiteCallback;
 import com.fongmi.android.tv.player.Source;
@@ -40,7 +37,6 @@ import com.fongmi.android.tv.ui.custom.SettingsGlassContentView;
 import com.fongmi.android.tv.ui.custom.LiquidGlassNavigationView;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
-import com.fongmi.android.tv.ui.dialog.LiveDialog;
 import com.fongmi.android.tv.ui.dialog.ProxyDialog;
 import com.fongmi.android.tv.ui.dialog.RestoreDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
@@ -63,7 +59,7 @@ import org.greenrobot.eventbus.ThreadMode;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SettingFragment extends BaseFragment implements ConfigCallback, SiteCallback, LiveCallback, ProxyCallback {
+public class SettingFragment extends BaseFragment implements ConfigCallback, SiteCallback, ProxyCallback {
 
     private FragmentSettingBinding mBinding;
     private String[] size;
@@ -115,24 +111,20 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         mBinding.settingsContent.setWebDavEditor(
                 Setting.getWebDAVUrl(), Setting.getWebDAVUsername(), Setting.getWebDAVPassword());
         mBinding.settingsContent.setIncognitoChecked(Setting.isIncognito());
-        mBinding.settingsContent.setLiveTabVisibleChecked(Setting.isLiveTabVisible());
+        mBinding.settingsContent.setPredictiveBackChecked(Setting.isPredictiveBackEnabled());
         mBinding.settingsContent.setHistoryVisibleChecked(Setting.isHistoryVisible());
         mBinding.settingsContent.setLiquidGlassNavigationChecked(Setting.isLiquidGlassNavigation());
         size = ResUtil.getStringArray(R.array.select_size);
         mBinding.settingsContent.setSizeOptions(size, Setting.getSize());
         mBinding.settingsContent.setThemeOptions(getThemeNames(), Setting.getThemeMode());
-        setLiveSettingsVisibility();
     }
 
     private void setSourceText() {
-        mBinding.settingsContent.setSourceDescriptions(
-                getSourceText(VodConfig.getDesc(), R.string.source_hint_setting),
-                getSourceText(LiveConfig.getDesc(), R.string.source_hint_live));
+        mBinding.settingsContent.setSourceDescription(
+                getSourceText(VodConfig.getDesc(), R.string.source_hint_setting));
         Config vod = VodConfig.get().getConfig();
-        Config live = LiveConfig.get().getConfig();
-        mBinding.settingsContent.setSourceEditors(
-                vod == null ? "" : vod.getName(), vod == null ? "" : vod.getUrl(),
-                live == null ? "" : live.getName(), live == null ? "" : live.getUrl());
+        mBinding.settingsContent.setSourceEditor(
+                vod == null ? "" : vod.getName(), vod == null ? "" : vod.getUrl());
     }
 
     private String getSourceText(String desc, int hintStringRes) {
@@ -143,11 +135,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         return new String[]{getString(R.string.setting_theme_system), getString(R.string.setting_theme_light), getString(R.string.setting_theme_dark)};
     }
 
-
-    private void setLiveSettingsVisibility() {
-        // 设置项表达的是“隐藏直播”，所以 true 时不再显示直播源配置。
-        mBinding.settingsContent.setLiveVisible(!Setting.isLiveTabVisible());
-    }
 
     private void setCacheText() {
         FileUtil.getCacheSize(new Callback() {
@@ -177,9 +164,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     private void onSettingAction(int action) {
         switch (action) {
             case SettingsGlassContentView.ACTION_VOD_HOME: onVodHome(null); break;
-            case SettingsGlassContentView.ACTION_LIVE_HOME: onLiveHome(null); break;
             case SettingsGlassContentView.ACTION_VOD_HISTORY: onVodHistory(null); break;
-            case SettingsGlassContentView.ACTION_LIVE_HISTORY: onLiveHistory(null); break;
             case SettingsGlassContentView.ACTION_PLAYER: onPlayer(null); break;
             case SettingsGlassContentView.ACTION_OPERATION: onOperation(null); break;
             case SettingsGlassContentView.ACTION_AI: com.fongmi.android.tv.ui.activity.AiSettingsActivity.start(requireActivity()); break;
@@ -206,7 +191,10 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     private void onSettingToggle(int action, boolean checked) {
         switch (action) {
             case SettingsGlassContentView.ACTION_INCOGNITO: setIncognito(checked); break;
-            case SettingsGlassContentView.ACTION_LIVE_TAB_VISIBLE: setLiveTabVisible(checked); break;
+            case SettingsGlassContentView.ACTION_PREDICTIVE_BACK:
+                Setting.putPredictiveBackEnabled(checked);
+                ((com.fongmi.android.tv.ui.base.BaseActivity) requireActivity()).refreshBackHandling();
+                break;
             case SettingsGlassContentView.ACTION_HISTORY_VISIBLE: setHistoryVisible(checked); break;
             case SettingsGlassContentView.ACTION_GLASS_NAVIGATION: setLiquidGlassNavigation(checked); break;
         }
@@ -231,13 +219,13 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
             mBinding.settingsContent.setProxyEditor(value);
             return;
         }
-        if (action != SettingsGlassContentView.ACTION_VOD && action != SettingsGlassContentView.ACTION_LIVE) return;
+        if (action != SettingsGlassContentView.ACTION_VOD) return;
         if (TextUtils.isEmpty(value)) {
             Notify.tip(getString(R.string.dialog_config_hint));
             return;
         }
-        int configType = action == SettingsGlassContentView.ACTION_VOD ? 0 : 1;
-        Config current = configType == 0 ? VodConfig.get().getConfig() : LiveConfig.get().getConfig();
+        int configType = 0;
+        Config current = VodConfig.get().getConfig();
         if (current != null && !TextUtils.equals(current.getUrl(), value)) {
             WebDAVSyncManager.get().markConfigDeleted(current);
         }
@@ -332,16 +320,8 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
                 case 0:
                     Notify.progress(getActivity());
                     VodConfig.load(config, getCallback(0));
-                    if (mBinding != null) mBinding.settingsContent.setSourceDescriptions(
-                            getSourceText(config.getDesc(), R.string.source_hint_setting),
-                            getSourceText(LiveConfig.getDesc(), R.string.source_hint_live));
-                    break;
-                case 1:
-                    Notify.progress(getActivity());
-                    LiveConfig.load(config, getCallback(1));
-                    if (mBinding != null) mBinding.settingsContent.setSourceDescriptions(
-                            getSourceText(VodConfig.getDesc(), R.string.source_hint_setting),
-                            getSourceText(config.getDesc(), R.string.source_hint_live));
+                    if (mBinding != null) mBinding.settingsContent.setSourceDescription(
+                            getSourceText(config.getDesc(), R.string.source_hint_setting));
                     break;
             }
         } catch (Exception e) {
@@ -372,16 +352,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
                 if (getActivity() == null || !isAdded()) return;
                 Notify.show(msg);
                 Notify.dismiss();
-                switch (type) {
-                    case 0:
-                        setSourceText();
-                        break;
-                    case 1:
-                        setSourceText();
-                        break;
-                    case 2:
-                                        break;
-                }
+                setSourceText();
             }
         };
     }
@@ -394,17 +365,7 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
                 RefreshEvent.video();
                 RefreshEvent.config();
                 setSourceText();
-                        break;
-            case 1:
-                setCacheText();
-                Notify.dismiss();
-                RefreshEvent.config();
-                setSourceText();
                 break;
-            case 2:
-                setCacheText();
-                Notify.dismiss();
-                        break;
         }
     }
 
@@ -416,11 +377,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
 
     @Override
     public void onChanged() {
-    }
-
-    @Override
-    public void setLive(Live item) {
-        LiveConfig.get().setHome(item);
     }
 
     private void onSyncSettings(View view) {
@@ -435,17 +391,8 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         ConfigDialog.create(this).type(type = 0).show();
     }
 
-    private void onLive(View view) {
-        ConfigDialog.create(this).type(type = 1).show();
-    }
-
     private boolean onVodEdit(View view) {
         ConfigDialog.create(this).type(type = 0).edit().show();
-        return true;
-    }
-
-    private boolean onLiveEdit(View view) {
-        ConfigDialog.create(this).type(type = 1).edit().show();
         return true;
     }
 
@@ -453,16 +400,8 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
         SiteDialog.create(this).all().show();
     }
 
-    private void onLiveHome(View view) {
-        LiveDialog.create(this).action().show();
-    }
-
     private void onVodHistory(View view) {
         HistoryDialog.create(this).type(type = 0).show();
-    }
-
-    private void onLiveHistory(View view) {
-        HistoryDialog.create(this).type(type = 1).show();
     }
 
     private void onPlayer(View view) {
@@ -480,14 +419,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
 
     private void setIncognito(boolean checked) {
         Setting.putIncognito(checked);
-    }
-
-    private void setLiveTabVisible(boolean checked) {
-        Setting.putLiveTabVisible(checked);
-        // 发送刷新事件，通知主界面更新导航栏
-        RefreshEvent.config();
-        // 更新直播设置项的可见性
-        setLiveSettingsVisibility();
     }
 
     private void setHistoryVisible(boolean checked) {
@@ -583,7 +514,6 @@ public class SettingFragment extends BaseFragment implements ConfigCallback, Sit
     }
 
     private void initConfig() {
-        LiveConfig.get().init().load();
         VodConfig.get().init().load(getCallback(0));
     }
 

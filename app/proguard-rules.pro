@@ -103,15 +103,8 @@
 -keep class com.hierynomus.** { *; }
 -keep class net.engio.mbassy.** { *; }
 
-# TVBus
--keep class com.tvbus.engine.** { *; }
-
 # XunLei
 -keep class com.xunlei.downloadlib.** { *; }
-
-# ZLive
--keep class com.sun.jna.** { *; }
--keep class com.east.android.zlive.** { *; }
 
 # Media3 DefaultTimeBar - 保护反射访问的字段
 -keep class androidx.media3.ui.DefaultTimeBar {

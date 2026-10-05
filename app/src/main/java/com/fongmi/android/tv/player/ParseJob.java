@@ -39,6 +39,8 @@ public class ParseJob implements ParseCallback {
     private ExecutorService infinite;
     private ParseCallback callback;
     private Parse parse;
+    private List<Parse> sourceParses;
+    private volatile boolean stopped;
 
     public static ParseJob create(ParseCallback callback) {
         return new ParseJob(callback);
@@ -52,18 +54,36 @@ public class ParseJob implements ParseCallback {
     }
 
     public ParseJob start(Result result, boolean useParse) {
+        sourceParses = new ArrayList<>();
+        for (Parse item : VodConfig.get().getSourceParses(result.getKey())) sourceParses.add(copy(item));
         setParse(result, useParse);
         execute(result);
         return this;
     }
 
     private void setParse(Result result, boolean useParse) {
-        if (useParse) parse = VodConfig.get().getParse();
+        if (useParse) parse = copy(VodConfig.get().getSourceParse(result.getKey()));
         if (result.getPlayUrl().startsWith("json:")) parse = Parse.get(1, result.getPlayUrl().substring(5));
-        if (result.getPlayUrl().startsWith("parse:")) parse = VodConfig.get().getParse(result.getPlayUrl().substring(6));
+        if (result.getPlayUrl().startsWith("parse:")) parse = copy(VodConfig.get().getSourceParse(result.getKey(), result.getPlayUrl().substring(6)));
         if (parse == null || parse.isEmpty()) parse = Parse.get(0, result.getPlayUrl());
         parse.setHeader(result.getHeader());
         parse.setClick(getClick(result));
+    }
+
+    private static Parse copy(Parse value) {
+        if (value == null) return null;
+        Parse result = App.gson().fromJson(App.gson().toJson(value), Parse.class);
+        result.setSourceJar(value.getSourceJar());
+        return result;
+    }
+
+    private List<Parse> parses(int type, String flag) {
+        List<Parse> all = new ArrayList<>(), matching = new ArrayList<>();
+        for (Parse item : sourceParses) if (item.getType() == type) {
+            all.add(item);
+            if (item.getExt().getFlag().contains(flag)) matching.add(item);
+        }
+        return matching.isEmpty() ? all : matching;
     }
 
     private String getClick(Result result) {
@@ -123,19 +143,19 @@ public class ParseJob implements ParseCallback {
 
     private void jsonExtend(String webUrl) throws Throwable {
         LinkedHashMap<String, String> jxs = new LinkedHashMap<>();
-        for (Parse item : VodConfig.get().getParses()) if (item.getType() == 1) jxs.put(item.getName(), item.extUrl());
-        checkResult(Result.fromObject(BaseLoader.get().jsonExt(parse.getUrl(), jxs, webUrl)));
+        for (Parse item : sourceParses) if (item.getType() == 1) jxs.put(item.getName(), item.extUrl());
+        checkResult(Result.fromObject(BaseLoader.get().jsonExt(parse.getSourceJar(), parse.getUrl(), jxs, webUrl)));
     }
 
     private void jsonMix(String webUrl, String flag) throws Throwable {
         LinkedHashMap<String, HashMap<String, String>> jxs = new LinkedHashMap<>();
-        for (Parse item : VodConfig.get().getParses()) jxs.put(item.getName(), item.mixMap());
-        checkResult(Result.fromObject(BaseLoader.get().jsonExtMix(flag, parse.getUrl(), parse.getName(), jxs, webUrl)));
+        for (Parse item : sourceParses) jxs.put(item.getName(), item.mixMap());
+        checkResult(Result.fromObject(BaseLoader.get().jsonExtMix(parse.getSourceJar(), flag, parse.getUrl(), parse.getName(), jxs, webUrl)));
     }
 
     private void godParse(String webUrl, String flag) throws Exception {
-        List<Parse> json = VodConfig.get().getParses(1, flag);
-        List<Parse> webs = VodConfig.get().getParses(0, flag);
+        List<Parse> json = parses(1, flag);
+        List<Parse> webs = parses(0, flag);
         int count = json.size() + (webs.isEmpty() ? 0 : 1);
         CountDownLatch latch = new CountDownLatch(count);
         for (Parse item : json) infinite.execute(() -> jsonParse(latch, item, webUrl));
@@ -184,7 +204,7 @@ public class ParseJob implements ParseCallback {
     }
 
     private void startWeb(String key, String from, Map<String, String> headers, String url, String click) {
-        App.post(() -> webViews.add(CustomWebView.create(App.get()).start(key, from, headers, url, click, this, !url.contains("player/?url="))));
+        App.post(() -> { if (!stopped) webViews.add(CustomWebView.create(App.get()).start(key, from, headers, url, click, this, !url.contains("player/?url="))); });
     }
 
     private Map<String, String> getHeader(JsonObject object) {
@@ -197,6 +217,7 @@ public class ParseJob implements ParseCallback {
     @Override
     public void onParseSuccess(Map<String, String> headers, String url, String from) {
         App.post(() -> {
+            if (stopped) return;
             if (callback != null) callback.onParseSuccess(headers, url, from);
             stop();
         });
@@ -205,6 +226,7 @@ public class ParseJob implements ParseCallback {
     @Override
     public void onParseError() {
         App.post(() -> {
+            if (stopped) return;
             if (callback != null) callback.onParseError();
             stop();
         });
@@ -215,12 +237,14 @@ public class ParseJob implements ParseCallback {
         if (!webViews.isEmpty()) webViews.clear();
     }
 
-    public void stop() {
+    public synchronized void stop() {
+        if (stopped) return;
+        stopped = true;
         if (executor != null) executor.shutdownNow();
         if (infinite != null) infinite.shutdownNow();
         infinite = null;
         executor = null;
         callback = null;
-        stopWeb();
+        App.post(this::stopWeb);
     }
 }

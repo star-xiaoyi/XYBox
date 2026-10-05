@@ -39,6 +39,23 @@ public class History {
     private String vodPic;
     @SerializedName("vodName")
     private String vodName;
+    @SerializedName("filmId") private String filmId;
+    @SerializedName("sourceKeys") private String sourceKeys;
+    public String getFilmId() { return filmId == null ? "" : filmId; }
+    public void setFilmId(String value) { filmId = value; }
+    public String getSourceKeys() { return sourceKeys == null ? "" : sourceKeys; }
+    public void setSourceKeys(String value) { sourceKeys = value; }
+    @SerializedName("vodYear") private String vodYear;
+    @SerializedName("vodType") private String vodType;
+    @SerializedName("sharedProgress")
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    private boolean sharedProgress;
+    public String getVodYear() { return vodYear == null ? "" : vodYear; }
+    public void setVodYear(String value) { vodYear = value; }
+    public String getVodType() { return vodType == null ? "" : vodType; }
+    public void setVodType(String value) { vodType = value; }
+    public boolean isSharedProgress() { return sharedProgress; }
+    public void setSharedProgress(boolean value) { sharedProgress = value; }
     @SerializedName("vodFlag")
     private String vodFlag;
     @SerializedName("vodRemarks")
@@ -74,6 +91,9 @@ public class History {
     private float speed;
     @SerializedName("scale")
     private int scale;
+    @SerializedName("qualityHeight")
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    private int qualityHeight;
     @SerializedName("cid")
     private int cid;
 
@@ -217,6 +237,14 @@ public class History {
         this.scale = scale;
     }
 
+    public int getQualityHeight() {
+        return qualityHeight;
+    }
+
+    public void setQualityHeight(int qualityHeight) {
+        this.qualityHeight = Math.max(0, qualityHeight);
+    }
+
     public int getCid() {
         return cid;
     }
@@ -226,7 +254,7 @@ public class History {
     }
 
     public String getSiteName() {
-        return VodConfig.get().getSite(getSiteKey()).getName();
+        return VodConfig.get().getSite(getCid(), getSiteKey()).getDisplayName();
     }
 
     public String getSiteKey() {
@@ -258,7 +286,7 @@ public class History {
     }
 
     public static List<History> get() {
-        return get(VodConfig.getCid());
+        return getAll();
     }
 
     public static List<History> get(int cid) {
@@ -266,11 +294,11 @@ public class History {
     }
 
     public static List<History> getAll() {
-        return AppDatabase.get().getHistoryDao().findAllRecent(System.currentTimeMillis() - Constant.HISTORY_TIME);
+        return com.fongmi.android.tv.search.HistoryIdentity.group(AppDatabase.get().getHistoryDao().findAllRecent(System.currentTimeMillis() - Constant.HISTORY_TIME));
     }
 
     public static History find(String key) {
-        return AppDatabase.get().getHistoryDao().find(VodConfig.getCid(), key);
+        return AppDatabase.get().getHistoryDao().findByKey(key);
     }
 
     public static void delete(int cid) {
@@ -284,12 +312,17 @@ public class History {
     }
 
     private void merge(List<History> items, boolean force) {
+        preserveLegacy(items);
+        com.fongmi.android.tv.search.HistoryIdentity.bind(this, items);
+        int removed = 0;
         for (History item : items) {
-            if (getDuration() > 0 && item.getDuration() > 0 && Math.abs(getDuration() - item.getDuration()) > TimeUnit.MINUTES.toMillis(10)) continue;
             if (!force && getKey().equals(item.getKey())) continue;
             checkParam(item);
-            item.delete();
+            item.deleteRecord();
+            removed++;
         }
+        if (removed > 0) Logger.i("PlayHistory: action=merge film=" + getFilmId() + " removed=" + removed
+                + " episode=" + getVodRemarks() + " positionMs=" + getPosition());
     }
 
     public void update() {
@@ -312,6 +345,12 @@ public class History {
         return save();
     }
 
+    /** Apply an already merged cloud snapshot without scheduling the same upload again. */
+    public void applySynced(List<History> items) {
+        merge(items, false);
+        AppDatabase.get().getHistoryDao().insertOrUpdate(this);
+    }
+
     public History save() {
         return save(false);
     }
@@ -320,11 +359,15 @@ public class History {
     public boolean savePlayback(long knownVersion) {
         boolean[] written = {false};
         AppDatabase.get().runInTransaction(() -> {
-            List<History> records = AppDatabase.get().getHistoryDao().findByNameForAccount(getAccountId(), getCid(), getVodName());
+            List<History> records = find();
             for (History current : records) {
-                if (!com.fongmi.android.tv.utils.PlaybackProgressPolicy.canWrite(knownVersion, current.getCreateTime())) return;
+                if (!com.fongmi.android.tv.utils.PlaybackProgressPolicy.canWrite(knownVersion, current.getCreateTime())) {
+                    Logger.i("PlayHistory: action=reject-stale film=" + getFilmId() + " known=" + knownVersion + " stored=" + current.getCreateTime());
+                    return;
+                }
             }
             merge(records, false);
+            setSharedProgress(true);
             AppDatabase.get().getHistoryDao().insertOrUpdate(this);
             written[0] = true;
         });
@@ -354,6 +397,22 @@ public class History {
     }
 
     public History delete() {
+        for (History item : find()) if (!item.getKey().equals(getKey())) item.deleteRecord();
+        return deleteRecord();
+    }
+
+    private void preserveLegacy(List<History> items) {
+        if (items.stream().noneMatch(item -> item.getFilmId().isEmpty())) return;
+        java.io.File file = new java.io.File(App.get().getFilesDir(), "history-before-film-id-" + com.github.catvod.utils.Util.md5(getAccountId()) + ".json");
+        if (file.isFile() && file.length() > 0) return;
+        try {
+            java.nio.file.Path temporary = new java.io.File(file.getParentFile(), file.getName() + ".tmp").toPath();
+            java.nio.file.Files.write(temporary, App.gson().toJson(AppDatabase.get().getHistoryDao().findAllForAccount(getAccountId())).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            java.nio.file.Files.move(temporary, file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception error) { throw new IllegalStateException("无法备份旧观看记录，暂不合并", error); }
+    }
+
+    private History deleteRecord() {
         com.fongmi.android.tv.utils.WebDAVSyncManager.get().markHistoryDeleted(this);
         AppDatabase.get().getHistoryDao().deleteForAccount(getAccountId(), getCid(), getKey());
         AppDatabase.get().getTrackDao().delete(getKey());
@@ -361,7 +420,7 @@ public class History {
     }
 
     public List<History> find() {
-        return AppDatabase.get().getHistoryDao().findByNameForAccount(getAccountId(), getCid(), getVodName());
+        return com.fongmi.android.tv.search.HistoryIdentity.matching(this, AppDatabase.get().getHistoryDao().findAllForAccount(getAccountId()));
     }
 
     public void findEpisode(List<Flag> flags) {

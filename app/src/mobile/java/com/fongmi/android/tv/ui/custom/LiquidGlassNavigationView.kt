@@ -91,7 +91,6 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
     }
 
     private var selectedIdState by mutableIntStateOf(R.id.recommend)
-    private var liveVisibleState by mutableStateOf(true)
     private var actionState by mutableIntStateOf(ACTION_NONE)
     private var actionVisibleState by mutableStateOf(false)
     private var accentState by mutableStateOf(Color(context.getColor(R.color.action_primary)))
@@ -166,10 +165,6 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
         selectedIdState = itemId
     }
 
-    fun setLiveVisible(visible: Boolean) {
-        liveVisibleState = visible
-    }
-
     fun setAction(action: Int, visible: Boolean) {
         actionState = action
         actionVisibleState = visible
@@ -240,7 +235,6 @@ class LiquidGlassNavigationView @JvmOverloads constructor(
         val items = buildList {
             add(NavItem(R.id.recommend, R.drawable.ic_nav_recommend, R.string.nav_recommend))
             add(NavItem(R.id.vod, R.drawable.ic_nav_discover, R.string.ai_find))
-            if (liveVisibleState) add(NavItem(R.id.live, R.drawable.ic_nav_live, R.string.nav_live))
             add(NavItem(R.id.setting, R.drawable.ic_nav_profile, R.string.nav_profile))
         }
         val light = !isSystemInDarkTheme()

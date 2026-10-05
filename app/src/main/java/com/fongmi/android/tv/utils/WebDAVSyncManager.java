@@ -243,6 +243,7 @@ public final class WebDAVSyncManager {
             flushAfterSync = false;
             generationAtStart = dirtyGeneration;
         }
+        App.post(RefreshEvent::history);
         putLong(PREF_LAST_ATTEMPT, System.currentTimeMillis());
         try {
             reloadConfig();
@@ -299,6 +300,8 @@ public final class WebDAVSyncManager {
                 flush = flushAfterSync && dirtyGeneration != 0;
                 flushAfterSync = false;
             }
+            // 联网重试、手动同步、前台同步都要通知页面结束；失败时也不能留下永久加载状态。
+            App.post(RefreshEvent::history);
             if (flush) App.execute(this::syncNow);
         }
     }
@@ -323,6 +326,11 @@ public final class WebDAVSyncManager {
     /** 配置了 WebDAV 就自动同步，不再依赖单独的开关。 */
     public boolean isAutoSyncEnabled() {
         return isConfigured();
+    }
+
+    /** 页面用于区分“数据确实为空”和“云端记录仍在落库”。 */
+    public boolean isSyncing() {
+        return syncing;
     }
 
     public void requestSync() {
@@ -562,10 +570,12 @@ public final class WebDAVSyncManager {
         Map<String, History> histories = new LinkedHashMap<>();
         mergeHistories(histories, remote.histories);
         mergeHistories(histories, local.histories);
+        List<History> surviving = new ArrayList<>();
         for (Map.Entry<String, History> entry : histories.entrySet()) {
             long deletedAt = merged.tombstones.getOrDefault(HISTORY_PREFIX + entry.getKey(), 0L);
-            if (deletedAt < entry.getValue().getCreateTime()) merged.histories.add(entry.getValue());
+            if (deletedAt < entry.getValue().getCreateTime()) surviving.add(entry.getValue());
         }
+        merged.histories.addAll(com.fongmi.android.tv.search.HistoryIdentity.group(surviving));
 
         Map<String, Keep> keeps = new LinkedHashMap<>();
         mergeKeeps(keeps, remote.keeps);
@@ -764,9 +774,11 @@ public final class WebDAVSyncManager {
             // 网络请求期间仍可能继续观看，下载的旧快照不能回写覆盖刚保存的新进度。
             for (History incoming : merged.histories) {
                 incoming.setAccountId(LocalProfile.id());
-                History current = AppDatabase.get().getHistoryDao().findByKey(incoming.getKey());
-                if (current == null || PlaybackProgressPolicy.canApplyDownloaded(incoming.getCreateTime(), current.getCreateTime()))
-                    AppDatabase.get().getHistoryDao().insertOrUpdate(incoming);
+                List<History> matches = incoming.find();
+                History newest = null;
+                for (History current : matches) newest = com.fongmi.android.tv.search.HistoryIdentity.prefer(newest, current);
+                if (newest == null || PlaybackProgressPolicy.canApplyDownloaded(incoming.getCreateTime(), newest.getCreateTime()))
+                    incoming.applySynced(matches);
             }
             for (Keep incoming : merged.keeps) incoming.setAccountId(LocalProfile.id());
             AppDatabase.get().getKeepDao().insertOrUpdate(merged.keeps);
@@ -790,7 +802,6 @@ public final class WebDAVSyncManager {
         Config syncedVod = Config.vod();
         boolean reloadVod = !syncedVod.isEmpty() && !TextUtils.equals(runtimeVodUrl, syncedVod.getUrl());
         App.post(() -> {
-            RefreshEvent.history();
             RefreshEvent.keep();
             RefreshEvent.config();
             if (reloadVod) {

@@ -1,9 +1,11 @@
 package com.fongmi.android.tv.api;
 
+import android.text.Html;
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.search.TitleKey;
 import com.github.catvod.net.OkHttp;
+import com.github.catvod.utils.Logger;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -15,6 +17,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import okhttp3.Headers;
 import okhttp3.HttpUrl;
@@ -33,8 +38,12 @@ public class Douban {
     private static final String API = "https://m.douban.com/rexxar/api/v2/subject_collection/%s/items?start=%d&count=%d";
     private static final String SEARCH = "https://movie.douban.com/j/new_search_subjects";
     private static final String SUGGEST = "https://movie.douban.com/j/subject_suggest";
+    private static final String SUBJECT_SEARCH = "https://m.douban.com/rexxar/api/v2/search";
+    private static final String SUBJECT_SEARCH_HTML = "https://m.douban.com/search/";
     private static final String SUBJECT = "https://m.douban.com/rexxar/api/v2/subject/%s";
     private static final String RECOMMENDATIONS = "https://m.douban.com/rexxar/api/v2/subject/%s/recommendations?start=0&count=%d";
+    private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36";
+    private static final Pattern HTML_MOVIE = Pattern.compile("(?s)<a\\s+href=\"/movie/subject/(\\d+)/\"[^>]*>.*?<span\\s+class=\"subject-title\">(.*?)</span>.*?</a>");
     private static final Map<String, Double> RATINGS = new ConcurrentHashMap<>();
     private static final Map<String, String> INTROS = new ConcurrentHashMap<>();
     private static final Map<String, Subject> SUBJECTS = new ConcurrentHashMap<>();
@@ -42,7 +51,7 @@ public class Douban {
 
     public static Page fetch(String collection, int start, int count) throws IOException {
         String url = String.format(Locale.ROOT, API, collection, start, count);
-        try (Response response = OkHttp.newCall(url, Headers.of("Referer", REFERER)).execute()) {
+        try (Response response = OkHttp.newCall(url, headers(REFERER, "application/json, text/plain, */*")).execute()) {
             if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
             return Page.parse(response.body().string());
         }
@@ -63,7 +72,7 @@ public class Douban {
         if (!TextUtils.isEmpty(country)) builder.addQueryParameter("countries", country);
         if (!TextUtils.isEmpty(yearRange)) builder.addQueryParameter("year_range", yearRange);
         List<Item> items = new ArrayList<>();
-        okhttp3.Call call = OkHttp.newCall(builder.build().toString(), Headers.of("Referer", "https://movie.douban.com/"));
+        okhttp3.Call call = OkHttp.newCall(builder.build().toString(), headers("https://movie.douban.com/", "application/json, text/plain, */*"));
         call.timeout().timeout(20, java.util.concurrent.TimeUnit.SECONDS);
         try (Response response = call.execute()) {
             if (!response.isSuccessful()) throw new IOException("Search HTTP " + response.code());
@@ -99,6 +108,7 @@ public class Douban {
         String id = getString(match, "id");
         if (id.isEmpty()) return 0;
         JsonObject object = requestSubject(id);
+        if (!TitleKey.sameYear(targetYear, TitleKey.year(getString(object, "year")))) return 0;
         JsonElement element = object.get("rating");
         double rating = element != null && element.isJsonObject() ? getDouble(element.getAsJsonObject(), "value") : 0;
         if (rating > 0) RATINGS.put(cacheKey, rating);
@@ -130,6 +140,10 @@ public class Douban {
         String id = getString(match, "id");
         if (id.isEmpty()) return new Subject();
         Subject subject = Subject.parse(id, requestSubject(id));
+        if (!TitleKey.sameYear(targetYear, TitleKey.year(subject.year))) {
+            Logger.i("DoubanLookup: action=reject-year title=" + title + " expected=" + targetYear + " actual=" + subject.year + " id=" + id);
+            return new Subject();
+        }
         SUBJECTS.put(cacheKey, subject);
         if (subject.rating > 0) RATINGS.put(cacheKey, subject.rating);
         if (!subject.intro.isEmpty()) INTROS.put(id, subject.intro);
@@ -144,7 +158,7 @@ public class Douban {
         String url = String.format(Locale.ROOT, RECOMMENDATIONS, id, count);
         String referer = "https://m.douban.com/movie/subject/" + id + "/";
         List<Item> items = new ArrayList<>();
-        try (Response response = OkHttp.newCall(url, Headers.of("Referer", referer)).execute()) {
+        try (Response response = OkHttp.newCall(url, headers(referer, "application/json, text/plain, */*")).execute()) {
             if (!response.isSuccessful()) throw new IOException("Recommendations HTTP " + response.code());
             JsonElement root = JsonParser.parseString(response.body().string());
             if (root.isJsonArray()) for (JsonElement element : root.getAsJsonArray()) if (element.isJsonObject()) items.add(Item.parse(element.getAsJsonObject()));
@@ -154,19 +168,113 @@ public class Douban {
     }
 
     private static JsonObject suggest(String title, String titleKey, int targetYear) throws IOException {
+        IOException failure = null;
+        boolean responded = false;
+        try {
+            JsonObject match = searchSubjectJson(title, titleKey, targetYear);
+            responded = true;
+            if (match != null) {
+                Logger.i("DoubanLookup: action=hit endpoint=mobile-json title=" + title + " id=" + getString(match, "id"));
+                return match;
+            }
+        } catch (Exception e) {
+            failure = asIOException(e);
+            Logger.i("DoubanLookup: action=fallback endpoint=mobile-json title=" + title + " reason=" + e.getMessage());
+        }
+        try {
+            JsonObject match = searchSubjectHtml(title, titleKey, targetYear);
+            responded = true;
+            if (match != null) {
+                Logger.i("DoubanLookup: action=hit endpoint=mobile-html title=" + title + " id=" + getString(match, "id"));
+                return match;
+            }
+        } catch (Exception e) {
+            failure = asIOException(e);
+            Logger.i("DoubanLookup: action=fallback endpoint=mobile-html title=" + title + " reason=" + e.getMessage());
+        }
+        try {
+            JsonObject match = searchLegacySuggest(title, titleKey, targetYear);
+            responded = true;
+            if (match != null) {
+                Logger.i("DoubanLookup: action=hit endpoint=legacy-suggest title=" + title + " id=" + getString(match, "id"));
+                return match;
+            }
+        } catch (Exception e) {
+            failure = asIOException(e);
+            Logger.i("DoubanLookup: action=failed endpoint=legacy-suggest title=" + title + " reason=" + e.getMessage());
+        }
+        if (!responded && failure != null) throw failure;
+        Logger.i("DoubanLookup: action=miss title=" + title + " year=" + targetYear);
+        return null;
+    }
+
+    private static JsonObject searchSubjectJson(String title, String titleKey, int targetYear) throws IOException {
+        HttpUrl base = HttpUrl.parse(SUBJECT_SEARCH);
+        if (base == null) throw new IOException("Invalid mobile search URL");
+        HttpUrl url = base.newBuilder().addQueryParameter("q", title).addQueryParameter("type", "movie")
+                .addQueryParameter("start", "0").addQueryParameter("count", "10").build();
+        okhttp3.Call call = OkHttp.newCall(url.toString(), headers(REFERER, "application/json, text/plain, */*"));
+        call.timeout().timeout(15, TimeUnit.SECONDS);
+        try (Response response = call.execute()) {
+            if (!response.isSuccessful()) throw new IOException("Mobile search HTTP " + response.code());
+            if (response.body() == null) throw new IOException("Mobile search response has no body");
+            JsonElement parsed = JsonParser.parseString(response.body().string());
+            if (!parsed.isJsonObject()) throw new IOException("Mobile search response is not an object");
+            JsonObject root = parsed.getAsJsonObject();
+            JsonElement subjects = root.get("subjects");
+            if (subjects == null || !subjects.isJsonObject()) return null;
+            JsonElement items = subjects.getAsJsonObject().get("items");
+            if (items == null || !items.isJsonArray()) return null;
+            JsonArray candidates = new JsonArray();
+            for (JsonElement element : items.getAsJsonArray()) {
+                if (!element.isJsonObject()) continue;
+                JsonElement target = element.getAsJsonObject().get("target");
+                if (target != null && target.isJsonObject()) candidates.add(target.getAsJsonObject());
+            }
+            return findMatch(candidates, titleKey, targetYear);
+        }
+    }
+
+    private static JsonObject searchSubjectHtml(String title, String titleKey, int targetYear) throws IOException {
+        HttpUrl base = HttpUrl.parse(SUBJECT_SEARCH_HTML);
+        if (base == null) throw new IOException("Invalid mobile HTML search URL");
+        HttpUrl url = base.newBuilder().addQueryParameter("query", title).addQueryParameter("type", "1002").build();
+        okhttp3.Call call = OkHttp.newCall(url.toString(), headers(REFERER, "text/html,application/xhtml+xml"));
+        call.timeout().timeout(15, TimeUnit.SECONDS);
+        try (Response response = call.execute()) {
+            if (!response.isSuccessful()) throw new IOException("Mobile HTML search HTTP " + response.code());
+            if (response.body() == null) throw new IOException("Mobile HTML search response has no body");
+            Matcher matcher = HTML_MOVIE.matcher(response.body().string());
+            JsonArray candidates = new JsonArray();
+            while (matcher.find()) {
+                JsonObject item = new JsonObject();
+                item.addProperty("id", matcher.group(1));
+                item.addProperty("title", Html.fromHtml(matcher.group(2), Html.FROM_HTML_MODE_LEGACY).toString().trim());
+                candidates.add(item);
+            }
+            return findMatch(candidates, titleKey, targetYear);
+        }
+    }
+
+    private static JsonObject searchLegacySuggest(String title, String titleKey, int targetYear) throws IOException {
         HttpUrl base = HttpUrl.parse(SUGGEST);
-        if (base == null) return null;
-        HttpUrl suggest = base.newBuilder().addQueryParameter("q", title).build();
-        try (Response response = OkHttp.newCall(suggest.toString(), Headers.of("Referer", "https://movie.douban.com/")).execute()) {
+        if (base == null) throw new IOException("Invalid legacy suggest URL");
+        HttpUrl url = base.newBuilder().addQueryParameter("q", title).build();
+        okhttp3.Call call = OkHttp.newCall(url.toString(), headers("https://movie.douban.com/", "application/json, text/plain, */*"));
+        call.timeout().timeout(10, TimeUnit.SECONDS);
+        try (Response response = call.execute()) {
             if (!response.isSuccessful()) throw new IOException("Suggest HTTP " + response.code());
-            return findMatch(JsonParser.parseString(response.body().string()).getAsJsonArray(), titleKey, targetYear);
+            if (response.body() == null) throw new IOException("Suggest response has no body");
+            JsonElement parsed = JsonParser.parseString(response.body().string());
+            if (!parsed.isJsonArray()) throw new IOException("Suggest response is not an array");
+            return findMatch(parsed.getAsJsonArray(), titleKey, targetYear);
         }
     }
 
     private static JsonObject requestSubject(String id) throws IOException {
         String url = String.format(Locale.ROOT, SUBJECT, id);
         String referer = "https://m.douban.com/movie/subject/" + id + "/";
-        try (Response response = OkHttp.newCall(url, Headers.of("Referer", referer)).execute()) {
+        try (Response response = OkHttp.newCall(url, headers(referer, "application/json, text/plain, */*")).execute()) {
             if (!response.isSuccessful()) throw new IOException("Subject HTTP " + response.code());
             return JsonParser.parseString(response.body().string()).getAsJsonObject();
         }
@@ -192,6 +300,14 @@ public class Douban {
             bestScore = score;
         }
         return best;
+    }
+
+    private static Headers headers(String referer, String accept) {
+        return new Headers.Builder().add("Referer", referer).add("User-Agent", USER_AGENT).add("Accept", accept).build();
+    }
+
+    private static IOException asIOException(Exception error) {
+        return error instanceof IOException ? (IOException) error : new IOException(error.getMessage(), error);
     }
 
     public static class Page {

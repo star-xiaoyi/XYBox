@@ -29,11 +29,16 @@ public class VodSource {
         int grade = Integer.compare(a.grade(), b.grade());
         if (grade != 0) return grade;
         if (a.state == OK && b.state == OK) return Long.compare(b.speed, a.speed);
-        return Long.compare(a.cost, b.cost);
+        int health = Long.compare(a.playbackPenalty, b.playbackPenalty);
+        if (health != 0) return health;
+        int priority = Boolean.compare(b.priority, a.priority);
+        return priority != 0 ? priority : Long.compare(a.cost, b.cost);
     };
 
     private final Vod vod;
     private final long cost;
+    private final long playbackPenalty;
+    private final boolean priority;
     private boolean broken;
     private long speed;
     private int state;
@@ -41,6 +46,8 @@ public class VodSource {
     public VodSource(Vod vod, long cost) {
         this.vod = vod;
         this.cost = cost;
+        this.playbackPenalty = SiteHealth.playbackPenalty(getSite());
+        this.priority = SiteHealth.isPriority(getSite());
     }
 
     public Vod getVod() {
@@ -57,7 +64,7 @@ public class VodSource {
     }
 
     public String getSiteName() {
-        return vod.getSiteName();
+        return getSite().getDisplayName();
     }
 
     public String getVodId() {

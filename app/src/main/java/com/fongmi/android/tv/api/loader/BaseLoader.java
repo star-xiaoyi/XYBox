@@ -2,9 +2,7 @@ package com.fongmi.android.tv.api.loader;
 
 import android.text.TextUtils;
 
-import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
-import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.bean.Site;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.crawler.SpiderNull;
@@ -56,10 +54,8 @@ public class BaseLoader {
 
     public Spider getSpider(Map<String, String> params) {
         if (!params.containsKey("siteKey")) return new SpiderNull();
-        Live live = LiveConfig.get().getLive(params.get("siteKey"));
         Site site = VodConfig.get().getSite(params.get("siteKey"));
         if (!site.isEmpty()) return site.spider();
-        if (!live.isEmpty()) return live.spider();
         return new SpiderNull();
     }
 
@@ -96,7 +92,15 @@ public class BaseLoader {
         return jarLoader.jsonExt(key, jxs, url);
     }
 
+    public JSONObject jsonExt(String jar, String key, LinkedHashMap<String, String> jxs, String url) throws Throwable {
+        return jarLoader.jsonExt(jar, key, jxs, url);
+    }
+
     public JSONObject jsonExtMix(String flag, String key, String name, LinkedHashMap<String, HashMap<String, String>> jxs, String url) throws Throwable {
         return jarLoader.jsonExtMix(flag, key, name, jxs, url);
+    }
+
+    public JSONObject jsonExtMix(String jar, String flag, String key, String name, LinkedHashMap<String, HashMap<String, String>> jxs, String url) throws Throwable {
+        return jarLoader.jsonExtMix(jar, flag, key, name, jxs, url);
     }
 }

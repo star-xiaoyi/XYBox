@@ -24,6 +24,13 @@
             android:paddingEnd="8dp"
             android:paddingBottom="28dp" />
 
+        <ProgressBar
+            android:id="@+id/historyLoading"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+
         <!-- 空状态Lottie动画 -->
         <include
             android:id="@+id/emptyLayout"

@@ -13,7 +13,6 @@ public class QualityAdapter extends RecyclerView.Adapter<QualityAdapter.ViewHold
 
     private final OnClickListener mListener;
     private Result mResult;
-    private int position;
 
     public QualityAdapter(OnClickListener listener) {
         this.mListener = listener;
@@ -31,7 +30,7 @@ public class QualityAdapter extends RecyclerView.Adapter<QualityAdapter.ViewHold
     }
 
     public int getPosition() {
-        return position;
+        return mResult.getUrl().getPosition();
     }
 
     @Override
@@ -53,7 +52,6 @@ public class QualityAdapter extends RecyclerView.Adapter<QualityAdapter.ViewHold
     }
 
     private void onItemClick(int position) {
-        this.position = position;
         mResult.getUrl().set(position);
         mListener.onItemClick(mResult);
         notifyItemRangeChanged(0, getItemCount());

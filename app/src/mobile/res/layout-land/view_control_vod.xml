@@ -119,20 +119,20 @@
                 android:src="@drawable/ic_control_keep_off" />
 
             <ImageView
-                android:id="@+id/player_more"
-                style="@style/Control.VodIcon.Top"
-                android:layout_marginStart="2dp"
-                android:contentDescription="@string/play_more"
-                android:src="@drawable/ic_control_more" />
-
-            <ImageView
                 android:id="@+id/pip"
                 style="@style/Control.VodIcon.Top"
-                android:layout_marginStart="-3dp"
+                android:layout_marginStart="2dp"
                 android:contentDescription="@string/play_pip"
                 android:padding="6dp"
                 android:src="@drawable/ic_control_pip"
                 android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/player_more"
+                style="@style/Control.VodIcon.Top"
+                android:layout_marginStart="-3dp"
+                android:contentDescription="@string/play_more"
+                android:src="@drawable/ic_control_more" />
 
         </LinearLayout>
     </LinearLayout>
@@ -199,6 +199,20 @@
                 android:layout_width="160dp"
                 android:layout_height="90dp"
                 android:scaleType="fitXY"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/previewLoading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="4dp"
+                android:background="@drawable/shape_widget"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="3dp"
+                android:text="@string/preview_loading"
+                android:textColor="@color/white"
+                android:textSize="10sp"
                 android:visibility="gone" />
 
         </FrameLayout>

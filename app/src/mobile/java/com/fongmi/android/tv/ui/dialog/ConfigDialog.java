@@ -15,7 +15,6 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 
 import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.DialogConfigBinding;
@@ -86,7 +85,7 @@ public class ConfigDialog {
     }
 
     private void initView() {
-        binding.title.setText(type == 0 ? R.string.setting_vod : R.string.setting_live);
+        binding.title.setText(R.string.setting_vod);
         binding.positive.setText(edit ? R.string.dialog_edit : R.string.dialog_positive);
         binding.name.setText(getConfig().getName());
         binding.url.setText(ori = getConfig().getUrl());
@@ -112,14 +111,7 @@ public class ConfigDialog {
     }
 
     private Config getConfig() {
-        switch (type) {
-            case 0:
-                return VodConfig.get().getConfig();
-            case 1:
-                return LiveConfig.get().getConfig();
-            default:
-                return null;
-        }
+        return VodConfig.get().getConfig();
     }
 
     private void onChoose(View view) {
@@ -213,18 +205,6 @@ public class ConfigDialog {
                     switch (type) {
                         case 0:
                             VodConfig.get().clear().config(Config.vod()).load(new Callback() {
-                                @Override
-                                public void success() {}
-                                
-                                @Override
-                                public void success(String result) {}
-                                
-                                @Override
-                                public void error(String msg) {}
-                            });
-                            break;
-                        case 1:
-                            LiveConfig.get().clear().config(Config.live()).load(new Callback() {
                                 @Override
                                 public void success() {}
                                 

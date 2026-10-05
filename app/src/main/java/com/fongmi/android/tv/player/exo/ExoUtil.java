@@ -107,16 +107,15 @@ public class ExoUtil {
         if (!isTrackValid(player, group, track)) return;
         Tracks.Group tracks = player.getCurrentTracks().getGroups().get(group);
         if (tracks.getType() != C.TRACK_TYPE_VIDEO || !tracks.isTrackSupported(track)) return;
-        Format format = tracks.getTrackFormat(track);
-        // 清晰度作为自适应上限，而不是把播放器锁死到某一条码流。弱网时仍可自动降档，
-        // DASH/HLS 的某一路临时不可用时也能选择同上限内的其他视频轨。
+        // 手动选择应播放对应轨道；自动模式由详情页清除覆盖并按带宽自适应。
         androidx.media3.common.TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters()
                 .buildUpon()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                 .clearVideoSizeConstraints()
-                .setMaxVideoBitrate(Integer.MAX_VALUE);
-        if (format.width > 0 && format.height > 0) builder.setMaxVideoSize(format.width, format.height);
-        if (format.bitrate > 0) builder.setMaxVideoBitrate(format.bitrate);
+                .setMaxVideoBitrate(Integer.MAX_VALUE)
+                .setForceHighestSupportedBitrate(false)
+                .setForceLowestBitrate(false)
+                .setOverrideForType(new TrackSelectionOverride(tracks.getMediaTrackGroup(), track));
         player.setTrackSelectionParameters(builder.build());
     }
 
@@ -141,7 +140,7 @@ public class ExoUtil {
                 .buildUpon()
                 .clearOverridesOfType(type);
         if (type == C.TRACK_TYPE_VIDEO) {
-            builder.clearVideoSizeConstraints().setMaxVideoBitrate(Integer.MAX_VALUE);
+            builder.clearVideoSizeConstraints().setMaxVideoBitrate(Integer.MAX_VALUE).setForceHighestSupportedBitrate(false).setForceLowestBitrate(false);
         }
         player.setTrackSelectionParameters(builder.build());
     }

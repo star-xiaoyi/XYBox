@@ -8,7 +8,7 @@
     android:paddingEnd="8dp"
     android:scrollbars="none">
 
-    <LinearLayout
+    <com.fongmi.android.tv.ui.custom.PlaybackActionLayout
         android:layout_width="wrap_content"
         android:layout_height="36dp"
         android:gravity="center_vertical"
@@ -32,8 +32,8 @@
         <TextView
             android:id="@+id/reset"
             style="@style/Control.VodAction"
-            android:textColor="@color/text"
-            tools:text="刷新" />
+            android:text="@string/play_change_source"
+            android:textColor="@color/text" />
 
         <View
             android:layout_width="0dp"
@@ -99,5 +99,5 @@
             android:visibility="gone"
             tools:visibility="visible" />
 
-    </LinearLayout>
+    </com.fongmi.android.tv.ui.custom.PlaybackActionLayout>
 </HorizontalScrollView>

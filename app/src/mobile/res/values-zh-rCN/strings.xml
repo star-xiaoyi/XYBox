@@ -9,7 +9,6 @@
     <string name="nav_home">首页</string>
     <string name="nav_keep">收藏</string>
     <string name="nav_vod">视频</string>
-    <string name="nav_live">直播</string>
     <string name="nav_setting">设置</string>
 
     <!-- 推荐 -->
@@ -252,4 +251,10 @@
     <string name="quality_smooth">流畅</string>
     <string name="quality_hd">高清</string>
     <string name="quality_full_hd">超清</string>
+    <string name="play_change_source">换源</string>
+    <string name="play_changing_source">正在切换播放来源…</string>
+    <string name="play_finding_source">正在查找其他可播放来源…</string>
+    <string name="source_auto">自动选择</string>
+    <string name="source_current">当前播放</string>
+    <string name="source_verified">已验证</string>
 </resources>

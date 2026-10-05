@@ -47,6 +47,7 @@ public class CrashActivity extends BaseActivity {
     @Override
     protected void initEvent() {
         mBinding.details.setOnClickListener(v -> copyErrorToClipboard());
+        mBinding.share.setOnClickListener(v -> shareError());
         mBinding.restart.setOnClickListener(v -> CustomActivityOnCrash.restartApplication(this, Objects.requireNonNull(CustomActivityOnCrash.getConfigFromIntent(getIntent()))));
     }
 
@@ -66,11 +67,11 @@ public class CrashActivity extends BaseActivity {
     private void setTrace() {
         String trace = Objects.toString(CustomActivityOnCrash.getStackTraceFromIntent(getIntent()), "");
         details = buildDetails(trace);
-        full = CustomActivityOnCrash.getAllErrorDetailsFromIntent(this, getIntent());
-        AppLog.recordCrash(Objects.toString(full, trace));
+        full = details + "\n\n" + Objects.toString(CustomActivityOnCrash.getAllErrorDetailsFromIntent(this, getIntent()), "");
+        AppLog.recordCrash(full);
         mBinding.summary.setText(getSummary(trace));
         mBinding.env.setText(getEnv());
-        mBinding.trace.setText(trace);
+        mBinding.trace.setText(full);
         saveToFile();
     }
 
@@ -78,25 +79,28 @@ public class CrashActivity extends BaseActivity {
         return BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ") · " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " · Android " + android.os.Build.VERSION.RELEASE + " (SDK " + android.os.Build.VERSION.SDK_INT + ")";
     }
 
-    /**
-     * 复制出去的是给人看的精简报告，不是完整日志：环境一行 + 根因 + 只保留
-     * 本项目和 catvod 的栈帧。框架内部那几十行（ActivityThread / Looper / Zygote）
-     * 对定位没有帮助，全贴出来反而把重点淹了。
-     * 完整日志仍然写进文件，需要时再用 adb pull 取。
-     */
+    /** Keep every frame, including obfuscated/framework frames and nested causes. */
     private String buildDetails(String trace) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("【XY影视崩溃】\n");
-        sb.append(getEnv()).append("\n");
-        sb.append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date())).append("\n\n");
-        for (String line : trace.split("\n")) {
-            String text = line.trim();
-            if (text.isEmpty()) continue;
-            boolean header = !text.startsWith("at ") && !text.startsWith("...");
-            boolean mine = text.startsWith("at com.fongmi.") || text.startsWith("at com.github.catvod.");
-            if (header || mine) sb.append(header ? "" : "    ").append(text).append("\n");
-        }
-        return sb.toString().trim();
+        return "【XY影视崩溃】\n" + getEnv() + "\n"
+                + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date())
+                + "\n\n" + trace;
+    }
+
+    private void shareError() {
+        try {
+            File folder = new File(getCacheDir(), "log-share");
+            if (!folder.isDirectory() && !folder.mkdirs()) throw new java.io.IOException("无法创建日志目录");
+            File report = new File(folder, "XY影视-crash-" + System.currentTimeMillis() + ".txt");
+            try (FileOutputStream output = new FileOutputStream(report)) {
+                output.write(full.getBytes(StandardCharsets.UTF_8));
+            }
+            android.net.Uri uri = com.fongmi.android.tv.utils.FileUtil.getShareUri(report);
+            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_SEND)
+                    .setType("text/plain").putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            intent.setClipData(ClipData.newUri(getContentResolver(), "完整崩溃日志", uri));
+            startActivity(android.content.Intent.createChooser(intent, "分享完整崩溃日志"));
+        } catch (Exception error) { Toast.makeText(this, "分享失败，请复制完整日志", Toast.LENGTH_SHORT).show(); }
     }
 
     /**
@@ -139,8 +143,8 @@ public class CrashActivity extends BaseActivity {
     private void copyErrorToClipboard() {
         try {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            clipboard.setPrimaryClip(ClipData.newPlainText("XY影视崩溃报告", details));
-            Toast.makeText(this, "报错信息已复制，可直接粘贴", Toast.LENGTH_SHORT).show();
+            clipboard.setPrimaryClip(ClipData.newPlainText("XY影视完整崩溃报告", full));
+            Toast.makeText(this, "完整崩溃日志已复制", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Toast.makeText(this, "复制失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }

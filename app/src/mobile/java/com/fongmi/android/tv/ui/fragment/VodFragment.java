@@ -27,7 +27,6 @@ import com.bumptech.glide.request.target.Target;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.Setting;
-import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Config;
@@ -590,11 +589,10 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         else homeContent();
     }
 
-    /** 等价于重启 App 那一下：重新拉点播和直播配置，成功后再查内容。 */
+    /** 等价于重启 App 那一下：重新拉点播配置，成功后再查内容。 */
     private void reloadConfig() {
         showProgress();
         mBinding.retryLayout.setVisibility(View.GONE);
-        LiveConfig.get().init().load();
         VodConfig.get().init().load(new Callback() {
             @Override
             public void success() {
@@ -637,7 +635,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         if (mBinding == null) return;
         mSearchEditing = true;
         setSearchHeaderExpanded(true);
-        setBottomNavigationVisible(false);
+        setBottomNavigationVisible(true);
         hideFabButtons();
         mBinding.headerBar.setSearchIcon(R.drawable.ic_action_search);
         mBinding.appBar.setExpanded(true, true);
@@ -692,7 +690,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
         mBinding.retryLayout.setVisibility(View.GONE);
         mBinding.progress.getRoot().setVisibility(View.GONE);
         mBinding.swipeLayout.setEnabled(false);
-        setBottomNavigationVisible(false);
+        setBottomNavigationVisible(true);
         hideFabButtons();
     }
 
@@ -879,7 +877,7 @@ public class VodFragment extends BaseFragment implements SiteCallback, FilterCal
             )
         );
         mHistoryAdapter = new HistoryCardAdapter(item -> {
-            VideoActivity.start(getActivity(), item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
+            VideoActivity.resume(getActivity(), item);
         });
         mDownloadAdapter = new DownloadCardAdapter(item -> {
             // 只有还在下载、一集都没缓存好的，点进去也没得播，直接送去下载列表看进度
