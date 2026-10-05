@@ -9,7 +9,6 @@
     <string name="nav_home">Home</string>
     <string name="nav_keep">Favorite</string>
     <string name="nav_vod">Video</string>
-    <string name="nav_live">Live</string>
     <string name="nav_setting">Setting</string>
 
     <!-- Recommend -->
@@ -254,4 +253,10 @@ Make sure both are on the same Wi-Fi</string>
     <string name="quality_full_hd">Full HD</string>
     <string name="nav_profile">我的</string>
     <string name="nav_discover">发现</string>
+    <string name="play_change_source">Try another source</string>
+    <string name="play_changing_source">Changing source…</string>
+    <string name="play_finding_source">Looking for another playable source…</string>
+    <string name="source_auto">Automatic selection</string>
+    <string name="source_current">Playing</string>
+    <string name="source_verified">Verified</string>
 </resources>

@@ -86,6 +86,7 @@ public class SourceAdapter extends RecyclerView.Adapter<SourceAdapter.ViewHolder
     public List<VodSource> getRanked() {
         List<VodSource> items = new ArrayList<>(mItems);
         items.remove(mCurrent);
+        items.removeIf(item -> com.fongmi.android.tv.api.config.VodConfig.get().getSite(item.getSiteKey()).isEmpty());
         Collections.sort(items, VodSource.RANK);
         return items;
     }

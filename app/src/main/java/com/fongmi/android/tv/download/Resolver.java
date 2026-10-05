@@ -74,7 +74,7 @@ public class Resolver {
      * 需要解析的源：复用播放器那套 ParseJob，回调在主线程，这里用闩锁把工作线程挂住等结果。
      */
     private static Address parse(Result result) throws Exception {
-        boolean useParse = VodConfig.hasParse() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags().contains(result.getFlag())) || result.getJx() == 1);
+        boolean useParse = !VodConfig.get().getSourceParses(result.getKey()).isEmpty() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags(result.getKey()).contains(result.getFlag())) || result.getJx() == 1);
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<Address> holder = new AtomicReference<>();
         ParseJob job = ParseJob.create(new ParseCallback() {

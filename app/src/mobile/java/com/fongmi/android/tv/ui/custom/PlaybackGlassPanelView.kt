@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,13 +48,14 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
 ) : AbstractComposeView(context, attrs, defStyleAttr) {
     fun interface OnItemClickListener { fun onItemClick(id: Int) }
     fun interface OnVisibilityChangedListener { fun onVisibilityChanged(visible: Boolean) }
-    private data class PanelItem(val id: Int, val label: String, val icon: Int)
+    private data class PanelItem(val id: Int, val label: String, val icon: Int, val subtitle: String = "")
 
     private var visibleState by mutableStateOf(false)
     private var titleState by mutableStateOf("")
     private var itemsState by mutableStateOf<List<PanelItem>>(emptyList())
     private var selectedState by mutableStateOf<Set<Int>>(emptySet())
     private var selectionMenuState by mutableStateOf(false)
+    private var sourceMenuState by mutableStateOf(false)
     private var contentEpoch by mutableIntStateOf(0)
     private var bounds by mutableStateOf(PlaybackPanelLayout.Bounds(12f, 12f, 220f, 120f, true, 48f, 46f, 0f, false))
     private var requestedWidth = 220f
@@ -87,6 +89,7 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
         itemsState = ids.indices.map { PanelItem(ids[it], labels[it], icons?.getOrNull(it) ?: 0) }
         selectedState = selectedIds?.toSet().orEmpty()
         selectionMenuState = selectedIds != null
+        sourceMenuState = false
         requestedWidth = widthDp.toFloat()
         maximumHeight = heightDp.toFloat()
         contentEpoch++
@@ -127,6 +130,31 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
     fun setOnVisibilityChangedListener(listener: OnVisibilityChangedListener?) { visibilityChangedListener = listener }
     fun isPanelVisible(): Boolean = visibleState || pendingOpen
 
+    fun updateItems(title: String, ids: IntArray, labels: Array<String>, selected: IntArray, callback: OnItemClickListener) {
+        if (!isPanelVisible() || ids.size != labels.size) return
+        titleState = title
+        itemsState = ids.indices.map { PanelItem(ids[it], labels[it], 0) }
+        selectedState = selected.toSet()
+        sourceMenuState = false
+        listener = callback
+        requestLayout()
+        doOnNextLayout { currentAnchor?.let { if (isPanelVisible()) place(it) } }
+    }
+
+    fun showSources(anchor: View, title: String, ids: IntArray, labels: Array<String>, subtitles: Array<String>,
+                    selected: IntArray, callback: OnItemClickListener) {
+        show(anchor, title, ids, labels, null, selected, 320, 320, callback)
+        sourceMenuState = true
+        itemsState = ids.indices.map { PanelItem(ids[it], labels[it], 0, subtitles.getOrElse(it) { "" }) }
+    }
+
+    fun updateSources(title: String, ids: IntArray, labels: Array<String>, subtitles: Array<String>,
+                      selected: IntArray, callback: OnItemClickListener) {
+        updateItems(title, ids, labels, selected, callback)
+        sourceMenuState = true
+        itemsState = ids.indices.map { PanelItem(ids[it], labels[it], 0, subtitles.getOrElse(it) { "" }) }
+    }
+
     private fun place(anchor: View) {
         val density = resources.displayMetrics.density
         val own = IntArray(2)
@@ -135,6 +163,8 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
         anchor.getLocationInWindow(target)
         val bars = ViewCompat.getRootWindowInsets(this)
             ?.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+        val actionCount = if (sourceMenuState) itemsState.count { it.id < 0 } else 0
+        val visualRows = itemsState.size - if (actionCount > 1) actionCount - 1 else 0
         bounds = PlaybackPanelLayout.calculate(
             width / density, height / density,
             (target[0] - own[0] + anchor.width / 2f) / density,
@@ -142,8 +172,9 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
             (target[1] - own[1] + anchor.height) / density,
             ((bars?.top ?: 0) - own[1]).coerceAtLeast(0) / density,
             (bars?.bottom ?: 0) / density,
-            requestedWidth, maximumHeight, itemsState.size,
-            resources.configuration.fontScale, titleState.isNotEmpty()
+            requestedWidth, maximumHeight, visualRows,
+            resources.configuration.fontScale, titleState.isNotEmpty(), itemsState.any { it.subtitle.isNotEmpty() },
+            if (sourceMenuState && actionCount > 0) 1 else 0
         )
     }
 
@@ -212,39 +243,25 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
                                     BasicText(current?.let { "当前 · $it" } ?: "共 ${itemsState.size} 项",
                                         style = TextStyle(secondary, 11.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
-                                Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))
-                                    .clickable(role = Role.Button, onClick = ::dismiss)
-                                    .semantics { contentDescription = "关闭设置选项" }, contentAlignment = Alignment.Center) {
-                                    Image(painterResource(R.drawable.ic_action_close), null,
-                                        Modifier.size(16.dp), colorFilter = ColorFilter.tint(secondary))
-                                }
+                                DialogCloseButton(::dismiss, itemSurface, text)
                             }
                             Spacer(Modifier.height(8.dp))
                         }
                         key(contentEpoch) {
                             Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                itemsState.forEach { item ->
-                                    val selected = item.id in selectedState
-                                    val foreground = if (selected) selectedText else text
-                                    Row(Modifier.fillMaxWidth().height(bounds.rowHeight.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (selected) selectedFill else itemSurface)
-                                        .clickable(role = Role.Button) { listener?.onItemClick(item.id) }
-                                        .semantics { if (selected) stateDescription = "已选中" }
-                                        .padding(horizontal = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        if (item.icon != 0) {
-                                            Image(painterResource(item.icon), null, Modifier.size(18.dp),
-                                                colorFilter = ColorFilter.tint(if (selected) selectedText else secondary))
-                                        }
-                                        BasicText(item.label, Modifier.weight(1f),
-                                            style = TextStyle(foreground, 14.sp, if (selected) FontWeight.SemiBold else FontWeight.Medium),
-                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        BasicText(if (selected) "✓" else if (selectionMenuState) "○" else "›",
-                                            style = TextStyle(if (selected) selectedText else secondary, 18.sp, FontWeight.Medium))
+                                if (sourceMenuState) {
+                                    val current = itemsState.filter { it.id in selectedState }
+                                    val actions = itemsState.filter { it.id < 0 }
+                                    val sources = itemsState.filter { it.id !in selectedState && it.id >= 0 }
+                                    current.forEach { PanelRow(it, bounds.rowHeight, itemSurface, text, secondary, selectedFill, selectedText) }
+                                    if (actions.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        actions.take(2).forEach { SourceAction(it, Modifier.weight(1f).height(40.dp), itemSurface, text) }
+                                        if (actions.size == 1) Spacer(Modifier.weight(1f))
                                     }
+                                    sources.forEach { PanelRow(it, bounds.rowHeight, itemSurface, text, secondary, selectedFill, selectedText) }
+                                } else {
+                                    itemsState.forEach { PanelRow(it, bounds.rowHeight, itemSurface, text, secondary, selectedFill, selectedText) }
                                 }
                             }
                         }
@@ -256,6 +273,45 @@ class PlaybackGlassPanelView @JvmOverloads constructor(
                     }
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun PanelRow(item: PanelItem, rowHeight: Float, surface: Color, primary: Color, secondary: Color,
+                         selectedFill: Color, selectedText: Color) {
+        val selected = item.id in selectedState
+        val foreground = if (selected) selectedText else primary
+        Row(Modifier.fillMaxWidth().height(rowHeight.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) selectedFill else surface)
+            .clickable(role = Role.Button) { listener?.onItemClick(item.id) }
+            .semantics { if (selected) stateDescription = "已选中" }
+            .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (item.icon != 0) Image(painterResource(item.icon), null, Modifier.size(18.dp),
+                colorFilter = ColorFilter.tint(if (selected) selectedText else secondary))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                BasicText(item.label,
+                    style = TextStyle(foreground, if (item.label.contains('\n')) 12.sp else 14.sp,
+                        if (selected) FontWeight.SemiBold else FontWeight.Medium),
+                    maxLines = if (item.label.contains('\n')) 2 else 1, overflow = TextOverflow.Ellipsis)
+                if (item.subtitle.isNotEmpty()) BasicText(item.subtitle,
+                    style = TextStyle(if (selected) selectedText else secondary, 11.sp),
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            BasicText(if (selected) "✓" else if (selectionMenuState && item.id >= 0) "○" else "›",
+                style = TextStyle(if (selected) selectedText else secondary, 18.sp, FontWeight.Medium))
+        }
+    }
+
+    @Composable
+    private fun SourceAction(item: PanelItem, modifier: Modifier, surface: Color, primary: Color) {
+        Box(modifier.clip(RoundedCornerShape(10.dp)).background(surface)
+            .clickable(role = Role.Button) { listener?.onItemClick(item.id) }
+            .padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+            BasicText(item.label, style = TextStyle(primary, 12.sp, FontWeight.SemiBold, textAlign = TextAlign.Center),
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

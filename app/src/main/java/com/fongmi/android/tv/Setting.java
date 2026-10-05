@@ -455,14 +455,6 @@ public class Setting {
         return new Intent(Settings.ACTION_CAPTIONING_SETTINGS).resolveActivity(App.get().getPackageManager()) != null;
     }
 
-    public static boolean isLiveTabVisible() {
-        return Prefers.getBoolean("live_tab_visible", true);
-    }
-
-    public static void putLiveTabVisible(boolean visible) {
-        Prefers.put("live_tab_visible", visible);
-    }
-
     public static boolean isLiquidGlassNavigation() {
         return Prefers.getBoolean("liquid_glass_navigation", true);
     }

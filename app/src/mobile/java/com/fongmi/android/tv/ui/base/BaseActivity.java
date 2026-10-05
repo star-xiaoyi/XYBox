@@ -22,6 +22,7 @@ import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.ThemeUtil;
+import com.fongmi.android.tv.utils.SourceUiGuard;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -49,6 +50,7 @@ public abstract class BaseActivity extends AppCompatActivity {
         ViewBinding binding = getBinding();
         mContentRoot = binding.getRoot();
         setContentView(mContentRoot);
+        SourceUiGuard.protectWindow(this, mContentRoot);
         EventBus.getDefault().register(this);
         initView(savedInstanceState);
         setBackCallback();
@@ -57,6 +59,16 @@ public abstract class BaseActivity extends AppCompatActivity {
 
     protected Activity getActivity() {
         return this;
+    }
+
+    @Override
+    public Object getSystemService(String name) {
+        return SourceUiGuard.filterService(name, super.getSystemService(name));
+    }
+
+    @Override
+    public WindowManager getWindowManager() {
+        return SourceUiGuard.filterWindowManager(super.getWindowManager());
     }
 
     protected boolean transparent() {

@@ -110,6 +110,15 @@ public class Site implements Parcelable {
     @Ignore
     private boolean activated;
 
+    @Ignore private transient int sourceId;
+    @Ignore private transient String sourceName;
+
+    public int getSourceId() { return sourceId; }
+    public void setSourceId(int value) { sourceId = value; }
+    public String getSourceName() { return sourceName == null ? "" : sourceName; }
+    public void setSourceName(String value) { sourceName = value; }
+    public String getDisplayName() { return getSourceName().isEmpty() ? getName() : getSourceName() + " · " + getName(); }
+
     public static Site objectFrom(JsonElement element) {
         try {
             Site site = App.gson().fromJson(element, Site.class);

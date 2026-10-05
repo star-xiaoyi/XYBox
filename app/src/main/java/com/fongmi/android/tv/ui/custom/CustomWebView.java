@@ -21,7 +21,6 @@ import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.Setting;
 import com.fongmi.android.tv.api.AdBlocker;
 import com.fongmi.android.tv.api.AIAdDetector;
-import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.impl.ParseCallback;
 import com.fongmi.android.tv.ui.dialog.WebDialog;
@@ -184,7 +183,6 @@ public class CustomWebView extends WebView implements DialogInterface.OnDismissL
         
         // 2. 然后检查用户自定义的广告域名
         for (String ad : VodConfig.get().getAds()) if (Util.containOrMatch(host, ad)) return true;
-        for (String ad : LiveConfig.get().getAds()) if (Util.containOrMatch(host, ad)) return true;
         
         // 3. AI智能广告检测
         if (AIAdDetector.isEnabled() && AIAdDetector.isAd("https://" + host)) return true;

@@ -248,20 +248,7 @@ class LiquidGlassFilterView @JvmOverloads constructor(
                         modifier = Modifier.weight(1f),
                         style = TextStyle(palette.text, 20.sp, FontWeight.Bold)
                     )
-                    LiquidButton(
-                        onClick = ::dismiss,
-                        backdrop = backdrop,
-                        frameNanos = frameNanos,
-                        surfaceColor = palette.glass,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_action_close),
-                            contentDescription = stringResource(R.string.action_close_search),
-                            colorFilter = ColorFilter.tint(palette.text),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
+                    DialogCloseButton(::dismiss, palette.glass.copy(alpha = 1f), palette.text)
                 }
                 Spacer(Modifier.height(12.dp))
                 Column(

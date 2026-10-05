@@ -13,6 +13,7 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.ActivityHistoryBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.event.ForegroundSyncEvent;
 import com.fongmi.android.tv.ui.adapter.HistoryAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.utils.Notify;
@@ -22,6 +23,10 @@ import com.airbnb.lottie.LottieAnimationView;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
+
+import java.util.List;
+
+import com.github.catvod.utils.Logger;
 
 public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnClickListener {
 
@@ -63,20 +68,33 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
     }
 
     private void getHistory() {
-        mAdapter.addAll(History.getAll()); // 显示所有视频源的观看记录
+        if (mBinding == null || mAdapter == null) return;
+        List<History> items = History.getAll();
+        mAdapter.addAll(items); // 显示所有视频源的观看记录
+        Logger.i("HistoryScreen: action=load count=" + items.size()
+                + " awaiting=" + App.isAwaitingForegroundSync() + " syncing=" + WebDAVSyncManager.get().isSyncing()
+                + " profile=" + com.fongmi.android.tv.utils.LocalProfile.id());
         if (mAdapter.getItemCount() == 0) setDeleteMode(false);
         else refreshBackHandling();
         mBinding.toolbar.setSecondaryActionVisible(mAdapter.getItemCount() > 0);
         updateEmptyState();
     }
 
+    private boolean isHistorySyncing() {
+        return App.isAwaitingForegroundSync() || WebDAVSyncManager.get().isSyncing();
+    }
+
     private void updateEmptyState() {
         boolean isEmpty = mAdapter.getItemCount() == 0;
-        mBinding.emptyLayout.getRoot().setVisibility(isEmpty ? View.VISIBLE : View.GONE);
+        boolean waiting = isEmpty && isHistorySyncing();
+        Logger.i("HistoryScreen: state=" + (waiting ? "loading" : isEmpty ? "empty" : "ready")
+                + " count=" + mAdapter.getItemCount());
+        mBinding.historyLoading.setVisibility(waiting ? View.VISIBLE : View.GONE);
+        mBinding.emptyLayout.getRoot().setVisibility(isEmpty && !waiting ? View.VISIBLE : View.GONE);
         mBinding.recycler.setVisibility(isEmpty ? View.GONE : View.VISIBLE);
         
         // 控制Lottie动画播放
-        if (isEmpty) {
+        if (isEmpty && !waiting) {
             try {
                 LottieAnimationView lottieView = mBinding.emptyLayout.getRoot().findViewById(R.id.lottieAnimation);
                 if (lottieView != null) {
@@ -98,6 +116,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         App.execute(() -> {
             WebDAVSyncManager.SyncResult result = manager.syncNow();
             App.post(() -> {
+                if (mBinding == null || isFinishing() || isDestroyed()) return;
                 mBinding.toolbar.setPrimaryActionEnabled(true);
                 getHistory();
                 Notify.tip(result.message);
@@ -124,9 +143,26 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         if (event.getType().equals(RefreshEvent.Type.HISTORY)) getHistory();
     }
 
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onForegroundSyncEvent(ForegroundSyncEvent event) {
+        getHistory();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        getHistory();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        mBinding = null;
+    }
+
     @Override
     public void onItemClick(History item) {
-        VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
+        VideoActivity.resume(this, item);
     }
 
     @Override

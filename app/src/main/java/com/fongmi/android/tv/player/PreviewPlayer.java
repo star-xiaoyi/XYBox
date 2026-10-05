@@ -20,6 +20,7 @@ import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.SeekParameters;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener;
 
@@ -45,9 +46,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * 触摸事件仍会做很短的防抖，但真正交给播放器的是手指对应的毫秒位置，不再向下
  * 取整，也不再只取目标之前的关键帧。这样预览帧和主播放器松手后的 seek 目标一致。
  */
-public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListener, CacheDataSource.EventListener {
+public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListener, CacheDataSource.EventListener, AnalyticsListener {
 
     private static final int FRAME_BUCKET_MS = 100;
+    private static final long PREVIEW_MOVEMENT_MS = 1000;
     private static final long EXACT_FRAME_TOLERANCE_MS = 50;
     private static final long VALID_FRAME_TOLERANCE_MS = 120;
     private static final long LOCAL_SEEK_INTERVAL = 32;
@@ -76,6 +78,7 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
     private long renderedActualPositionMs;
     private long pendingPositionMs;
     private long requestedPositionMs;
+    private long previewAnchorMs;
     private long shownRequestPositionMs;
     private long shownActualPositionMs;
     private boolean localSource;
@@ -87,6 +90,10 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
     private long activeSeekStartedMs;
     private long activeCachedBytesStart;
     private int activeRetryCount;
+    private boolean showingCachedFrame;
+    private long activeReadyMs;
+    private long lastSnapshotDurationMs;
+    private int supersededRequests;
 
     public PreviewPlayer() {
         this.idleRelease = this::releasePlayer;
@@ -133,8 +140,10 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         this.localSource = isLocal(item);
         this.frameTimestampOffsetUs = C.TIME_UNSET;
         this.requestedPositionMs = C.TIME_UNSET;
+        this.previewAnchorMs = C.TIME_UNSET;
         this.shownRequestPositionMs = C.TIME_UNSET;
         this.shownActualPositionMs = C.TIME_UNSET;
+        this.showingCachedFrame = false;
         if (callback != null) callback.onPreviewReset();
     }
 
@@ -151,30 +160,47 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
     }
 
     /**
-     * 拖动中调用。短节流只限制请求频率，不改变最后交给播放器的毫秒位置。
+     * 拖动中调用。前后不足一秒的小幅移动保持预览，累计越过阈值再更新。
+     * 松手时绕过这个范围，仍按最后的毫秒位置精确定位。
      * <p>
      * 网络帧尚未出来时只保留最后一个目标，不继续向 ExoPlayer 堆 seek。否则长视频上
      * 每个 ACTION_MOVE 都可能落到不同位置，HLS 分片会被每秒取消、重开几十次，
      * 最后一帧只能等手停下来以后才真正开始加载。
      */
     public void seek(long position) {
+        seek(position, false);
+    }
+
+    private void seek(long position, boolean finalTarget) {
         App.removeCallbacks(idleRelease);
         if (item == null || view == null) return;
         position = normalize(position);
+        // Measure from the last accepted target, not the last touch event: small moves
+        // accumulate until one second is crossed. Releasing the finger bypasses this.
+        if (!finalTarget && previewAnchorMs != C.TIME_UNSET
+                && Math.abs(position - previewAnchorMs) < PREVIEW_MOVEMENT_MS) {
+            Frame anchored = findExactFrame(previewAnchorMs);
+            if (anchored != null) {
+                showingCachedFrame = true;
+                showFrame(anchored);
+            }
+            if (anchored != null || player != null) return;
+        }
+        previewAnchorMs = position;
         requestedPositionMs = position;
         Frame cached = findExactFrame(position);
         if (cached != null) {
+            showingCachedFrame = true;
             pendingPositionMs = C.TIME_UNSET;
             App.removeCallbacks(pendingSeek, forcedSeek);
             pendingSeekScheduled = false;
             showFrame(cached);
             return;
         }
-        if (callback != null) {
-            shownRequestPositionMs = C.TIME_UNSET;
-            shownActualPositionMs = C.TIME_UNSET;
-            callback.onPreviewLoading();
-        }
+        showingCachedFrame = false;
+        shownRequestPositionMs = C.TIME_UNSET;
+        shownActualPositionMs = C.TIME_UNSET;
+        showLoadingFrame();
         if (player == null) {
             create(position);
             return;
@@ -209,7 +235,7 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
     /** 记录松手瞬间预览窗实际显示的是哪一帧，便于真机日志直接判断偏差来自哪里。 */
     public void finish(long position) {
         position = normalize(position);
-        seek(position);
+        seek(position, true);
         String shown = shownRequestPositionMs == C.TIME_UNSET
                 ? "none"
                 : shownRequestPositionMs + "/" + shownActualPositionMs;
@@ -229,6 +255,7 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         releasePlayer();
         frameCache.evictAll();
         requestedPositionMs = C.TIME_UNSET;
+        previewAnchorMs = C.TIME_UNSET;
         shownRequestPositionMs = C.TIME_UNSET;
         shownActualPositionMs = C.TIME_UNSET;
         item = null;
@@ -247,8 +274,10 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         awaitingFrame = false;
         activeExact = false;
         activeRetryCount = 0;
+        showingCachedFrame = false;
         if (player == null) return;
         player.removeListener(this);
+        player.removeAnalyticsListener(this);
         player.clearVideoFrameMetadataListener(this);
         player.clearVideoTextureView(view);
         player.release();
@@ -261,6 +290,7 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         renderedActualPositionMs = C.TIME_UNSET;
         pendingPositionMs = C.TIME_UNSET;
         requestedPositionMs = C.TIME_UNSET;
+        previewAnchorMs = C.TIME_UNSET;
         shownRequestPositionMs = C.TIME_UNSET;
         shownActualPositionMs = C.TIME_UNSET;
         pendingSeekScheduled = false;
@@ -269,6 +299,8 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         awaitingFrame = false;
         activeExact = false;
         activeRetryCount = 0;
+        activeReadyMs = C.TIME_UNSET;
+        supersededRequests = 0;
     }
 
     private long normalize(long position) {
@@ -298,6 +330,15 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         if (callback != null) callback.onPreviewFrame(frame.bitmap);
     }
 
+    private void showLoadingFrame() {
+        if (callback == null) return;
+        // Hold the last completed frame during loading. Do not make a codec flush
+        // visible as a black box, and do not claim this is the new target frame.
+        Frame previous = renderedPositionMs == C.TIME_UNSET ? null : findExactFrame(renderedPositionMs);
+        if (previous != null) callback.onPreviewFrame(previous.bitmap);
+        callback.onPreviewLoading();
+    }
+
     private String valueOf(long value) {
         return value == C.TIME_UNSET ? "none" : String.valueOf(value);
     }
@@ -307,13 +348,18 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         // 所有片源都以“真正渲染出帧”为完成信号，READY 不能代表 TextureView 已更新。
         // 在线源只有时间片到期后才能强制替换旧请求；本地源由短 watchdog 释放。
         if (awaitingFrame && (!force || localSource)) return;
+        // READY means the data is available and the decoder is finishing its frame.
+        // Cancelling it every 280 ms starves slower codecs even when disk cache hits.
+        if (awaitingFrame && force && player.getPlaybackState() == Player.STATE_READY) return;
         long position = pendingPositionMs;
         pendingPositionMs = C.TIME_UNSET;
         if (Math.abs(position - activePositionMs) <= EXACT_FRAME_TOLERANCE_MS) return;
+        if (awaitingFrame) supersededRequests++;
         App.removeCallbacks(pendingSeek, forcedSeek);
         pendingSeekScheduled = false;
         // 当前画面已经真正显示过，跳走前存下来；之后往回拖不再访问网络。
         cacheCurrentFrame();
+        showLoadingFrame();
         renderedPositionMs = C.TIME_UNSET;
         renderedActualPositionMs = C.TIME_UNSET;
         activePositionMs = position;
@@ -321,6 +367,7 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         awaitingFrame = true;
         activeRetryCount = 0;
         activeSeekStartedMs = SystemClock.elapsedRealtime();
+        activeReadyMs = C.TIME_UNSET;
         activeCachedBytesStart = cachedBytesRead.get();
         seekGeneration++;
         player.setSeekParameters(SeekParameters.EXACT);
@@ -341,24 +388,29 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         player.setPlayWhenReady(false);
         player.setVolume(0);
         player.addListener(this);
+        player.addAnalyticsListener(this);
         player.setVideoFrameMetadataListener(this);
         player.setVideoTextureView(view);
         activePositionMs = initialPositionMs;
         renderedPositionMs = C.TIME_UNSET;
         renderedActualPositionMs = C.TIME_UNSET;
         requestedPositionMs = initialPositionMs;
+        previewAnchorMs = initialPositionMs;
         pendingPositionMs = C.TIME_UNSET;
         pendingSeekScheduled = false;
         activeExact = true;
         awaitingFrame = true;
         activeRetryCount = 0;
         activeSeekStartedMs = SystemClock.elapsedRealtime();
+        activeReadyMs = C.TIME_UNSET;
         activeCachedBytesStart = cachedBytesRead.get();
         frameTimestampOffsetUs = C.TIME_UNSET;
         seekGeneration++;
         // 把目标位置作为初始播放点，prepare 只发起一次正确位置的加载。
         player.setMediaItem(item, initialPositionMs);
         player.prepare();
+        Logger.i("Preview: create targetMs=" + initialPositionMs + " local=" + localSource
+                + " surfaceReady=" + view.isAvailable());
         armFrameWatchdog();
     }
 
@@ -383,6 +435,7 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
             renderedPositionMs = C.TIME_UNSET;
             renderedActualPositionMs = C.TIME_UNSET;
             activeSeekStartedMs = SystemClock.elapsedRealtime();
+            activeReadyMs = C.TIME_UNSET;
             activeCachedBytesStart = cachedBytesRead.get();
             seekGeneration++;
             awaitingFrame = true;
@@ -434,6 +487,7 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
     @Override
     public void onPlaybackStateChanged(int playbackState) {
         if (playbackState != Player.STATE_READY) return;
+        if (awaitingFrame && activeReadyMs == C.TIME_UNSET) activeReadyMs = SystemClock.elapsedRealtime();
         // READY 往往早于视频帧真正进入 TextureView。无论本地还是在线，此时马上发
         // 下一次 seek 都会把即将显示的帧取消，必须由 cacheRenderedFrame 接棒。
         if (awaitingFrame) return;
@@ -473,21 +527,22 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         activeRetryCount = 0;
         App.removeCallbacks(frameWatchdog);
         cacheCurrentFrame(targetMs, actualFrameMs, true);
-        // seek 的新帧已经进入 TextureView。若之前为了零等待先盖了一张邻近缓存图，
-        // 现在必须撤掉，否则真实画面虽已更新，用户看到的仍会是那张旧截图。
-        // 用户可能已经回拖到一张内存截图，而播放器仍在完成上一目标；这种迟到帧可以
-        // 留作缓存，但不能撤掉当前截图。只有它仍对应最新手指位置时才露出 TextureView。
-        if (targetMs == requestedPositionMs) {
-            shownRequestPositionMs = C.TIME_UNSET;
-            shownActualPositionMs = C.TIME_UNSET;
-            if (callback != null) callback.onPreviewLoading();
+        // Keep completed frames updating during a drag. A late render must not cover
+        // a newer target that was already satisfied by an exact memory-cache hit.
+        if (!showingCachedFrame) {
+            shownRequestPositionMs = targetMs;
+            shownActualPositionMs = actualFrameMs;
+            if (callback != null) callback.onPreviewReady();
         }
         Format selected = player.getVideoFormat();
         long cacheBytes = Math.max(0, cachedBytesRead.get() - activeCachedBytesStart);
         Logger.i("Preview: frame targetMs=" + targetMs + " actualMs=" + actualFrameMs
                 + " exact=true latencyMs=" + (SystemClock.elapsedRealtime() - activeSeekStartedMs)
                 + " cacheReadBytes=" + cacheBytes + " track=" + describe(selected)
+                + " readyAfterMs=" + (activeReadyMs == C.TIME_UNSET ? "none" : activeReadyMs - activeSeekStartedMs)
+                + " snapshotMs=" + lastSnapshotDurationMs + " superseded=" + supersededRequests
                 + " pendingMs=" + valueOf(pendingPositionMs));
+        supersededRequests = 0;
         if (pendingPositionMs != C.TIME_UNSET) {
             pendingSeekScheduled = true;
             App.post(pendingSeek);
@@ -507,13 +562,21 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
 
     private void cacheCurrentFrame(long requestPositionMs, long actualPositionMs, boolean exact) {
         if (view == null || !view.isAvailable() || view.getWidth() <= 0 || view.getHeight() <= 0) return;
-        int width = Math.min(FRAME_CACHE_WIDTH, view.getWidth());
-        int height = Math.max(1, Math.round(width * view.getHeight() / (float) view.getWidth()));
-        Bitmap bitmap = view.getBitmap(width, height);
-        if (bitmap == null) return;
-        Frame frame = new Frame(bitmap, requestPositionMs, actualPositionMs, exact);
         int key = toBucket(requestPositionMs);
         Frame existing = frameCache.get(key);
+        // This paused frame was already captured by the render callback. Avoid another
+        // GPU readback when dispatching the next seek or releasing the decoder.
+        if (existing != null && existing.exact && exact && existing.requestPositionMs == requestPositionMs) {
+            lastSnapshotDurationMs = 0;
+            return;
+        }
+        int width = Math.min(FRAME_CACHE_WIDTH, view.getWidth());
+        int height = Math.max(1, Math.round(width * view.getHeight() / (float) view.getWidth()));
+        long snapshotStartedMs = SystemClock.elapsedRealtime();
+        Bitmap bitmap = view.getBitmap(width, height);
+        lastSnapshotDurationMs = SystemClock.elapsedRealtime() - snapshotStartedMs;
+        if (bitmap == null) return;
+        Frame frame = new Frame(bitmap, requestPositionMs, actualPositionMs, exact);
         if (existing == null || exact) frameCache.put(key, frame);
         long delta = actualPositionMs - requestPositionMs;
         if (Math.abs(delta) > 80) {
@@ -523,6 +586,7 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
 
     @Override
     public void onPlayerError(@NonNull PlaybackException error) {
+        Logger.w("Preview", "player-error code=" + error.errorCode + " message=" + error.getMessage());
         // 预览出不来就收掉，绝不能影响正在放的那一路。
         // 不能在播放器自己的回调里直接 release，抛到下一个消息再做。
         if (callback != null) callback.onPreviewFail();
@@ -539,6 +603,13 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         Logger.i("Preview: disk-cache ignored reason=" + reason);
     }
 
+    @Override
+    public void onVideoDecoderInitialized(@NonNull AnalyticsListener.EventTime eventTime,
+                                          @NonNull String decoderName, long initializedTimestampMs,
+                                          long initializationDurationMs) {
+        Logger.i("Preview: decoder=" + decoderName + " initMs=" + initializationDurationMs);
+    }
+
     private String describe(Format format) {
         if (format == null) return "unknown";
         return format.width + "x" + format.height + "@" + format.bitrate;
@@ -552,8 +623,11 @@ public class PreviewPlayer implements Player.Listener, VideoFrameMetadataListene
         /** 命中内存缓存或新帧完成渲染，直接覆盖到预览窗。 */
         void onPreviewFrame(Bitmap bitmap);
 
-        /** 露出 TextureView：既用于等待新帧，也用于新帧完成后撤掉临时截图。 */
+        /** 新帧尚未完成：保留上一帧并明确显示加载状态。 */
         void onPreviewLoading();
+
+        /** 新帧完成：撤掉占位截图，露出 TextureView。 */
+        void onPreviewReady();
 
         /** 换片源时清掉上一集留下的占位图。 */
         void onPreviewReset();

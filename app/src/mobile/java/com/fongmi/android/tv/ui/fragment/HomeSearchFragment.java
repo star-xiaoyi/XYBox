@@ -90,6 +90,9 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
     protected void initView() {
         mShowCheck = this::checkShow;
         mFiller = Executors.newFixedThreadPool(3);
+        mBinding.status.setOnClickListener(v -> {
+            if (mTask != null && mTask.isFinished() && mTask.hasMore()) mTask.searchMore();
+        });
         mBinding.recycler.setHasFixedSize(true);
         mBinding.recycler.setItemAnimator(null);
         mBinding.recycler.setAdapter(mAdapter = new SearchGroupAdapter(this));
@@ -172,7 +175,10 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
         updateStatus();
         checkShow();
         com.github.catvod.utils.Logger.d("AiSearch phase=finished elapsedMs=" + (SystemClock.elapsedRealtime() - mStartTime) + " groups=" + mGrouper.sorted().size());
-        if (!mFuzzy && mTask != null && mTask.getDone() == mTask.getTotal()) tryOpenExact(false);
+        if (mTask != null && mTask.hasMore() && !mGrouper.hasExact()) {
+            mTask.searchMore(); updateStatus(); return;
+        }
+        if (!mFuzzy && mTask != null && !mTask.hasMore() && mTask.getDone() == mTask.getTotal()) tryOpenExact(false);
         if (!mAutoOpened && !mGrouper.hasExact() && mFallbackIndex < mFallbacks.size()) {
             String fallback = mFallbacks.get(mFallbackIndex++);
             mTask.cancel();
@@ -246,10 +252,15 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
         if (animation != null) animation.playAnimation();
     }
 
+    @Override public void onProgress() { if (mBinding != null && !mAutoOpened) updateStatus(); }
+
     private void updateStatus() {
-        boolean searching = mTask != null && !mTask.isFinished() && mTask.getTotal() > 0;
-        mBinding.status.setVisibility(searching || (mFuzzy && !mGrouper.isEmpty()) ? View.VISIBLE : View.GONE);
-        if (searching) mBinding.status.setText((mFuzzy ? "模糊搜索 · " : "") + getString(R.string.search_progress, mTask.getDone(), mTask.getTotal()));
+        boolean searching = mTask != null && !mTask.isFinished();
+        boolean more = mTask != null && mTask.isFinished() && mTask.hasMore();
+        mBinding.status.setVisibility(searching || more || (mFuzzy && !mGrouper.isEmpty()) ? View.VISIBLE : View.GONE);
+        mBinding.status.setEnabled(more);
+        if (searching) mBinding.status.setText((mFuzzy ? "模糊搜索 · " : "优先搜索 · ") + getString(R.string.search_progress, mTask.getDone(), mTask.getTotal()));
+        else if (more) mBinding.status.setText("已有结果 · 点击继续搜索其余 " + mTask.getRemaining() + " 个站点");
         else if (mFuzzy && !mGrouper.isEmpty()) mBinding.status.setText("模糊匹配结果，请选择影片");
     }
 
@@ -259,6 +270,7 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
             Vod vod = item.first().getVod();
             FolderActivity.start(requireActivity(), vod.getSiteKey(), Result.folder(vod));
         } else {
+            stopSearch();
             VideoActivity.group(requireActivity(), item);
         }
     }
@@ -294,7 +306,7 @@ public class HomeSearchFragment extends BaseFragment implements SearchTask.Callb
         super.onResume();
         if (mTask != null) mTask.resume();
         if (mTask == null || mFuzzy || mAutoOpened) return;
-        if (mTask.getDone() == mTask.getTotal()) tryOpenExact(false);
+        if (!mTask.hasMore() && mTask.getDone() == mTask.getTotal()) tryOpenExact(false);
         else if (mTargetYear > 0) tryOpenExact(true);
     }
 

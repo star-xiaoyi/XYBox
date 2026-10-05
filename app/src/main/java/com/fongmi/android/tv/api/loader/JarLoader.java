@@ -5,6 +5,7 @@ import android.content.Context;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.utils.UrlUtil;
+import com.fongmi.android.tv.utils.SourceUiOrigin;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.crawler.SpiderNull;
 import com.github.catvod.net.OkHttp;
@@ -59,7 +60,9 @@ public class JarLoader {
     }
 
     private DexClassLoader dex(File file) {
-        return new DexClassLoader(file.getAbsolutePath(), Path.jar().getAbsolutePath(), null, App.get().getClassLoader());
+        DexClassLoader loader = new DexClassLoader(file.getAbsolutePath(), Path.jar().getAbsolutePath(), null, App.get().getClassLoader());
+        SourceUiOrigin.register(loader);
+        return loader;
     }
 
     private void invokeInit(String key) {
@@ -140,13 +143,23 @@ public class JarLoader {
     }
 
     public JSONObject jsonExt(String key, LinkedHashMap<String, String> jxs, String url) throws Throwable {
-        Class<?> clz = loaders.get(recent).loadClass("com.github.catvod.parser.Json" + key);
+        return jsonExt("", key, jxs, url);
+    }
+
+    public JSONObject jsonExt(String jar, String key, LinkedHashMap<String, String> jxs, String url) throws Throwable {
+        DexClassLoader loader = jar.isEmpty() ? loaders.get(recent) : dex(jar);
+        Class<?> clz = loader.loadClass("com.github.catvod.parser.Json" + key);
         Method method = clz.getMethod("parse", LinkedHashMap.class, String.class);
         return (JSONObject) method.invoke(null, jxs, url);
     }
 
     public JSONObject jsonExtMix(String flag, String key, String name, LinkedHashMap<String, HashMap<String, String>> jxs, String url) throws Throwable {
-        Class<?> clz = loaders.get(recent).loadClass("com.github.catvod.parser.Mix" + key);
+        return jsonExtMix("", flag, key, name, jxs, url);
+    }
+
+    public JSONObject jsonExtMix(String jar, String flag, String key, String name, LinkedHashMap<String, HashMap<String, String>> jxs, String url) throws Throwable {
+        DexClassLoader loader = jar.isEmpty() ? loaders.get(recent) : dex(jar);
+        Class<?> clz = loader.loadClass("com.github.catvod.parser.Mix" + key);
         Method method = clz.getMethod("parse", LinkedHashMap.class, String.class, String.class, String.class);
         return (JSONObject) method.invoke(null, jxs, name, flag, url);
     }

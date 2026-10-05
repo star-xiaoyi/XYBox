@@ -3,7 +3,6 @@ package com.fongmi.android.tv.utils;
 import android.net.Uri;
 import android.text.TextUtils;
 
-import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Rule;
 import com.github.catvod.utils.Json;
@@ -49,7 +48,6 @@ public class Sniffer {
         if (uri.getHost() == null) return Rule.empty();
         String hosts = TextUtils.join(",", Arrays.asList(UrlUtil.host(uri), UrlUtil.host(uri.getQueryParameter("url"))));
         for (Rule rule : VodConfig.get().getRules()) for (String host : rule.getHosts()) if (Util.containOrMatch(hosts, host)) return rule;
-        for (Rule rule : LiveConfig.get().getRules()) for (String host : rule.getHosts()) if (Util.containOrMatch(hosts, host)) return rule;
         return Rule.empty();
     }
 }

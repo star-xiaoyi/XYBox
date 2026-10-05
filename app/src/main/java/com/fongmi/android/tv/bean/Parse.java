@@ -31,6 +31,9 @@ public class Parse {
 
     private boolean activated;
     private String click;
+    private transient String sourceJar;
+    public String getSourceJar() { return sourceJar == null ? "" : sourceJar; }
+    public void setSourceJar(String value) { sourceJar = value; }
 
     public static Parse objectFrom(JsonElement element) {
         return App.gson().fromJson(element, Parse.class);

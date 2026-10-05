@@ -1,7 +1,6 @@
 package com.fongmi.android.tv.player;
 
 import com.fongmi.android.tv.Constant;
-import com.fongmi.android.tv.bean.Channel;
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.Result;
@@ -9,7 +8,6 @@ import com.fongmi.android.tv.player.extractor.Force;
 import com.fongmi.android.tv.player.extractor.JianPian;
 import com.fongmi.android.tv.player.extractor.Push;
 import com.fongmi.android.tv.player.extractor.Strm;
-import com.fongmi.android.tv.player.extractor.TVBus;
 import com.fongmi.android.tv.player.extractor.Thunder;
 import com.fongmi.android.tv.player.extractor.Video;
 import com.fongmi.android.tv.player.extractor.Youtube;
@@ -43,7 +41,6 @@ public class Source {
         extractors.add(new Push());
         extractors.add(new Strm());
         extractors.add(new Thunder());
-        extractors.add(new TVBus());
         extractors.add(new Video());
         extractors.add(new Youtube());
     }
@@ -87,14 +84,6 @@ public class Source {
         Extractor extractor = getExtractor(url);
         if (extractor != null) result.setParse(0);
         if (extractor instanceof Video) result.setParse(1);
-        return extractor == null ? url : extractor.fetch(url);
-    }
-
-    public String fetch(Channel channel) throws Exception {
-        String url = channel.getCurrent();
-        Extractor extractor = getExtractor(url);
-        if (extractor != null) channel.setParse(0);
-        if (extractor instanceof Video) channel.setParse(1);
         return extractor == null ? url : extractor.fetch(url);
     }
 

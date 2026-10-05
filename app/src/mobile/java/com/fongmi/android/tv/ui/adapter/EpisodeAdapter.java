@@ -56,20 +56,20 @@ public class EpisodeAdapter extends RecyclerView.Adapter<BaseEpisodeHolder> {
     }
 
     public Episode getActivated() {
-        return mItems.get(getPosition());
+        return com.fongmi.android.tv.search.PlaybackSelection.item(mItems, getPosition());
     }
 
     public Episode getNext() {
         int current = getPosition();
         int max = getItemCount() - 1;
         current = ++current > max ? max : current;
-        return mItems.get(current);
+        return com.fongmi.android.tv.search.PlaybackSelection.item(mItems, current);
     }
 
     public Episode getPrev() {
         int current = getPosition();
         current = --current < 0 ? 0 : current;
-        return mItems.get(current);
+        return com.fongmi.android.tv.search.PlaybackSelection.item(mItems, current);
     }
 
     public List<Episode> getItems() {

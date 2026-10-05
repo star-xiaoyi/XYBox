@@ -139,7 +139,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         VodConfig.load(config, new Callback() {
             @Override
             public void success() {
-                VideoActivity.start(getActivity(), item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
+                play(item);
                 RefreshEvent.config();
                 RefreshEvent.video();
             }
@@ -158,10 +158,13 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
 
     @Override
     public void onItemClick(Keep item) {
-        Config config = Config.find(item.getCid());
-        if (config == null) VideoActivity.find(this, item.getVodName(), item.getVodPic(), null);
-        else if (item.getCid() != VodConfig.getCid()) loadConfig(config, item);
-        else VideoActivity.start(this, item.getSiteKey(), item.getVodId(), item.getVodName(), item.getVodPic());
+        play(item);
+    }
+
+    private void play(Keep item) {
+        com.fongmi.android.tv.bean.Site site = VodConfig.get().getSite(item.getCid(), item.getSiteKey());
+        if (site.isEmpty()) VideoActivity.find(this, item.getVodName(), item.getVodPic(), null);
+        else VideoActivity.start(this, site.getKey(), item.getVodId(), item.getVodName(), item.getVodPic());
     }
 
     @Override

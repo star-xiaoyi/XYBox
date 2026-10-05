@@ -117,10 +117,6 @@ class SettingsGlassContentView @JvmOverloads constructor(
         val vodDescription: String = "",
         val vodName: String = "",
         val vodUrl: String = "",
-        val liveDescription: String = "",
-        val liveName: String = "",
-        val liveUrl: String = "",
-        val liveVisible: Boolean = true,
         val themeOptions: List<String> = emptyList(),
         val themeIndex: Int = 0,
         val sizeOptions: List<String> = emptyList(),
@@ -128,7 +124,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
         val dohOptions: List<String> = emptyList(),
         val dohIndex: Int = 0,
         val historyVisible: Boolean = true,
-        val liveTabVisible: Boolean = false,
+        val predictiveBack: Boolean = true,
         val liquidGlassNavigation: Boolean = true,
         val incognito: Boolean = false,
         val doh: String = "",
@@ -187,21 +183,15 @@ class SettingsGlassContentView @JvmOverloads constructor(
         webDavActionListener = listener
     }
 
-    fun setSourceDescriptions(vod: String, live: String) {
-        state = state.copy(vodDescription = vod, liveDescription = live)
+    fun setSourceDescription(vod: String) {
+        state = state.copy(vodDescription = vod)
     }
 
-    fun setSourceEditors(vodName: String?, vodUrl: String?, liveName: String?, liveUrl: String?) {
+    fun setSourceEditor(vodName: String?, vodUrl: String?) {
         state = state.copy(
             vodName = vodName.orEmpty(),
-            vodUrl = vodUrl.orEmpty(),
-            liveName = liveName.orEmpty(),
-            liveUrl = liveUrl.orEmpty()
+            vodUrl = vodUrl.orEmpty()
         )
-    }
-
-    fun setLiveVisible(visible: Boolean) {
-        state = state.copy(liveVisible = visible)
     }
 
     fun setThemeOptions(options: Array<String>, selectedIndex: Int) {
@@ -225,8 +215,8 @@ class SettingsGlassContentView @JvmOverloads constructor(
         state = state.copy(historyVisible = checked)
     }
 
-    fun setLiveTabVisibleChecked(checked: Boolean) {
-        state = state.copy(liveTabVisible = checked)
+    fun setPredictiveBackChecked(checked: Boolean) {
+        state = state.copy(predictiveBack = checked)
     }
 
     fun setLiquidGlassNavigationChecked(checked: Boolean) {
@@ -299,7 +289,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
     private fun setToggle(action: Int, checked: Boolean) {
         state = when (action) {
             ACTION_HISTORY_VISIBLE -> state.copy(historyVisible = checked)
-            ACTION_LIVE_TAB_VISIBLE -> state.copy(liveTabVisible = checked)
+            ACTION_PREDICTIVE_BACK -> state.copy(predictiveBack = checked)
             ACTION_GLASS_NAVIGATION -> state.copy(liquidGlassNavigation = checked)
             ACTION_INCOGNITO -> state.copy(incognito = checked)
             else -> state
@@ -412,20 +402,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
                         modifier = Modifier.weight(1f),
                         style = TextStyle(palette.text, 20.sp, FontWeight.Bold)
                     )
-                    LiquidButton(
-                        onClick = { aboutVisible = false },
-                        backdrop = backdrop,
-                        frameNanos = frameNanos,
-                        surfaceColor = palette.glass,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_action_close),
-                            contentDescription = stringResource(R.string.action_close_search),
-                            colorFilter = ColorFilter.tint(palette.text),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
+                    DialogCloseButton({ aboutVisible = false }, palette.glass.copy(alpha = 1f), palette.text)
                 }
                 BasicText(
                     stringResource(R.string.about_dev_title),
@@ -469,12 +446,12 @@ class SettingsGlassContentView @JvmOverloads constructor(
     ) {
         val groups = listOf(
             listOf(ACTION_PLAYER, ACTION_OPERATION, ACTION_AI),
-            listOf(ACTION_THEME, ACTION_GLASS_NAVIGATION, ACTION_LIVE_TAB_VISIBLE),
-            listOf(ACTION_LIVE, ACTION_DOH, ACTION_PROXY),
+            listOf(ACTION_THEME, ACTION_GLASS_NAVIGATION, ACTION_PREDICTIVE_BACK),
+            listOf(ACTION_DOH, ACTION_PROXY),
             listOf(ACTION_INCOGNITO, ACTION_CACHE),
             listOf(ACTION_LABORATORY, ACTION_LOG)
         )
-        val headings = listOf("播放与操作", "外观与导航", "网络与直播", "隐私与存储", "高级与诊断")
+        val headings = listOf("播放与操作", "外观与导航", "网络设置", "隐私与存储", "高级与诊断")
         var resultCount = 0
 
         Column(
@@ -489,9 +466,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
             groups.forEachIndexed { groupIndex, ids ->
                 val visible = ArrayList<Int>()
                 ids.forEach { id ->
-                    if (id != ACTION_LIVE || current.liveVisible) {
-                        if (matches(id, current, current.query)) visible.add(id)
-                    }
+                    if (matches(id, current, current.query)) visible.add(id)
                 }
                 if (visible.isNotEmpty()) {
                     resultCount += visible.size
@@ -521,12 +496,11 @@ class SettingsGlassContentView @JvmOverloads constructor(
         val text = when (id) {
             ACTION_AI -> "AI 找片 DeepSeek 密钥 人工智能 语音"
             ACTION_VOD -> stringResource(R.string.setting_vod) + " " + current.vodDescription
-            ACTION_LIVE -> stringResource(R.string.setting_live) + " " + current.liveDescription
             ACTION_THEME -> stringResource(R.string.setting_theme) + " " + current.themeOptions.joinToString(" ")
             ACTION_SIZE -> stringResource(R.string.setting_size) + " " + current.sizeOptions.joinToString(" ")
             ACTION_GLASS_NAVIGATION -> stringResource(R.string.laboratory_liquid_glass_navigation) + " " + stringResource(R.string.laboratory_liquid_glass_navigation_summary)
             ACTION_HISTORY_VISIBLE -> stringResource(R.string.setting_history_visible)
-            ACTION_LIVE_TAB_VISIBLE -> stringResource(R.string.setting_live_tab_visible)
+            ACTION_PREDICTIVE_BACK -> stringResource(R.string.laboratory_predictive_back) + " " + stringResource(R.string.laboratory_predictive_back_summary)
             ACTION_PLAYER -> listOf(
                 stringResource(R.string.setting_player),
                 stringResource(R.string.setting_player_summary),
@@ -597,10 +571,6 @@ class SettingsGlassContentView @JvmOverloads constructor(
                 id, R.drawable.ic_nav_vod, R.string.setting_vod, current.vodDescription,
                 backdrop, frameNanos, palette
             )
-            ACTION_LIVE -> SourceRow(
-                id, R.drawable.ic_nav_live, R.string.setting_live, current.liveDescription,
-                backdrop, frameNanos, palette
-            )
             ACTION_THEME -> DialogOptionRow(
                 id, R.drawable.ic_settings_appearance, R.string.setting_theme,
                 current.themeOptions, current.themeIndex, backdrop, frameNanos, palette
@@ -617,9 +587,9 @@ class SettingsGlassContentView @JvmOverloads constructor(
                 id, R.drawable.ic_nav_history, R.string.setting_history_visible,
                 current.historyVisible, backdrop, palette
             )
-            ACTION_LIVE_TAB_VISIBLE -> ToggleRow(
-                id, R.drawable.ic_nav_live, R.string.setting_live_tab_visible,
-                current.liveTabVisible, backdrop, palette
+            ACTION_PREDICTIVE_BACK -> ToggleRow(
+                id, R.drawable.ic_settings_gesture, R.string.laboratory_predictive_back,
+                current.predictiveBack, backdrop, palette, R.string.laboratory_predictive_back_summary
             )
             ACTION_PLAYER -> ActionRow(id, R.drawable.ic_settings_playback, R.string.setting_player, R.string.setting_player_summary, palette)
             ACTION_OPERATION -> ActionRow(id, R.drawable.ic_settings_gesture, R.string.setting_operation, R.string.setting_operation_summary, palette)
@@ -661,11 +631,11 @@ class SettingsGlassContentView @JvmOverloads constructor(
                 onLongClick = { toggleDialog(id) }
             ) {
                 GlassIconButton(R.drawable.ic_setting_home, backdrop, frameNanos, palette) {
-                    actionListener?.onAction(if (id == ACTION_VOD) ACTION_VOD_HOME else ACTION_LIVE_HOME)
+                    actionListener?.onAction(ACTION_VOD_HOME)
                 }
                 Spacer(Modifier.width(6.dp))
                 GlassIconButton(R.drawable.ic_setting_history, backdrop, frameNanos, palette) {
-                    actionListener?.onAction(if (id == ACTION_VOD) ACTION_VOD_HISTORY else ACTION_LIVE_HISTORY)
+                    actionListener?.onAction(ACTION_VOD_HISTORY)
                 }
             }
             SourceEditorPanel(id, backdrop, frameNanos, palette)
@@ -680,9 +650,8 @@ class SettingsGlassContentView @JvmOverloads constructor(
         palette: SettingsPalette
     ) {
         val clipboard = LocalClipboardManager.current
-        val isVod = id == ACTION_VOD
-        val name = if (isVod) state.vodName else state.liveName
-        val url = if (isVod) state.vodUrl else state.liveUrl
+        val name = state.vodName
+        val url = state.vodUrl
         EditorPanel(expandedAction == id, backdrop, palette) {
             EditorTextField(
                 value = name,
@@ -690,7 +659,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
                 backdrop = backdrop,
                 palette = palette
             ) { value ->
-                state = if (isVod) state.copy(vodName = value.take(10)) else state.copy(liveName = value.take(10))
+                state = state.copy(vodName = value.take(10))
             }
             EditorTextField(
                 value = url,
@@ -704,7 +673,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
                     url.isEmpty() && raw.equals("a", true) -> "assets://"
                     else -> raw
                 }
-                state = if (isVod) state.copy(vodUrl = value) else state.copy(liveUrl = value)
+                state = state.copy(vodUrl = value)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 EditorButton(
@@ -715,7 +684,7 @@ class SettingsGlassContentView @JvmOverloads constructor(
                     modifier = Modifier.weight(1f)
                 ) {
                     clipboard.getText()?.text?.let { pasted ->
-                        state = if (isVod) state.copy(vodUrl = pasted) else state.copy(liveUrl = pasted)
+                        state = state.copy(vodUrl = pasted)
                     }
                 }
                 EditorButton(
@@ -1102,10 +1071,11 @@ class SettingsGlassContentView @JvmOverloads constructor(
         title: Int,
         checked: Boolean,
         backdrop: Backdrop,
-        palette: SettingsPalette
+        palette: SettingsPalette,
+        summary: Int? = null
     ) {
         SettingsRow(
-            icon, stringResource(title), null, palette,
+            icon, stringResource(title), summary?.let { stringResource(it) }, palette,
             onClick = { setToggle(id, !checked) }
         ) {
             LiquidToggle(
@@ -1304,15 +1274,12 @@ class SettingsGlassContentView @JvmOverloads constructor(
 
     companion object {
         const val ACTION_VOD = 1
-        const val ACTION_LIVE = 2
         const val ACTION_VOD_HOME = 3
-        const val ACTION_LIVE_HOME = 4
         const val ACTION_VOD_HISTORY = 5
-        const val ACTION_LIVE_HISTORY = 6
         const val ACTION_THEME = 7
         const val ACTION_SIZE = 9
         const val ACTION_HISTORY_VISIBLE = 10
-        const val ACTION_LIVE_TAB_VISIBLE = 11
+        const val ACTION_PREDICTIVE_BACK = 30
         const val ACTION_PLAYER = 12
         const val ACTION_OPERATION = 13
         const val ACTION_WEBDAV = 14

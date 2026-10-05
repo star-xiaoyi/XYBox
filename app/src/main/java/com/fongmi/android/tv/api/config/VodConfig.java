@@ -1,472 +1,295 @@
 package com.fongmi.android.tv.api.config;
-import com.github.catvod.utils.Logger;
 
 import android.text.TextUtils;
-
 import com.fongmi.android.tv.App;
-import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.api.Decoder;
-import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.bean.Config;
-import com.fongmi.android.tv.bean.Depot;
 import com.fongmi.android.tv.bean.Parse;
 import com.fongmi.android.tv.bean.Rule;
 import com.fongmi.android.tv.bean.Site;
-import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.event.RefreshEvent;
-import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.search.SourceIdentity;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Doh;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Json;
+import com.github.catvod.utils.Logger;
+import com.github.catvod.utils.Prefers;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
+/** All enabled documents form one catalog; resolver settings remain scoped to their document. */
 public class VodConfig {
+    private static class Loader { static final VodConfig INSTANCE = new VodConfig(); }
+    private final AtomicInteger generation = new AtomicInteger();
+    private volatile List<Site> sites = Collections.emptyList();
+    private volatile Map<String, Context> contexts = Collections.emptyMap();
+    private volatile List<Doh> doh = Collections.emptyList();
+    private volatile List<Rule> rules = Collections.emptyList();
+    private volatile List<String> ads = Collections.emptyList();
+    private volatile Config config;
+    private volatile Site home;
+    private volatile Context playback;
+    private volatile boolean isLoading, retryAfterNetwork;
 
-    private List<Doh> doh;
-    private List<Rule> rules;
-    private List<Site> sites;
-    private List<Parse> parses;
-    private List<String> flags;
-    private List<String> ads;
-    private boolean loadLive;
-    private Config config;
-    private Parse parse;
-    private Site home;
-    private volatile boolean isLoading = false; // 添加加载状态标记
-    private volatile boolean retryAfterNetwork;
-
-    private VodConfig() {
-        // 在构造函数中初始化列表，防止空指针异常
-        this.ads = new ArrayList<>();
-        this.doh = new ArrayList<>();
-        this.rules = new ArrayList<>();
-        this.sites = new ArrayList<>();
-        this.flags = new ArrayList<>();
-        this.parses = new ArrayList<>();
-    }
-
-    private static class Loader {
-        static volatile VodConfig INSTANCE = new VodConfig();
-    }
-
-    public static VodConfig get() {
-        return Loader.INSTANCE;
-    }
-
-    public static int getCid() {
-        return get().getConfig().getId();
-    }
-
-    public static String getUrl() {
-        return get().getConfig().getUrl();
-    }
-
-    public static String getDesc() {
-        return get().getConfig().getDesc();
-    }
-
-    public static int getHomeIndex() {
-        return get().getSites().indexOf(get().getHome());
-    }
-
-    public static boolean hasParse() {
-        return !get().getParses().isEmpty();
-    }
-
-    public static void load(Config config, Callback callback) {
-        Logger.d("VodConfig", "load called with config: " + (config != null ? config.toString() : "null"));
-        
-        // 参数检查
-        if (config == null || callback == null) {
-            Logger.e("VodConfig", "Invalid parameters: config=" + config + ", callback=" + callback);
-            if (callback != null) {
-                App.post(() -> callback.error("配置参数无效"));
+    private static final class Context {
+        final Config config;
+        final List<Site> sites = new ArrayList<>();
+        final List<Parse> parses = new ArrayList<>();
+        final List<String> flags;
+        final List<Rule> rules;
+        final List<Doh> doh;
+        final List<String> ads;
+        final List<JsonElement> headers;
+        final List<String> hosts, proxy;
+        Parse parse;
+        Context(Config config, JsonObject document) {
+            this.config = config;
+            JsonObject object = document;
+            for (int depth = 0; depth < 6 && object.has("video") && object.get("video").isJsonObject(); depth++) object = object.getAsJsonObject("video");
+            String jar = Json.safeString(object, "spider");
+            for (JsonElement element : Json.safeListElement(object, "sites")) {
+                Site site = Site.objectFrom(element);
+                if (site.getKey().isEmpty() || site.getApi().isEmpty()) continue;
+                site.setKey(SourceIdentity.key(config, site.getKey()));
+                site.setSourceId(config.getId());
+                site.setSourceName(config.getDesc());
+                site.setApi(UrlUtil.convert(site.getApi()));
+                site.setExt(UrlUtil.convert(site.getExt()));
+                site.setJar(site.getJar().isEmpty() ? jar : site.getJar());
+                if (!sites.contains(site)) sites.add(site.trans().sync());
             }
-            return;
-        }
-        
-        Logger.d("VodConfig", "Parameters valid, proceeding with load");
-        
-        // 添加加载状态检查，防止并发加载
-        VodConfig instance = get();
-        synchronized (instance) {
-            if (instance.isLoading) {
-                Logger.d("VodConfig", "Already loading, cancelling previous load");
-                // 如果正在加载，取消之前的加载
-                try {
-                    OkHttp.cancel("vod");
-                } catch (Exception e) {
-                    Logger.e("VodConfig", "Error cancelling previous load", e);
-                    Logger.e("Error", e);
-                }
+            for (JsonElement element : Json.safeListElement(object, "parses")) {
+                Parse item = Parse.objectFrom(element);
+                item.setSourceJar(jar);
+                if (!parses.contains(item)) parses.add(item);
+                if (item.getName().equals(config.getParse())) parse = item;
             }
-            instance.isLoading = true;
+            if (!parses.isEmpty()) {
+                Parse god = Parse.god(); god.setSourceJar(jar); parses.add(0, god);
+            }
+            if (parse == null) parse = parses.isEmpty() ? new Parse() : parses.get(0);
+            for (Parse item : parses) item.setActivated(parse);
+            flags = Json.safeListString(object, "flags");
+            rules = Rule.arrayFrom(object.getAsJsonArray("rules"));
+            doh = Doh.arrayFrom(object.getAsJsonArray("doh"));
+            ads = Json.safeListString(object, "ads");
+            headers = Json.safeListElement(object, "headers");
+            hosts = Json.safeListString(object, "hosts");
+            proxy = Json.safeListString(object, "proxy");
         }
-        
-        Logger.d("VodConfig", "Calling instance.clear().config(config).load(callback)");
+    }
+
+    private VodConfig() { }
+    public static VodConfig get() { return Loader.INSTANCE; }
+    public static int getCid() { return get().getConfig().getId(); }
+    public static String getUrl() { return get().getConfig().getUrl(); }
+    public static String getDesc() { return get().getConfig().getDesc(); }
+    public static int getHomeIndex() { return get().getSites().indexOf(get().getHome()); }
+    public static boolean hasParse() { return !get().getParses().isEmpty(); }
+    public static boolean isEnabled(Config value) { return !Prefers.getBoolean("vod_disabled_" + SourceIdentity.prefix(value), false); }
+    public static void setEnabled(Config value, boolean enabled) {
+        Prefers.put("vod_disabled_" + SourceIdentity.prefix(value), !enabled);
+    }
+    public static boolean isSiteEnabled(Site site) { return !Prefers.getBoolean("vod_site_disabled_" + site.getKey(), false); }
+    public static void setSiteEnabled(Site site, boolean enabled) { Prefers.put("vod_site_disabled_" + site.getKey(), !enabled); }
+    /** A pure list for the editor: disabled stations remain editable, without loading their plugins. */
+    public static List<Site> configuredSites(Config config) {
+        List<Site> result = new ArrayList<>();
         try {
-            instance.clear().config(config).load(callback);
-        } catch (Exception e) {
-            instance.isLoading = false;
-            Logger.e("VodConfig", "Exception during load", e);
-            Logger.e("Error", e);
-            App.post(() -> callback.error("配置加载失败: " + e.getMessage()));
-        }
+            JsonObject object = Json.parse(config.getJson()).getAsJsonObject();
+            for (int depth = 0; depth < 6 && object.has("video") && object.get("video").isJsonObject(); depth++) object = object.getAsJsonObject("video");
+            for (JsonElement element : Json.safeListElement(object, "sites")) {
+                Site site = Site.objectFrom(element);
+                if (site.getKey().isEmpty() || site.getApi().isEmpty()) continue;
+                site.setKey(SourceIdentity.key(config, site.getKey()));
+                site.setSourceId(config.getId()); site.setSourceName(config.getDesc());
+                if (!result.contains(site)) result.add(site);
+            }
+        } catch (Exception ignored) { }
+        return result;
     }
-
-    public VodConfig init() {
-        retryAfterNetwork = false;
-        this.home = null;
-        this.parse = null;
-        this.config = Config.vod();
-        this.ads = new ArrayList<>();
-        this.doh = new ArrayList<>();
-        this.rules = new ArrayList<>();
-        this.sites = new ArrayList<>();
-        this.flags = new ArrayList<>();
-        this.parses = new ArrayList<>();
-        this.loadLive = false;
-        return this;
+    public static void load(Config value, Callback callback) { get().config(value).load(callback); }
+    public static void loadValidated(Config value, String json, Callback callback) {
+        try { VodConfigProbe.countSites(json); value.json(json).save(); get().load(callback); }
+        catch (Exception error) { App.post(() -> callback.error(error.getMessage())); }
     }
-
-    public VodConfig config(Config config) {
-        this.config = config;
-        return this;
-    }
-
+    public VodConfig init() { config = Config.vod(); return this; }
+    public VodConfig config(Config value) { config = value; return this; }
     public VodConfig clear() {
-        this.home = null;
-        this.parse = null;
-        if (this.ads != null) this.ads.clear();
-        if (this.doh != null) this.doh.clear();
-        if (this.rules != null) this.rules.clear();
-        if (this.sites != null) this.sites.clear();
-        if (this.flags != null) this.flags.clear();
-        if (this.parses != null) this.parses.clear();
-        this.loadLive = true;
-        BaseLoader.get().clear();
-        return this;
+        generation.incrementAndGet(); sites = Collections.emptyList(); contexts = Collections.emptyMap();
+        doh = Collections.emptyList(); rules = Collections.emptyList(); ads = Collections.emptyList();
+        home = null; playback = null; isLoading = false; return this;
     }
 
     public void load(Callback callback) {
+        final int token = generation.incrementAndGet();
         isLoading = true;
         App.execute(() -> {
-            try {
-                loadConfig(callback);
-            } catch (Throwable error) {
-                // A malformed local fallback must not leave all later retries locked out.
-                retryAfterNetwork = getSites().isEmpty() && !TextUtils.isEmpty(getConfig().getUrl());
-                isLoading = false;
-                Logger.e("Error", error);
-                App.post(() -> callback.error(Notify.getError(R.string.error_config_parse, error)));
+            List<Config> enabled = new ArrayList<>();
+            for (Config item : Config.getAll(0)) if (!item.isEmpty() && isEnabled(item)) enabled.add(item);
+            Config preferred = getConfig();
+            if (!preferred.isEmpty() && isEnabled(preferred) && !enabled.contains(preferred)) enabled.add(0, preferred);
+            Map<String, Context> loaded = new LinkedHashMap<>();
+            List<Config> refresh = new ArrayList<>();
+            for (Config item : enabled) {
+                if (token != generation.get()) return;
+                String json = item.getJson();
+                try {
+                    if (TextUtils.isEmpty(json)) {
+                        VodConfigProbe.Result tested = VodConfigProbe.test(item.getUrl(), "vod-pool-" + token + "-" + item.getId());
+                        // Address collections have no runtime site identity; resolve before saving.
+                        item.url(tested.url).json(tested.json).save(); json = tested.json;
+                    } else refresh.add(item);
+                    loaded.put(SourceIdentity.prefix(item), decode(item, json));
+                } catch (Throwable error) { Logger.e("VodPool: configuration unavailable " + item.getDesc(), error); }
             }
+            App.post(() -> {
+                if (token != generation.get()) return;
+                install(loaded); isLoading = false;
+                retryAfterNetwork = sites.isEmpty() && !enabled.isEmpty();
+                if (sites.isEmpty() && !enabled.isEmpty()) callback.error("所有点播配置暂时不可用，请检测配置后重试");
+                else callback.success();
+                refreshDocuments(refresh, token);
+            });
         });
     }
 
-    /** Retry only a failed, empty configuration; never tear down a working source on a network switch. */
+    private static Context decode(Config item, String json) {
+        VodConfigProbe.countSites(json);
+        return new Context(item, Json.parse(json).getAsJsonObject());
+    }
+
+    /** Cached documents become usable immediately; slow/dead addresses never block that path. */
+    private void refreshDocuments(List<Config> values, int token) {
+        if (values.isEmpty()) return;
+        java.util.concurrent.ExecutorService worker = java.util.concurrent.Executors.newFixedThreadPool(Math.min(3, values.size()));
+        for (Config item : values) worker.execute(() -> {
+            try {
+                VodConfigProbe.Result result = VodConfigProbe.test(item.getUrl(), "vod-refresh-" + token + "-" + item.getId());
+                if (token != generation.get() || !item.getUrl().equals(result.url) || item.getJson().equals(result.json)) return;
+                Context updated = decode(item, result.json);
+                App.post(() -> {
+                    if (token != generation.get() || !isEnabled(item) || Config.find(item.getId()) == null) return;
+                    item.json(result.json).save();
+                    Map<String, Context> next = new LinkedHashMap<>(contexts);
+                    next.put(SourceIdentity.prefix(item), updated);
+                    install(next); RefreshEvent.config();
+                });
+            } catch (Throwable error) { Logger.w("VodPool: keeping cached configuration " + item.getDesc()); }
+        });
+        worker.shutdown();
+    }
+
+    private void install(Map<String, Context> values) {
+        String oldHome = getHome().getKey();
+        String oldPlayback = playback == null ? "" : SourceIdentity.prefix(playback.config);
+        List<Site> combined = new ArrayList<>();
+        List<Rule> allRules = new ArrayList<>(); List<String> allAds = new ArrayList<>();
+        List<Doh> allDoh = new ArrayList<>(); List<JsonElement> allHeaders = new ArrayList<>();
+        for (Context value : values.values()) {
+            for (Site site : value.sites) if (isSiteEnabled(site)) combined.add(site);
+            allRules.addAll(value.rules); allAds.addAll(value.ads);
+            allDoh.addAll(value.doh); allHeaders.addAll(value.headers);
+            setHosts(value.hosts); setProxy(value.proxy);
+        }
+        contexts = Collections.unmodifiableMap(new LinkedHashMap<>(values));
+        sites = Collections.unmodifiableList(combined); rules = allRules; ads = allAds; doh = allDoh;
+        setHeaders(allHeaders);
+        home = getSite(oldHome);
+        if (home.isEmpty()) {
+            for (Context value : values.values()) {
+                Site saved = getSite(SourceIdentity.key(value.config, value.config.getHome()));
+                if (!saved.isEmpty()) { home = saved; break; }
+            }
+        }
+        if (home.isEmpty()) home = combined.isEmpty() ? new Site() : combined.get(0);
+        playback = values.get(oldPlayback);
+        if (playback == null) playback = context(home.getKey());
+        if (!home.isEmpty()) {
+            Context anchor = context(home.getKey());
+            if (anchor != null) config = anchor.config;
+            for (Site item : combined) item.setActivated(home);
+        }
+        Logger.i("VodPool: enabled=" + values.size() + " sites=" + combined.size());
+    }
+
     public synchronized void recoverIfNeeded() {
-        if (!retryAfterNetwork || isLoading || !getSites().isEmpty()
-                || TextUtils.isEmpty(getConfig().getUrl())
-                || !com.fongmi.android.tv.utils.Util.isNetworkAvailable()) return;
-        Logger.i("VodConfig: recovering configuration after network became available");
+        if (!retryAfterNetwork || isLoading || !getSites().isEmpty()) return;
         load(new Callback() {
-            private void recovered() {
-                Logger.i("VodConfig: recovery completed, sites=" + getSites().size());
-                RefreshEvent.config();
-                RefreshEvent.video();
-            }
-            @Override public void success() { recovered(); }
-            @Override public void success(String notice) { recovered(); }
-            @Override public void error(String message) {
-                Logger.w("VodConfig: recovery failed; a later reconnect or retry can try again");
-            }
+            @Override public void success() { RefreshEvent.config(); RefreshEvent.video(); }
         });
     }
-
-    private void loadConfig(Callback callback) {
-        try {
-            OkHttp.cancel("vod");
-            checkJson(Json.parse(Decoder.getJson(UrlUtil.convert(config.getUrl()), "vod")).getAsJsonObject(), callback);
-        } catch (Throwable e) {
-            if (TextUtils.isEmpty(config.getUrl())) {
-                retryAfterNetwork = false;
-                isLoading = false;
-                App.post(() -> callback.error(""));
-            } else {
-                loadCache(callback, e);
-            }
-            Logger.e("Error", e);
-        }
+    private Context context(String key) {
+        if (key == null || !key.startsWith("xy:") || key.length() < 36) return null;
+        return contexts.get(key.substring(0, 36));
     }
-
-    private void loadCache(Callback callback, Throwable e) {
-        if (!TextUtils.isEmpty(config.getJson())) {
-            checkJson(Json.parse(config.getJson()).getAsJsonObject(), callback);
-        } else {
-            retryAfterNetwork = getSites().isEmpty();
-            isLoading = false;
-            App.post(() -> callback.error(Notify.getError(R.string.error_config_get, e)));
-        }
+    public void activate(String key) { Context value = context(key); if (value != null) playback = value; }
+    public List<String> getFlags(String key) {
+        Context value = context(key); return value == null ? getFlags() : value.flags;
     }
-
-    private void checkJson(JsonObject object, Callback callback) {
-        if (object.has("msg")) {
-            retryAfterNetwork = getSites().isEmpty();
-            isLoading = false;
-            App.post(() -> callback.error(object.get("msg").getAsString()));
-        } else if (object.has("urls")) {
-            parseDepot(object, callback);
-        } else {
-            parseConfig(object, callback);
-        }
+    public List<Parse> getSourceParses(String key) {
+        Context value = context(key); return value == null ? getParses() : value.parses;
     }
-
-    private void parseDepot(JsonObject object, Callback callback) {
-        List<Depot> items = Depot.arrayFrom(object.getAsJsonArray("urls").toString());
-        List<Config> configs = new ArrayList<>();
-        for (Depot item : items) configs.add(Config.find(item, 0));
-        Config.delete(config.getUrl());
-        config = configs.get(0);
-        loadConfig(callback);
+    public Parse getSourceParse(String key) {
+        Context value = context(key); return value == null ? getParse() : value.parse;
     }
-
-    private void parseConfig(JsonObject object, Callback callback) {
-        try {
-            initSite(object);
-            initParse(object);
-            initOther(object);
-            if (loadLive && object.has("lives")) initLive(object);
-            String notice = Json.safeString(object, "notice");
-            config.logo(Json.safeString(object, "logo"));
-            config.json(object.toString()).update();
-            
-            // 重置加载状态
-            retryAfterNetwork = false;
-            isLoading = false;
-            
-            // 只调用一次success回调，优先显示通知消息
-            if (!TextUtils.isEmpty(notice)) {
-                App.post(() -> callback.success(notice));
-            } else {
-                App.post(callback::success);
-            }
-        } catch (Throwable e) {
-            Logger.e("Error", e);
-            // 重置加载状态
-            retryAfterNetwork = getSites().isEmpty();
-            isLoading = false;
-            App.post(() -> callback.error(Notify.getError(R.string.error_config_parse, e)));
-        }
+    public Parse getSourceParse(String key, String name) {
+        for (Parse item : getSourceParses(key)) if (item.getName().equals(name)) return item;
+        return null;
     }
-
-    private void initSite(JsonObject object) {
-        if (object.has("video")) {
-            initSite(object.getAsJsonObject("video"));
-            return;
-        }
-        String spider = Json.safeString(object, "spider");
-        try {
-            BaseLoader.get().parseJar(spider, true);
-        } catch (Throwable e) {
-            Logger.e("VodConfig", "Failed to parse spider jar: " + spider, e);
-            Logger.e("Error", e);
-        }
-        
-        for (JsonElement element : Json.safeListElement(object, "sites")) {
-            try {
-                Site site = Site.objectFrom(element);
-                if (sites.contains(site)) continue;
-                site.setApi(UrlUtil.convert(site.getApi()));
-                site.setExt(UrlUtil.convert(site.getExt()));
-                site.setJar(parseJar(site, spider));
-                sites.add(site.trans().sync());
-            } catch (Throwable e) {
-                Logger.e("VodConfig", "Failed to add site: " + element, e);
-                Logger.e("Error", e);
-                // 继续处理下一个站点
-            }
-        }
-        
-        // 优先使用配置中指定的 home 站点
-        boolean homeSet = false;
-        String configHome = config.getHome();
-        if (!TextUtils.isEmpty(configHome)) {
-            for (Site site : sites) {
-                if (site.getKey().equals(configHome)) {
-                    setHome(site);
-                    homeSet = true;
-                    break;
-                }
-            }
-        }
-        
-        // 如果配置的 home 站点无效，使用第一个可用站点
-        if (!homeSet && !sites.isEmpty()) {
-            setHome(sites.get(0));
-        }
-    }
-
-    private void initLive(JsonObject object) {
-        Config temp = Config.find(config, 1).save();
-        boolean sync = LiveConfig.get().needSync(config.getUrl());
-        if (sync) LiveConfig.get().clear().config(temp).parse(object);
-    }
-
-    private void initParse(JsonObject object) {
-        for (JsonElement element : Json.safeListElement(object, "parses")) {
-            Parse parse = Parse.objectFrom(element);
-            if (parse.getName().equals(config.getParse()) && parse.getType() > 1) setParse(parse);
-            if (!parses.contains(parse)) parses.add(parse);
-        }
-    }
-
-    private void initOther(JsonObject object) {
-        if (!parses.isEmpty()) parses.add(0, Parse.god());
-        if (home == null) setHome(sites.isEmpty() ? new Site() : sites.get(0));
-        if (parse == null) setParse(parses.isEmpty() ? new Parse() : parses.get(0));
-        setRules(Rule.arrayFrom(object.getAsJsonArray("rules")));
-        setDoh(Doh.arrayFrom(object.getAsJsonArray("doh")));
-        setHeaders(Json.safeListElement(object, "headers"));
-        setFlags(Json.safeListString(object, "flags"));
-        setHosts(Json.safeListString(object, "hosts"));
-        setProxy(Json.safeListString(object, "proxy"));
-        setAds(Json.safeListString(object, "ads"));
-    }
-
-    private String parseJar(Site site, String spider) {
-        return site.getJar().isEmpty() ? spider : site.getJar();
-    }
-
     public List<Doh> getDoh() {
-        List<Doh> items = Doh.get(App.get());
-        if (doh == null) return items;
-        items.removeAll(doh);
-        items.addAll(doh);
-        return items;
+        List<Doh> result = Doh.get(App.get()); result.removeAll(doh); result.addAll(doh); return result;
     }
-
-    public void setDoh(List<Doh> doh) {
-        this.doh = doh;
-    }
-
-    public List<Rule> getRules() {
-        return rules == null ? Collections.emptyList() : rules;
-    }
-
-    public void setRules(List<Rule> rules) {
-        this.rules = rules;
-    }
-
-    public List<Site> getSites() {
-        return sites == null ? Collections.emptyList() : sites;
-    }
-
-    public List<Parse> getParses() {
-        return parses == null ? Collections.emptyList() : parses;
-    }
-
+    public void setDoh(List<Doh> value) { doh = value; }
+    public List<Rule> getRules() { return rules; }
+    public void setRules(List<Rule> value) { rules = value == null ? Collections.emptyList() : value; }
+    public List<Site> getSites() { return sites; }
+    public List<Parse> getParses() { return playback == null ? Collections.emptyList() : playback.parses; }
     public List<Parse> getParses(int type) {
-        List<Parse> items = new ArrayList<>();
-        for (Parse item : getParses()) if (item.getType() == type) items.add(item);
-        return items;
+        List<Parse> result = new ArrayList<>(); for (Parse item : getParses()) if (item.getType() == type) result.add(item); return result;
     }
-
     public List<Parse> getParses(int type, String flag) {
-        List<Parse> items = new ArrayList<>();
-        for (Parse item : getParses(type)) if (item.getExt().getFlag().contains(flag)) items.add(item);
-        if (items.isEmpty()) items.addAll(getParses(type));
-        return items;
+        List<Parse> result = new ArrayList<>(); for (Parse item : getParses(type)) if (item.getExt().getFlag().contains(flag)) result.add(item);
+        return result.isEmpty() ? getParses(type) : result;
     }
-
-    public void setHeaders(List<JsonElement> items) {
-        OkHttp.responseInterceptor().setHeaders(items);
-    }
-
-    public List<String> getFlags() {
-        return flags == null ? Collections.emptyList() : flags;
-    }
-
-    private void setFlags(List<String> flags) {
-        this.flags.addAll(flags);
-    }
-
-    public void setHosts(List<String> hosts) {
-        OkHttp.dns().addAll(hosts);
-    }
-
-    public void setProxy(List<String> hosts) {
-        OkHttp.selector().addAll(hosts);
-    }
-
-    public List<String> getAds() {
-        return ads == null ? Collections.emptyList() : ads;
-    }
-
-    private void setAds(List<String> ads) {
-        this.ads = ads;
-    }
-
-    public Config getConfig() {
-        return config == null ? Config.vod() : config;
-    }
-
-    public Parse getParse() {
-        return parse == null ? new Parse() : parse;
-    }
-
-    public Site getHome() {
-        return home == null ? new Site() : home;
-    }
-
-    public Parse getParse(String name) {
-        int index = getParses().indexOf(Parse.get(name));
-        return index == -1 ? null : getParses().get(index);
-    }
-
+    public void setHeaders(List<JsonElement> value) { OkHttp.responseInterceptor().setHeaders(value); }
+    public List<String> getFlags() { return playback == null ? Collections.emptyList() : playback.flags; }
+    public void setHosts(List<String> value) { OkHttp.dns().addAll(value); }
+    public void setProxy(List<String> value) { OkHttp.selector().addAll(value); }
+    public List<String> getAds() { return ads; }
+    public Config getConfig() { return config == null ? Config.vod() : config; }
+    public Parse getParse() { return playback == null ? new Parse() : playback.parse; }
+    public Site getHome() { return home == null ? new Site() : home; }
+    public Parse getParse(String name) { for (Parse item : getParses()) if (item.getName().equals(name)) return item; return null; }
     public Site getSite(String key) {
-        int index = getSites().indexOf(Site.get(key));
-        return index == -1 ? new Site() : getSites().get(index);
+        for (Site item : sites) if (item.getKey().equals(key)) return item;
+        // Legacy references only resolve in their original configuration, never in an arbitrary document.
+        return getSite(getConfig().getId(), key);
     }
-
-    public void setParse(Parse parse) {
-        this.parse = parse;
-        this.parse.setActivated(true);
-        config.parse(parse.getName()).save();
-        for (Parse item : getParses()) item.setActivated(parse);
+    public Site getSite(int cid, String key) {
+        for (Site item : sites) if (item.getKey().equals(key)) return item;
+        for (Site item : sites) if (item.getSourceId() == cid && SourceIdentity.original(item.getKey()).equals(key)) return item;
+        return new Site();
     }
-
-    public void setHome(Site home) {
-        if (home == null) {
-            // 如果传入null，使用默认站点或创建空站点
-            home = sites.isEmpty() ? new Site() : sites.get(0);
+    public void setParse(Parse value) {
+        if (playback == null) return;
+        playback.parse = value; playback.config.parse(value.getName()).save();
+        for (Parse item : getParses()) item.setActivated(value);
+    }
+    public void setHome(Site value) {
+        if (value == null || value.isEmpty()) return;
+        home = value; Context anchor = context(value.getKey());
+        if (anchor != null) {
+            config = anchor.config; anchor.config.home(value.getKey()).save();
+            Prefers.put("config_0", anchor.config.getUrl());
         }
-        this.home = home;
-        this.home.setActivated(true);
-        
-        // 安全地保存配置，防止空指针异常
-        try {
-            if (home.getKey() != null && config != null) {
-                config.home(home.getKey()).save();
-            }
-        } catch (Exception e) {
-            Logger.e("Error", e);
-        }
-        
-        // 安全地更新所有站点的激活状态
-        try {
-            for (Site item : getSites()) {
-                if (item != null) {
-                    item.setActivated(home);
-                }
-            }
-        } catch (Exception e) {
-            Logger.e("Error", e);
-        }
+        for (Site item : sites) item.setActivated(value);
     }
 }

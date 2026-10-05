@@ -46,7 +46,7 @@ public final class AppLog {
     private static final int DEBUG_MESSAGE_LIMIT_CHARS = 640;
     private static final int CRAWLER_PAYLOAD_THRESHOLD_CHARS = 320;
     private static final int MESSAGE_LIMIT_CHARS = 2048;
-    private static final int CRASH_LIMIT_CHARS = 32 * 1024;
+    private static final int CRASH_LIMIT_CHARS = Integer.MAX_VALUE;
     private static final int STACK_FRAME_LIMIT = 24;
     private static final long WAIT_SECONDS = 5L;
     private static final Pattern SECRET_FIELD = Pattern.compile(
@@ -120,6 +120,22 @@ public final class AppLog {
         Log.i(tag, message);
     }
 
+    /** Install after CAOC so its recovery UI still handles the exception after it is persisted. */
+    public static void installCrashHandler() {
+        Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
+            try {
+                java.io.StringWriter trace = new java.io.StringWriter();
+                error.printStackTrace(new java.io.PrintWriter(trace));
+                recordCrash("thread=" + thread.getName() + "\n" + trace);
+            } catch (Throwable ignored) { }
+            finally {
+                if (previous != null) previous.uncaughtException(thread, error);
+                else { android.os.Process.killProcess(android.os.Process.myPid()); System.exit(10); }
+            }
+        });
+    }
+
     public static void recordCrash(String details) {
         enqueue(Log.ASSERT, "Crash", "未捕获异常\n" + details, null);
         flush();
@@ -157,6 +173,9 @@ public final class AppLog {
     }
 
     public static File createShareFile(Context context) {
+        // LogActivity calls this on a worker. Keep the directory scan off WRITER so a large
+        // WebView/download directory cannot block persistent logging or its five-second timeout.
+        String storageReport = redact(StorageDiagnostics.collect(context));
         return callOnWriter(() -> {
             File shareDir = new File(context.getCacheDir(), "log-share");
             if (!shareDir.exists() && !shareDir.mkdirs()) return null;
@@ -168,6 +187,7 @@ public final class AppLog {
                     + "导出时间：" + timestamp() + "\n\n";
             try (FileOutputStream output = new FileOutputStream(target)) {
                 output.write(header.getBytes(StandardCharsets.UTF_8));
+                output.write(storageReport.getBytes(StandardCharsets.UTF_8));
                 for (File file : orderedLogFiles()) {
                     if (!file.isFile() || file.length() == 0) continue;
                     output.write(("===== " + file.getName() + " =====\n").getBytes(StandardCharsets.UTF_8));
