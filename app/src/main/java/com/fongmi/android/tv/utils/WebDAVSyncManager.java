@@ -12,6 +12,8 @@ import com.fongmi.android.tv.bean.Backup;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
+import com.fongmi.android.tv.bean.SyncProfile;
+import com.fongmi.android.tv.bean.SyncSourcePreference;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
@@ -28,6 +30,7 @@ import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.IOException;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -53,7 +56,7 @@ import java.util.UUID;
  */
 public final class WebDAVSyncManager {
 
-    private static final int SCHEMA_VERSION = 3;
+    private static final int SCHEMA_VERSION = 4;
     private static final int MAX_ATTEMPTS = 3;
     /** 本机变更后的上传防抖：连续操作合并成一次同步。 */
     private static final long DIRTY_SYNC_DELAY = 3L * 1000;
@@ -154,6 +157,12 @@ public final class WebDAVSyncManager {
         LocalProfile.activate(id);
         directoryReady = false;
         loadConfig();
+        App.post(() -> {
+            if (!id.equals(LocalProfile.id())) return;
+            VodConfig.load(Config.vod(), new Callback() {
+                @Override public void success() { RefreshEvent.config(); RefreshEvent.video(); }
+            });
+        });
         return true;
     }
 
@@ -257,8 +266,8 @@ public final class WebDAVSyncManager {
                     RemoteSnapshot remote = downloadSnapshot();
                     SyncEnvelope local = captureLocal(remote);
                     SyncEnvelope merged = merge(remote.envelope, local);
-                    SyncDelta downloaded = diff(local, merged);
-                    SyncDelta uploaded = diff(remote.envelope, merged);
+                    SyncDelta downloaded = diff(local, merged, false);
+                    SyncDelta uploaded = diff(remote.envelope, merged, true);
                     boolean needsUpload = !remote.exists || remote.legacyImported || uploaded.hasChanges();
                     if (needsUpload) {
                         uploadSafely(remote, merged);
@@ -337,6 +346,10 @@ public final class WebDAVSyncManager {
         if (!isAutoSyncEnabled()) return;
         markDirty();
         scheduleDirtySync(DIRTY_SYNC_DELAY);
+    }
+
+    public synchronized void requestSync(String profile) {
+        if (profile.equals(LocalProfile.id())) requestSync();
     }
 
     /**
@@ -531,7 +544,7 @@ public final class WebDAVSyncManager {
         return baseUrl.substring(0, index) + "/XMBOX/";
     }
 
-    private SyncEnvelope captureLocal(RemoteSnapshot remote) {
+    private SyncEnvelope captureLocal(RemoteSnapshot remote) throws IOException {
         SyncEnvelope local = new SyncEnvelope();
         local.deviceId = getDeviceId();
         local.updatedAt = System.currentTimeMillis();
@@ -545,6 +558,12 @@ public final class WebDAVSyncManager {
         local.tombstones.putAll(loadLocalTombstones());
         local.settings.putAll(collectSettings());
         local.settingsUpdatedAt = resolveLocalSettingsTime(local.settings, !remote.envelope.settings.isEmpty());
+        local.profile = LocalProfile.capture(LocalProfile.id());
+        if (!remote.envelope.profile.hasNickname() && !remote.envelope.profile.hasAvatar()) {
+            if (!local.profile.hasNickname()) local.profile.nicknameUpdatedAt = 1;
+            if (!local.profile.hasAvatar() && LocalProfile.avatar().isEmpty()) local.profile.avatarUpdatedAt = 1;
+        }
+        local.sourcePreferences.putAll(SourcePreferences.capture(LocalProfile.id(), remote.envelope.sourcePreferences.isEmpty()));
         return local;
     }
 
@@ -592,6 +611,8 @@ public final class WebDAVSyncManager {
             merged.settings.putAll(local.settings);
             merged.settingsUpdatedAt = local.settingsUpdatedAt;
         }
+        merged.profile = SyncProfile.merge(remote.profile, local.profile);
+        merged.sourcePreferences.putAll(SyncSourcePreference.merge(remote.sourcePreferences, local.sourcePreferences));
         pruneTombstones(merged.tombstones);
         return merged;
     }
@@ -693,7 +714,7 @@ public final class WebDAVSyncManager {
         }
     }
 
-    private SyncDelta diff(SyncEnvelope before, SyncEnvelope after) {
+    private SyncDelta diff(SyncEnvelope before, SyncEnvelope after, boolean compareConfigIds) {
         SyncDelta delta = new SyncDelta();
         Map<String, History> oldHistories = new HashMap<>();
         Map<String, History> newHistories = new HashMap<>();
@@ -724,12 +745,14 @@ public final class WebDAVSyncManager {
         for (Map.Entry<String, Config> entry : newConfigs.entrySet()) {
             Config old = oldConfigs.get(entry.getKey());
             if (old == null) delta.configAdded++;
-            else if (!sameConfig(old, entry.getValue())) delta.configUpdated++;
+            else if (!sameConfig(old, entry.getValue(), compareConfigIds)) delta.configUpdated++;
         }
         for (String key : oldConfigs.keySet()) if (!newConfigs.containsKey(key)) delta.configDeleted++;
 
         delta.settingsChanged = !Objects.equals(before.settings, after.settings);
         delta.metadataChanged = !Objects.equals(before.tombstones, after.tombstones);
+        delta.profileChanged = !sameJson(before.profile, after.profile);
+        delta.sourcePreferencesChanged = !sameJson(before.sourcePreferences, after.sourcePreferences);
         return delta;
     }
 
@@ -737,8 +760,9 @@ public final class WebDAVSyncManager {
         return Objects.equals(SYNC_GSON.toJson(first), SYNC_GSON.toJson(second));
     }
 
-    private boolean sameConfig(Config first, Config second) {
-        return first.getId() == second.getId()
+    private boolean sameConfig(Config first, Config second, boolean compareIds) {
+        // applyConfigs retains each device's Room IDs. Only the cloud envelope needs canonical IDs.
+        return (!compareIds || first.getId() == second.getId())
                 && first.getType() == second.getType()
                 && TextUtils.equals(first.getUrl(), second.getUrl())
                 && TextUtils.equals(first.getName(), second.getName());
@@ -746,6 +770,10 @@ public final class WebDAVSyncManager {
 
     /** 提示只给用户主动触发的同步看，所以尽量短：同步完成 / 同步完成：新增5条，删除1条。 */
     private String buildSyncMessage(SyncDelta downloaded, SyncDelta uploaded) {
+        Logger.i("WebDAVDelta: downloaded=history:" + downloaded.historyAdded + "/" + downloaded.historyUpdated + "/" + downloaded.historyDeleted
+                + ",config:" + downloaded.configAdded + "/" + downloaded.configUpdated + "/" + downloaded.configDeleted
+                + " uploaded=history:" + uploaded.historyAdded + "/" + uploaded.historyUpdated + "/" + uploaded.historyDeleted
+                + ",config:" + uploaded.configAdded + "/" + uploaded.configUpdated + "/" + uploaded.configDeleted);
         int added = downloaded.added() + uploaded.added();
         int updated = downloaded.updated() + uploaded.updated();
         int deleted = downloaded.deleted() + uploaded.deleted();
@@ -753,6 +781,8 @@ public final class WebDAVSyncManager {
         if (added > 0) items.add("新增" + added + "条");
         if (updated > 0) items.add("更新" + updated + "条");
         if (deleted > 0) items.add("删除" + deleted + "条");
+        if (downloaded.profileChanged || uploaded.profileChanged) items.add("账号资料已更新");
+        if (downloaded.sourcePreferencesChanged || uploaded.sourcePreferencesChanged) items.add("站点设置已更新");
         if (items.isEmpty()) return "同步完成";
         return "同步完成：" + String.join("，", items);
     }
@@ -762,8 +792,11 @@ public final class WebDAVSyncManager {
         tombstones.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() < cutoff);
     }
 
-    private void applyLocally(SyncEnvelope merged) {
+    private void applyLocally(SyncEnvelope merged) throws IOException {
         String runtimeVodUrl = VodConfig.getUrl();
+        boolean profileChanged = LocalProfile.applySynced(LocalProfile.id(), merged.profile);
+        boolean switchesChanged = SourcePreferences.apply(LocalProfile.id(), merged.sourcePreferences);
+        if (switchesChanged) Logger.i("WebDAVSources: action=applied entries=" + merged.sourcePreferences.size());
         Map<Integer, Integer> localConfigIds = applyConfigs(merged.configs);
         remapRecordConfigIds(merged.histories, merged.keeps, localConfigIds);
         Set<String> historyKeys = new HashSet<>();
@@ -800,8 +833,9 @@ public final class WebDAVSyncManager {
         applySelectedConfigs(merged.settings);
         saveLocalTombstones(merged.tombstones);
         Config syncedVod = Config.vod();
-        boolean reloadVod = !syncedVod.isEmpty() && !TextUtils.equals(runtimeVodUrl, syncedVod.getUrl());
+        boolean reloadVod = switchesChanged || (!syncedVod.isEmpty() && !TextUtils.equals(runtimeVodUrl, syncedVod.getUrl()));
         App.post(() -> {
+            if (profileChanged) RefreshEvent.history();
             RefreshEvent.keep();
             RefreshEvent.config();
             if (reloadVod) {
@@ -1013,6 +1047,8 @@ public final class WebDAVSyncManager {
         if (envelope.settings == null) envelope.settings = new TreeMap<>();
         else envelope.settings = filterSettings(envelope.settings);
         if (envelope.tombstones == null) envelope.tombstones = new HashMap<>();
+        envelope.profile = SyncProfile.merge(envelope.profile, null);
+        envelope.sourcePreferences = SyncSourcePreference.merge(envelope.sourcePreferences, null);
     }
 
     private void ensureDirectory() throws Exception {
@@ -1193,6 +1229,8 @@ public final class WebDAVSyncManager {
         List<Config> configs = new ArrayList<>();
         Map<String, Object> settings = new TreeMap<>();
         Map<String, Long> tombstones = new HashMap<>();
+        SyncProfile profile = new SyncProfile();
+        Map<String, SyncSourcePreference> sourcePreferences = new TreeMap<>();
     }
 
     private static final class RemoteSnapshot {
@@ -1224,9 +1262,11 @@ public final class WebDAVSyncManager {
         int configDeleted;
         boolean settingsChanged;
         boolean metadataChanged;
+        boolean profileChanged;
+        boolean sourcePreferencesChanged;
 
         boolean hasChanges() {
-            return added() + updated() + deleted() > 0 || settingsChanged || metadataChanged;
+            return added() + updated() + deleted() > 0 || settingsChanged || metadataChanged || profileChanged || sourcePreferencesChanged;
         }
 
         int added() {

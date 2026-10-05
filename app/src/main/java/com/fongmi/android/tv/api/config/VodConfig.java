@@ -93,12 +93,12 @@ public class VodConfig {
     public static String getDesc() { return get().getConfig().getDesc(); }
     public static int getHomeIndex() { return get().getSites().indexOf(get().getHome()); }
     public static boolean hasParse() { return !get().getParses().isEmpty(); }
-    public static boolean isEnabled(Config value) { return !Prefers.getBoolean("vod_disabled_" + SourceIdentity.prefix(value), false); }
+    public static boolean isEnabled(Config value) { return com.fongmi.android.tv.utils.SourcePreferences.isEnabled("source:" + SourceIdentity.prefix(value)); }
     public static void setEnabled(Config value, boolean enabled) {
-        Prefers.put("vod_disabled_" + SourceIdentity.prefix(value), !enabled);
+        com.fongmi.android.tv.utils.SourcePreferences.setEnabled("source:" + SourceIdentity.prefix(value), enabled);
     }
-    public static boolean isSiteEnabled(Site site) { return !Prefers.getBoolean("vod_site_disabled_" + site.getKey(), false); }
-    public static void setSiteEnabled(Site site, boolean enabled) { Prefers.put("vod_site_disabled_" + site.getKey(), !enabled); }
+    public static boolean isSiteEnabled(Site site) { return com.fongmi.android.tv.utils.SourcePreferences.isEnabled("site:" + site.getKey()); }
+    public static void setSiteEnabled(Site site, boolean enabled) { com.fongmi.android.tv.utils.SourcePreferences.setEnabled("site:" + site.getKey(), enabled); }
     /** A pure list for the editor: disabled stations remain editable, without loading their plugins. */
     public static List<Site> configuredSites(Config config) {
         List<Site> result = new ArrayList<>();
@@ -121,6 +121,7 @@ public class VodConfig {
         catch (Exception error) { App.post(() -> callback.error(error.getMessage())); }
     }
     public VodConfig init() { config = Config.vod(); return this; }
+    public boolean isLoading() { return isLoading; }
     public VodConfig config(Config value) { config = value; return this; }
     public VodConfig clear() {
         generation.incrementAndGet(); sites = Collections.emptyList(); contexts = Collections.emptyMap();

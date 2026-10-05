@@ -251,6 +251,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private List<String> mDoubanGenres = new ArrayList<>();
     private Douban.Subject mDoubanSubject;
     private Vod mMetadataVod;
+    private String mMetadataRenderKey = "";
     /** 片源比对的目标：规整后的片名、年份、片种，详情加载后以详情为准。 */
     private String mTargetKey = "";
     private int mTargetYear;
@@ -854,6 +855,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void checkId() {
+        mDetailLoadPolicy.reset();
+        mWaitingForDetailConfig = false;
+        App.removeCallbacks(mRetryDetailConfig);
         mEntry = Objects.toString(getIntent().getStringExtra("entry"), "detail");
         String resume = getIntent().getStringExtra("resumeHistory");
         if (!TextUtils.isEmpty(resume)) {
@@ -893,17 +897,51 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean mDetailLoading;
     private boolean mDetailStartedWithoutNetwork;
     private boolean mRetryDetailWhenOnline;
+    private boolean mWaitingForDetailConfig;
+    private String mFilePermissionState = "";
+    private final com.fongmi.android.tv.search.DetailLoadPolicy mDetailLoadPolicy = new com.fongmi.android.tv.search.DetailLoadPolicy();
+    private final Runnable mRetryDetailConfig = this::retryDetailConfiguration;
 
     private void getDetail() {
+        App.removeCallbacks(mRetryDetailConfig, mR4);
         mDetailRequestedAt = SystemClock.elapsedRealtime();
         mLocalDetailGeneration++;
         mRefreshingLocalDetail = false;
-        mDetailLoading = true;
         mRetryDetailWhenOnline = false;
         mDetailStartedWithoutNetwork = !isOffline() && (!com.fongmi.android.tv.utils.Util.isNetworkAvailable()
                 || VodConfig.get().getSites().isEmpty());
         // History and cache entries share the same offline-first path, without waiting for a source timeout.
         boolean hasLocal = OfflinePlayback.matching(getKey(), getId(), getName(), getYear(), "").stream().anyMatch(Download::isPlayable);
+        boolean online = Util.isNetworkAvailable();
+        boolean siteReady = !getSite().getApi().isEmpty();
+        logFilePermissions("detail");
+        if (mDetailLoadPolicy.awaitConfiguration(mDetailRequestedAt, isOffline(), hasLocal,
+                online, siteReady, !"push_agent".equals(getKey()) && VodConfig.get().isLoading())) {
+            if (!mWaitingForDetailConfig) {
+                mViewModel.cancelPending();
+                Logger.i("VideoDetail: action=wait-configuration session=" + mSessionId + " entry=" + mEntry
+                        + " site=" + getKey() + " sites=" + VodConfig.get().getSites().size());
+                if (mCurrentVod == null) {
+                    mBinding.progressLayout.showProgress();
+                    showProgress();
+                }
+            }
+            mWaitingForDetailConfig = true;
+            mDetailLoading = false;
+            mRetryDetailWhenOnline = true;
+            App.post(mRetryDetailConfig, 400);
+            return;
+        }
+        if (mWaitingForDetailConfig) {
+            Logger.i("VideoDetail: action=configuration-wait-ended session=" + mSessionId
+                    + " siteReady=" + siteReady + " loading=" + VodConfig.get().isLoading());
+            if (siteReady) {
+                VodConfig.get().activate(getKey());
+                mParseAdapter.reload();
+            }
+        }
+        mWaitingForDetailConfig = false;
+        mDetailLoading = true;
         if (hasLocal) {
             mBinding.progressLayout.showContent();
             mBinding.swipeLayout.setRefreshing(false);
@@ -911,7 +949,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             hideProgress();
         }
         Logger.i("OfflineStart: detail name=" + getName() + " site=" + getKey() + " id=" + getId()
-                + " local=" + hasLocal + " network=" + Util.isNetworkAvailable() + " offlineEntry=" + isOffline());
+                + " local=" + hasLocal + " network=" + online + " offlineEntry=" + isOffline()
+                + " siteReady=" + siteReady + " configurationLoading=" + VodConfig.get().isLoading());
         if (!hasLocal) {
             int logged = 0;
             for (Download item : Download.getAll()) {
@@ -921,12 +960,28 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 if (++logged >= 8) break;
             }
         }
-        mLocalDetail = !"push_agent".equals(getKey()) && (hasLocal || !Util.isNetworkAvailable() || getSite().getApi().isEmpty());
+        mLocalDetail = !"push_agent".equals(getKey()) && (hasLocal || !online || !siteReady);
         if (mLocalDetail) mViewModel.offlineContent(getKey(), getId(), getName(), getYear());
         else mViewModel.detailContent(getKey(), getId());
     }
 
+    private void retryDetailConfiguration() {
+        if (!mWaitingForDetailConfig || isFinishing() || isDestroyed()
+                || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return;
+        getDetail();
+    }
+
+    private void logFilePermissions(String reason) {
+        String state = com.fongmi.android.tv.utils.PermissionUtil.fileState(this);
+        if (state.equals(mFilePermissionState)) return;
+        mFilePermissionState = state;
+        Logger.i("FilePermission: action=state session=" + mSessionId + " reason=" + reason + " " + state);
+    }
+
     private void getDetail(Vod item) {
+        mDetailLoadPolicy.reset();
+        mWaitingForDetailConfig = false;
+        App.removeCallbacks(mRetryDetailConfig);
         App.removeCallbacks(mFinishInitialSelection); mInitialSelection = false;
         captureSourceProgress();
         mPlaybackPolicy.switching(SystemClock.elapsedRealtime());
@@ -948,7 +1003,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void setDetail(Result result) {
         Logger.i("OfflineStart: detail-result local=" + mLocalDetail + " elapsedMs=" + (SystemClock.elapsedRealtime() - mDetailRequestedAt)
-                + " items=" + result.getList().size());
+                + " items=" + result.getList().size() + " session=" + mSessionId + " site=" + getKey()
+                + " siteReady=" + !getSite().getApi().isEmpty() + " configurationLoading=" + VodConfig.get().isLoading());
         mDetailLoading = false;
         mBinding.swipeLayout.setRefreshing(false);
         Vod offline = result.getList().isEmpty() ? getOfflineVod() : null;
@@ -966,6 +1022,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void retryDetailAfterNetwork() {
+        if (mWaitingForDetailConfig) { retryDetailConfiguration(); return; }
         if (mLocalDetail && mCurrentVod != null) { refreshLocalCatalog(); return; }
         if (!mRetryDetailWhenOnline || mDetailLoading || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
                 || isOffline() || isCasting() || isFinishing() || isDestroyed()
@@ -1013,6 +1070,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 Episode replacement = selected.findByRemarks(playing.getName());
                 if (replacement == null) return;
                 mCurrentVod = vod;
+                mergeDetailMetadata(vod);
                 mLocalDetail = false;
                 mFlagAdapter.addAll(vod.getVodFlags());
                 mFlagAdapter.setActivated(selected);
@@ -1022,7 +1080,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 mHistory.setVodFlag(selected.getFlag());
                 mHistory.setEpisodeUrl(replacement.getUrl());
                 updateHistoryEpisodeNumbers(replacement);
-                setMeta(vod);
+                loadDoubanDetails(metadataName(vod), metadataYear(vod));
+                renderDetailMetadata();
                 checkQuick();
             });
         });
@@ -1045,6 +1104,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void showEmpty() {
+        Logger.i("VideoDetail: action=empty session=" + mSessionId + " site=" + getKey()
+                + " configurationLoading=" + VodConfig.get().isLoading() + " network=" + Util.isNetworkAvailable());
         showError(getString(R.string.error_detail));
         mBinding.swipeLayout.setEnabled(true);
         mBinding.progressLayout.showEmpty();
@@ -1072,7 +1133,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             return;
         }
         mCurrentVod = item;  // 保存当前视频对象
-        if (mMetadataVod == null) mMetadataVod = item;
+        mergeDetailMetadata(item);
         mBinding.swipeLayout.setEnabled(false);
         mBinding.progressLayout.showContent();
         mBinding.video.setTag(item.getVodPic(getPic()));
@@ -1134,7 +1195,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
      * 默认最多两行，超出时右下角出现展开按钮；这一整行位于下方主滚动区的顶部。
      */
     private void setCast(Vod item) {
-        if (mDoubanLoading) { showMetadataPlaceholder(); return; }
+        if (mDoubanLoading && mDoubanSubject == null) { showMetadataPlaceholder(); return; }
         List<CastMember> members = new ArrayList<>();
         List<String> directorsFromDouban = mDoubanSubject == null ? new ArrayList<>() : mDoubanSubject.getDirectors();
         List<String> actorsFromDouban = mDoubanSubject == null ? new ArrayList<>() : mDoubanSubject.getActors();
@@ -1268,9 +1329,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
      * 年份只取前 4 位数字，站源常见的 "2019-01-18" 这类完整日期在这一行显得太长。
      */
     private void setMeta(Vod item) {
-        if (mDoubanLoading) { showMetadataPlaceholder(); return; }
+        if (mDoubanLoading && mDoubanSubject == null) { showMetadataPlaceholder(); return; }
         List<String> parts = new ArrayList<>();
         String year = mDoubanSubject != null && !mDoubanSubject.getYear().isEmpty() ? mDoubanSubject.getYear() : item.getVodYear().trim();
+        if (year.isEmpty()) year = metadataYear(item);
         if (year.length() >= 4 && TextUtils.isDigitsOnly(year.substring(0, 4))) year = year.substring(0, 4);
         if (!year.isEmpty()) parts.add(year);
         String area = mDoubanSubject != null && !mDoubanSubject.getCountries().isEmpty() ? TextUtils.join(" / ", mDoubanSubject.getCountries()) : item.getVodArea().trim();
@@ -1282,13 +1344,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 优先使用豆瓣类型；确实没有时才回退片源分类。 */
     private void setTags(List<String> doubanGenres) {
-        if (mDoubanLoading) { showMetadataPlaceholder(); return; }
+        if (mDoubanLoading && mDoubanSubject == null) { showMetadataPlaceholder(); return; }
         mBinding.tags.removeAllViews();
         List<String> tags = new ArrayList<>();
         if (doubanGenres != null) for (String tag : doubanGenres) if (!tag.trim().isEmpty() && !tags.contains(tag.trim())) tags.add(tag.trim());
         Vod metadata = mMetadataVod == null ? mCurrentVod : mMetadataVod;
         if (tags.isEmpty() && metadata != null) {
-            for (String type : metadata.getTypeName().split("[,，/、\\s]+")) {
+            String category = metadata.getTypeName();
+            if (category.isEmpty() && mFilmIdentity != null) category = mFilmIdentity.getVodType();
+            if (category.isEmpty()) category = Objects.toString(getIntent().getStringExtra("type"), "");
+            for (String type : category.split("[,，/、\\s]+")) {
                 if (!type.isEmpty() && !type.matches("[0-9]+") && type.length() <= 12 && !tags.contains(type)) tags.add(type);
             }
         }
@@ -1396,10 +1461,10 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             direct = App.gson().toJsonTree(result).getAsJsonObject(); direct.addProperty("jx", 0);
             result = Result.objectFrom(direct.toString());
         }
-        if (!mDoubanLoading && mCurrentVod == mMetadataVod && !result.getDesc().isEmpty()
+        if ((!mDoubanLoading || mDoubanSubject != null) && mMetadataVod != null && mMetadataVod.getVodContent().isEmpty() && !result.getDesc().isEmpty()
                 && (mDoubanSubject == null || mDoubanSubject.getIntro().isEmpty())) {
-            setText(mBinding.content, R.string.detail_content, Html.fromHtml(result.getDesc()).toString());
-            updateContentExpand();
+            mMetadataVod.setVodContent(result.getDesc());
+            renderDetailMetadata();
         }
         setUseParse(!OfflinePlayback.isLocal(result.getUrl().v()) && !VodConfig.get().getSourceParses(getKey()).isEmpty() && ((result.getPlayUrl().isEmpty() && VodConfig.get().getFlags(getKey()).contains(result.getFlag())) || result.getJx() == 1));
         if (mControlDialog != null && mControlDialog.isVisible()) mControlDialog.setParseVisible(isUseParse());
@@ -3006,6 +3071,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         Setting.putDanmakuShow(!Setting.isDanmakuShow());
         checkDanmakuImg();
         showDanmaku();
+        Logger.i("DanmakuToggle: session=" + mSessionId + " show=" + Setting.isDanmakuShow()
+                + " fullscreen=" + isFullscreen() + " landscape=" + isLand());
     }
 
     private void onScale(View anchor) {
@@ -3124,6 +3191,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void onSwipeRefresh() {
+        Logger.i("VideoDetail: action=manual-refresh session=" + mSessionId + " empty=" + mBinding.progressLayout.isEmpty());
         if (mBinding.progressLayout.isEmpty()) getDetail();
         else onRefresh();
     }
@@ -3251,7 +3319,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void showControl() {
         if (mPiP.isInMode(this)) return;
         int widthDp = getPlayerWidthDp();
-        mBinding.control.danmaku.setVisibility(View.GONE);
+        // 左侧快捷开关与底栏弹幕设置按钮是两个独立控件。
+        mBinding.control.danmaku.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.playerMore.setVisibility(mPlayers.isEmpty() ? View.GONE : View.VISIBLE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.keep.setVisibility(mHistory == null || isFullscreen() || widthDp < 380 ? View.GONE : View.VISIBLE);
@@ -3894,6 +3963,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         stopSourceSearch();
         mSourceAdapter.clear();
         mCurrentVod = null; mMetadataVod = null;
+        mMetadataRenderKey = "";
         App.removeCallbacks(mDoubanRetry);
         mRatingGeneration++; mRatingAttempts = 0; mRatingKey = ""; mRatingRetryAt = 0; mDoubanLoading = false; mDoubanSubject = null;
         mDoubanGenres = new ArrayList<>();
@@ -3921,12 +3991,42 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         return item == null ? "" : item.getVodYear();
     }
 
+    /** Keep accepted facts stable and fill missing fields as matching providers become available. */
+    private boolean mergeDetailMetadata(Vod item) {
+        if (item == null || mMetadataVod != null && !acceptsDetail(item)) return false;
+        Vod previous = mMetadataVod == null ? new Vod() : mMetadataVod;
+        com.google.gson.JsonObject fields = new com.google.gson.JsonObject();
+        fields.addProperty("vod_name", previous.getVodName().isEmpty() ? item.getVodName(getName()) : previous.getVodName());
+        fields.addProperty("vod_year", metadataValue(previous.getVodYear(), item.getVodYear()));
+        fields.addProperty("vod_area", metadataValue(previous.getVodArea(), item.getVodArea()));
+        fields.addProperty("type_name", metadataValue(previous.getTypeName(), item.getTypeName()));
+        fields.addProperty("vod_director", metadataValue(previous.getVodDirector(), item.getVodDirector()));
+        fields.addProperty("vod_actor", metadataValue(previous.getVodActor(), item.getVodActor()));
+        fields.addProperty("vod_content", metadataValue(previous.getVodContent(), item.getVodContent()));
+        fields.addProperty("vod_pic", metadataValue(previous.getVodPic(), item.getVodPic()));
+        fields.addProperty("vod_remarks", metadataValue(previous.getVodRemarks(), item.getVodRemarks()));
+        Vod merged = App.gson().fromJson(fields, Vod.class);
+        boolean changed = mMetadataVod == null || !App.gson().toJson(merged).equals(App.gson().toJson(mMetadataVod));
+        mMetadataVod = merged;
+        return changed;
+    }
+
+    private static String metadataValue(String existing, String incoming) {
+        String current = cleanMetadataValue(existing);
+        return current.isEmpty() ? cleanMetadataValue(incoming) : current;
+    }
+
+    private static String cleanMetadataValue(String value) {
+        String text = value == null ? "" : value.trim();
+        return text.matches("(?i)(无|未知|暂无|暂无简介|暂无资料|未知年份|未知地区|null|undefined|N/A|--)") ? "" : text;
+    }
+
     private void loadDoubanDetails(String name, String year) {
         String titleKey = TitleKey.normalize(name);
         if (titleKey.isEmpty()) { mDoubanLoading = false; return; }
         String key = titleKey + "#" + TitleKey.year(year);
         long now = SystemClock.elapsedRealtime();
-        if (key.equals(mRatingKey) && (mDoubanLoading || mDoubanSubject != null || now < mRatingRetryAt || mRatingAttempts >= 2)) return;
+        if (key.equals(mRatingKey) && (mDoubanLoading || mDoubanSubject != null && mDoubanSubject.hasHeaderMetadata() || now < mRatingRetryAt || mRatingAttempts >= 2)) return;
         boolean changed = !key.equals(mRatingKey);
         if (changed) mRatingAttempts = 0;
         mRatingAttempts++;
@@ -3938,7 +4038,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             mBinding.relatedSection.setVisibility(View.GONE);
             mBinding.ratingLayout.setVisibility(View.GONE);
         }
-        showMetadataPlaceholder();
+        if (mDoubanSubject == null) showMetadataPlaceholder();
         Logger.i("DoubanDetail: action=lookup session=" + mSessionId + " title=" + name + " year=" + year + " retry=" + !changed);
         App.execute(() -> {
             Douban.Subject subject = null;
@@ -3948,14 +4048,20 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             App.post(() -> {
                 if (isFinishing() || isDestroyed() || generation != mRatingGeneration) return;
                 mDoubanLoading = false;
-                mDoubanSubject = result != null && !result.getId().isEmpty() ? result : null;
-                mRatingRetryAt = mDoubanSubject == null ? SystemClock.elapsedRealtime() + 30000 : Long.MAX_VALUE;
+                if (result != null && !result.getId().isEmpty()) mDoubanSubject = result.retainMissing(mDoubanSubject);
+                boolean complete = mDoubanSubject != null && mDoubanSubject.hasHeaderMetadata();
+                mRatingRetryAt = complete ? Long.MAX_VALUE : SystemClock.elapsedRealtime() + 30000;
                 App.removeCallbacks(mDoubanRetry);
-                if (mDoubanSubject == null && mRatingAttempts < 2) App.post(mDoubanRetry, 30000);
+                if (!complete && mRatingAttempts < 2) App.post(mDoubanRetry, 30000);
                 mDoubanGenres = mDoubanSubject == null ? new ArrayList<>() : mDoubanSubject.getGenres();
                 if (mDoubanSubject != null && mDoubanSubject.getRating() > 0) showDoubanRating(mDoubanSubject.getRating());
                 Logger.i("DoubanDetail: action=" + (mDoubanSubject == null ? "miss" : "matched") + " session=" + mSessionId
-                        + " title=" + name + " year=" + year + " id=" + (mDoubanSubject == null ? "" : mDoubanSubject.getId()));
+                        + " title=" + name + " year=" + year + " id=" + (mDoubanSubject == null ? "" : mDoubanSubject.getId())
+                        + " endpoint=" + (mDoubanSubject == null ? "" : mDoubanSubject.getEndpoint()) + " complete=" + complete
+                        + " subjectYear=" + (mDoubanSubject == null ? "" : mDoubanSubject.getYear())
+                        + " genres=" + (mDoubanSubject == null ? 0 : mDoubanSubject.getGenres().size())
+                        + " countries=" + (mDoubanSubject == null ? 0 : mDoubanSubject.getCountries().size())
+                        + " rating=" + (mDoubanSubject == null ? 0 : mDoubanSubject.getRating()));
                 renderDetailMetadata();
             });
             // Recommendations must not delay the first metadata render.
@@ -3997,7 +4103,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void renderDetailMetadata() {
-        if (mDoubanLoading) { showMetadataPlaceholder(); return; }
+        if (mDoubanLoading && mDoubanSubject == null) { showMetadataPlaceholder(); return; }
         if (mCurrentVod == null) return;
         for (TextView view : new TextView[]{mBinding.meta, mBinding.castText, mBinding.content}) {
             view.setBackground(null); view.setMinimumHeight(0);
@@ -4008,13 +4114,31 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         ImgUtil.rect(item.getVodName(getName()), pic, mBinding.poster);
         setText(mBinding.content, 0, intro);
         setCast(item); setMeta(item); setTags(mDoubanGenres);
+        List<String> displayedTags = new ArrayList<>();
+        for (int i = 0; i < mBinding.tags.getChildCount(); i++) {
+            View tag = mBinding.tags.getChildAt(i);
+            if (tag instanceof TextView) displayedTags.add(((TextView) tag).getText().toString());
+        }
+        String renderKey = mBinding.meta.getText() + "#" + displayedTags + "#" + !intro.isEmpty() + "#" + mBinding.castText.getVisibility();
+        if (!renderKey.equals(mMetadataRenderKey)) {
+            mMetadataRenderKey = renderKey;
+            Logger.i("DetailMetadata: action=render session=" + mSessionId + " title=" + metadataName(item)
+                    + " douban=" + (mDoubanSubject == null ? "" : mDoubanSubject.getId())
+                    + " summary=" + mBinding.meta.getText() + " tags=" + displayedTags + " intro=" + !intro.isEmpty());
+            mBinding.tagScroll.post(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                Logger.i("DetailMetadata: action=layout session=" + mSessionId + " tags=" + mBinding.tags.getChildCount()
+                        + " visibility=" + mBinding.tagScroll.getVisibility() + " width=" + mBinding.tagScroll.getWidth()
+                        + " height=" + mBinding.tagScroll.getHeight());
+            });
+        }
         updateContentExpand(); mBinding.contentLayout.setVisibility(mBinding.content.getVisibility());
         setArtwork(pic); mBinding.video.setTag(pic);
         if (mHistory != null && !pic.isEmpty() && TitleKey.normalize(mHistory.getVodName()).equals(TitleKey.normalize(item.getVodName()))) mHistory.setVodPic(pic);
     }
 
     private void applyDoubanMetadata() {
-        if (mDoubanLoading || mDoubanSubject == null) return;
+        if (mDoubanSubject == null) return;
         Vod item = mMetadataVod == null ? mCurrentVod : mMetadataVod;
         if (item != null) { setCast(item); setMeta(item); }
         setTags(mDoubanSubject.getGenres());
@@ -4093,12 +4217,16 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     private void addSources(List<Vod> items, long cost) {
         List<VodSource> sources = new ArrayList<>();
+        boolean metadataChanged = false;
         for (Vod item : items) {
-            if (item.isFolder() || !isTarget(item) || mSourceAdapter.contains(item.getSiteKey(), item.getVodId())) continue;
+            if (item.isFolder() || !isTarget(item)) continue;
+            if (mCurrentVod != null) metadataChanged |= mergeDetailMetadata(item);
+            if (mSourceAdapter.contains(item.getSiteKey(), item.getVodId())) continue;
             boolean duplicate = false;
             for (VodSource source : sources) duplicate |= source.same(item.getSiteKey(), item.getVodId());
             if (!duplicate) sources.add(new VodSource(item, cost));
         }
+        if (metadataChanged) renderDetailMetadata();
         if (sources.isEmpty()) return;
         mSourceAdapter.addAll(sources);
         if (mHistory != null) prepareQualityCatalog(mHistory.getVodRemarks());
@@ -5168,6 +5296,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     @Override
     protected void onResume() {
         super.onResume();
+        logFilePermissions("resume");
         startTimeBatteryUpdates();
         App.removeCallbacks(mPlaybackWatchdog); App.post(mPlaybackWatchdog, 1000);
         if (mInitialSelection) App.post(mFinishInitialSelection, 100);
@@ -5190,6 +5319,14 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         super.onPause();
         stopTimeBatteryUpdates();
         if (isRedirect()) onPaused();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        Logger.i("FilePermission: action=result session=" + mSessionId + " requestCode=" + requestCode
+                + " permissions=" + Arrays.toString(permissions) + " results=" + Arrays.toString(grantResults));
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        logFilePermissions("result");
     }
 
     @Override
@@ -5495,7 +5632,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         RefreshEvent.history();
         PlaybackService.stop();
         mHandler.removeCallbacksAndMessages(null);
-        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5, mR6, mCacheWarmup, mShowBufferingProgress, mDoubanRetry);
+        App.removeCallbacks(mR1, mR2, mR3, mR4, mR5, mR6, mCacheWarmup, mShowBufferingProgress, mDoubanRetry, mRetryDetailConfig);
         EventBus.getDefault().unregister(this);
         mViewModel.result.removeObserver(mObserveDetail);
         mViewModel.player.removeObserver(mObservePlayer);

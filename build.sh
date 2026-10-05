@@ -74,6 +74,7 @@ if [ "$CHECK" = true ]; then
     # 不会出现守护进程占着 app/build/ 导致 R8 写文件失败的情况。
     ./gradlew.bat :app:compileReleaseJavaWithJavac
     "$JAVA_HOME_DIR/bin/java.exe" -Dfile.encoding=UTF-8 --class-path "app/build/intermediates/javac/release/compileReleaseJavaWithJavac/classes" scripts/PlaybackPolicyCheck.java
+    "$JAVA_HOME_DIR/bin/java.exe" -Dfile.encoding=UTF-8 scripts/DoubanMetadataCheck.java
     echo "编译通过。注意这只说明编得过，混淆和装机问题仍要靠完整 release 包验证。"
     exit 0
 fi

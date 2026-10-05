@@ -4,11 +4,13 @@ import java.lang.ref.WeakReference;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.WeakHashMap;
 
 /** Tracks source helper classes as well as spider entry points, including obfuscated JAR helpers. */
 public final class SourceUiOrigin {
     private static final CopyOnWriteArrayList<WeakReference<ClassLoader>> loaders = new CopyOnWriteArrayList<>();
     private static final Map<String, Boolean> classes = new ConcurrentHashMap<>();
+    private static final Map<ClassLoader, String> jars = new WeakHashMap<>();
 
     private SourceUiOrigin() { }
 
@@ -20,6 +22,19 @@ public final class SourceUiOrigin {
         }
         loaders.add(new WeakReference<>(loader));
         classes.clear();
+    }
+
+    public static synchronized void register(ClassLoader loader, String jar) {
+        register(loader);
+        if (loader != null) jars.put(loader, jar);
+    }
+
+    public static synchronized String jarForCaller(String caller) {
+        if (caller == null) return "";
+        for (Map.Entry<ClassLoader, String> entry : jars.entrySet()) try {
+            if (Class.forName(caller, false, entry.getKey()).getClassLoader() == entry.getKey()) return entry.getValue();
+        } catch (ClassNotFoundException | LinkageError ignored) { }
+        return "";
     }
 
     public static String findCaller() {

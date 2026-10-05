@@ -298,12 +298,17 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
     }
 
     private View sourceDialogContent(LinearLayout form, String title) {
+        return sourceDialogContent(form, title, null);
+    }
+
+    private View sourceDialogContent(LinearLayout form, String title, View footer) {
         LinearLayout content = column(), header = column();
         header.setPadding(dp(24), dp(12), dp(24), 0);
         sourceHeading(header, title);
         content.addView(header);
         // Keep the title and close button together while only the source list/form scrolls.
-        content.addView(dialogScroll(form), new LinearLayout.LayoutParams(-1, -2));
+        content.addView(dialogScroll(form), new LinearLayout.LayoutParams(-1, footer == null ? -2 : 0, footer == null ? 0 : 1));
+        if (footer != null) content.addView(footer, new LinearLayout.LayoutParams(-1, -2));
         return content;
     }
 
@@ -645,6 +650,7 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
         private List<Site> editorSites = Collections.emptyList();
         private final Map<String, Boolean> siteChoices = new HashMap<>();
         private final Map<String, Boolean> sitePriorities = new HashMap<>();
+        private final Map<String, View> siteRows = new HashMap<>();
 
         SourceEditor(SourceManager manager, Config original) { this.manager = manager; this.original = original; }
 
@@ -668,13 +674,15 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
                 }
             });
             sitesHeading = dialogAction(form, "站点管理", () -> { sitesExpanded = !sitesExpanded; renderSites(); if (sitesExpanded) run(0); });
+            sitesHeading.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+            sitesHeading.setCompoundDrawablePadding(dp(8));
             sitesList = column(); form.addView(sitesList);
             if (original != null) loadSites(original); else renderSites();
             status = dialogStatus(form); status.setMinLines(0); status.setMaxLines(8); status.setText("");
-            LinearLayout actions = row(); actions.setPadding(0, dp(16), 0, dp(8)); form.addView(actions);
+            LinearLayout actions = row(); actions.setPadding(dp(24), dp(12), dp(24), dp(16));
             test = sourceButton(actions, "测试", false, false, () -> run(0));
             saveButton = sourceButton(actions, "保存", true, false, () -> run(1));
-            dialog = new MaterialAlertDialogBuilder(requireContext()).setView(sourceDialogContent(form, original == null ? "添加点播源" : "编辑点播源")).create();
+            dialog = new MaterialAlertDialogBuilder(requireContext()).setView(sourceDialogContent(form, original == null ? "添加点播源" : "编辑点播源", actions)).create();
             showCentered(dialog, 520);
             dialog.setOnDismissListener(d -> { tested = null; OkHttp.cancel(tag); dialogs.remove(dialog); dialogHosts.remove(dialog); });
             address.addTextChangedListener(new com.fongmi.android.tv.ui.custom.CustomTextListener() {
@@ -738,15 +746,15 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
 
         void renderSites() {
             if (sitesList == null) return;
-            int enabled = 0; for (Site site : editorSites) if (siteChoices.getOrDefault(site.getKey(), true)) enabled++;
-            sitesHeading.setText("站点管理" + (editorSites.isEmpty() ? (busy ? " · 正在识别…" : " · 点击识别") : " · " + enabled + " / " + editorSites.size()) + (sitesExpanded ? "  ⌃" : "  ›"));
-            sitesList.setVisibility(sitesExpanded ? View.VISIBLE : View.GONE); sitesList.removeAllViews();
+            updateSitesHeading();
+            sitesList.setVisibility(sitesExpanded ? View.VISIBLE : View.GONE); sitesList.removeAllViews(); siteRows.clear();
             if (!sitesExpanded) return;
             if (editorSites.isEmpty()) { TextView hint = text(busy ? "正在读取站点…" : "点击站点管理即可识别站点", 12, false, true); hint.setPadding(0, dp(12), 0, dp(8)); sitesList.addView(hint); return; }
             for (Site site : editorSites) {
                 CheckBox toggle = new CheckBox(requireContext()); toggle.setText(site.getName()); toggle.setTextSize(13);
                 toggle.setTextColor(color(R.color.text_primary)); toggle.setMinHeight(dp(44)); toggle.setChecked(siteChoices.getOrDefault(site.getKey(), true));
                 LinearLayout station = row(); sitesList.addView(station, new LinearLayout.LayoutParams(-1, -2));
+                siteRows.put(site.getKey(), station);
                 toggle.setContentDescription("启用站点 " + site.getName()); toggle.setEnabled(!busy); station.addView(toggle, new LinearLayout.LayoutParams(0, -2, 1));
                 TextView priority = text(sitePriorities.getOrDefault(site.getKey(), false) ? "★ 优先搜索" : "设为优先", 11, false, true);
                 priority.setPadding(dp(8), dp(12), dp(8), dp(12)); priority.setEnabled(!busy); station.addView(priority);
@@ -759,9 +767,35 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
                 });
                 toggle.setOnCheckedChangeListener((button, checked) -> {
                     siteChoices.put(site.getKey(), checked);
-                    int count = 0; for (Site value : editorSites) if (siteChoices.getOrDefault(value.getKey(), true)) count++;
-                    sitesHeading.setText("站点管理 · " + count + " / " + editorSites.size() + "  ⌃");
+                    updateSitesHeading();
+                    sortSiteRows();
                 });
+            }
+            sortSiteRows();
+        }
+
+        void updateSitesHeading() {
+            int enabled = 0; for (Site site : editorSites) if (siteChoices.getOrDefault(site.getKey(), true)) enabled++;
+            sitesHeading.setText("站点管理" + (editorSites.isEmpty() ? (busy ? " · 正在识别…" : " · 点击识别") : " · " + enabled + " / " + editorSites.size()));
+            android.graphics.drawable.Drawable arrow = androidx.appcompat.content.res.AppCompatResources.getDrawable(requireContext(),
+                    sitesExpanded ? R.drawable.ic_detail_collapse : R.drawable.ic_detail_expand);
+            if (arrow != null) { arrow = arrow.mutate(); androidx.core.graphics.drawable.DrawableCompat.setTint(arrow, color(R.color.text_secondary)); }
+            sitesHeading.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, arrow, null);
+            sitesHeading.setContentDescription("站点管理，" + (sitesExpanded ? "收起" : "展开") + "，已启用 " + enabled + " / " + editorSites.size());
+        }
+
+        void sortSiteRows() {
+            // Preserve the configuration order within each group and reuse the row views.
+            int position = 0;
+            for (boolean enabled : new boolean[]{true, false}) for (Site site : editorSites) {
+                if (siteChoices.getOrDefault(site.getKey(), true) != enabled) continue;
+                View station = siteRows.get(site.getKey());
+                if (station == null) continue;
+                if (sitesList.indexOfChild(station) != position) {
+                    sitesList.removeView(station);
+                    sitesList.addView(station, position);
+                }
+                position++;
             }
         }
 

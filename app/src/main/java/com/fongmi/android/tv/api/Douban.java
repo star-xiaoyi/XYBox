@@ -44,6 +44,7 @@ public class Douban {
     private static final String RECOMMENDATIONS = "https://m.douban.com/rexxar/api/v2/subject/%s/recommendations?start=0&count=%d";
     private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36";
     private static final Pattern HTML_MOVIE = Pattern.compile("(?s)<a\\s+href=\"/movie/subject/(\\d+)/\"[^>]*>.*?<span\\s+class=\"subject-title\">(.*?)</span>.*?</a>");
+    private static final Pattern PAGE_GENRE = Pattern.compile("剧情|喜剧|动作|爱情|科幻|动画|悬疑|惊悚|恐怖|纪录片|短片|情色|同性|音乐|歌舞|家庭|儿童|传记|历史|战争|犯罪|西部|奇幻|冒险|灾难|武侠|古装|运动|黑色电影|真人秀|脱口秀|戏曲|舞台艺术");
     private static final Map<String, Double> RATINGS = new ConcurrentHashMap<>();
     private static final Map<String, String> INTROS = new ConcurrentHashMap<>();
     private static final Map<String, Subject> SUBJECTS = new ConcurrentHashMap<>();
@@ -144,7 +145,8 @@ public class Douban {
             Logger.i("DoubanLookup: action=reject-year title=" + title + " expected=" + targetYear + " actual=" + subject.year + " id=" + id);
             return new Subject();
         }
-        SUBJECTS.put(cacheKey, subject);
+        // A partial subject must not prevent another lookup for the rest of the session.
+        if (subject.hasHeaderMetadata()) SUBJECTS.put(cacheKey, subject);
         if (subject.rating > 0) RATINGS.put(cacheKey, subject.rating);
         if (!subject.intro.isEmpty()) INTROS.put(id, subject.intro);
         return subject;
@@ -272,12 +274,95 @@ public class Douban {
     }
 
     private static JsonObject requestSubject(String id) throws IOException {
+        JsonObject object = null;
+        IOException failure = null;
+        try {
+            object = requestSubjectJson(id);
+            if (Subject.parse(id, object).hasHeaderMetadata()) return object;
+            Logger.i("DoubanSubject: action=fallback endpoint=mobile-json id=" + id + " reason=partial-metadata");
+        } catch (Exception error) {
+            failure = asIOException(error);
+            Logger.i("DoubanSubject: action=fallback endpoint=mobile-json id=" + id + " reason=" + error.getMessage());
+        }
+        try {
+            JsonObject page = requestSubjectHtml(id);
+            if (object == null) return page;
+            Subject partial = Subject.parse(id, object);
+            if (partial.getYear().isEmpty()) object.add("year", page.get("year"));
+            if (partial.getCountries().isEmpty()) object.add("countries", page.get("countries"));
+            if (partial.getGenres().isEmpty()) object.add("genres", page.get("genres"));
+            if (partial.getPic().isEmpty()) object.add("pic", page.get("pic"));
+            if (partial.getIntro().isEmpty()) object.add("intro", page.get("intro"));
+            object.addProperty("_xy_endpoint", "mobile-json+html");
+            return object;
+        } catch (Exception error) {
+            Logger.i("DoubanSubject: action=failed endpoint=mobile-html id=" + id + " reason=" + error.getMessage());
+            if (object != null) return object;
+            IOException fallbackFailure = asIOException(error);
+            if (failure != null) fallbackFailure.addSuppressed(failure);
+            throw fallbackFailure;
+        }
+    }
+
+    private static JsonObject requestSubjectJson(String id) throws IOException {
         String url = String.format(Locale.ROOT, SUBJECT, id);
         String referer = "https://m.douban.com/movie/subject/" + id + "/";
-        try (Response response = OkHttp.newCall(url, headers(referer, "application/json, text/plain, */*")).execute()) {
+        okhttp3.Call call = OkHttp.newCall(url, headers(referer, "application/json, text/plain, */*"));
+        call.timeout().timeout(10, TimeUnit.SECONDS);
+        try (Response response = call.execute()) {
             if (!response.isSuccessful()) throw new IOException("Subject HTTP " + response.code());
-            return JsonParser.parseString(response.body().string()).getAsJsonObject();
+            if (response.body() == null) throw new IOException("Subject response has no body");
+            JsonObject object = JsonParser.parseString(response.body().string()).getAsJsonObject();
+            if (!id.equals(getString(object, "id")) || getString(object, "title").isEmpty()) throw new IOException("Subject response has no matching title/id");
+            object.addProperty("_xy_endpoint", "mobile-json");
+            return object;
         }
+    }
+
+    private static JsonObject requestSubjectHtml(String id) throws IOException {
+        String url = "https://m.douban.com/movie/subject/" + id + "/";
+        okhttp3.Call call = OkHttp.newCall(url, headers(REFERER, "text/html,application/xhtml+xml"));
+        call.timeout().timeout(10, TimeUnit.SECONDS);
+        try (Response response = call.execute()) {
+            if (!response.isSuccessful()) throw new IOException("Subject page HTTP " + response.code());
+            if (response.body() == null) throw new IOException("Subject page has no body");
+            JsonObject object = subjectPage(id, response.body().string());
+            Logger.i("DoubanSubject: action=hit endpoint=mobile-html id=" + id);
+            return object;
+        }
+    }
+
+    /** Only read the identified subject header, never review text or a login/challenge page. */
+    static JsonObject subjectPage(String id, String html) throws IOException {
+        if (!id.matches("[0-9]+") || !Pattern.compile("data-id=[\"']" + id + "[\"']").matcher(html).find())
+            throw new IOException("Subject page has no matching identity");
+        String title = pageText(html, "<div[^>]*class=[\"']sub-title[\"'][^>]*>(.*?)</div>");
+        String original = pageText(html, "<div[^>]*class=[\"']sub-original-title[\"'][^>]*>(.*?)</div>");
+        String meta = pageText(html, "<div[^>]*class=[\"']sub-meta[\"'][^>]*>(.*?)</div>");
+        if (title.isEmpty() || meta.isEmpty()) throw new IOException("Subject page has no metadata header");
+        Matcher year = Pattern.compile("[（(]((?:19|20)[0-9]{2})[）)]\\s*$").matcher(original);
+        String published = year.find() ? year.group(1) : "";
+        String[] parts = meta.split("\\s*/\\s*");
+        JsonArray countries = new JsonArray(), genres = new JsonArray();
+        boolean foundGenre = false;
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i].trim();
+            if (part.matches(".*[0-9].*") || part.contains("上映") || part.contains("首播") || part.contains("片长")) break;
+            if (PAGE_GENRE.matcher(part).matches()) { genres.add(part); foundGenre = true; }
+            else if (!foundGenre && !part.isEmpty() && part.length() <= 20) countries.add(part);
+        }
+        String intro = pageText(html, "<section[^>]*class=[\"']subject-intro[\"'][^>]*>.*?<p[^>]*>(.*?)</p>");
+        Matcher cover = Pattern.compile("<a[^>]*class=[\"']sub-cover[\"'][^>]*>\\s*<img[^>]*src=[\"']([^\"']+)[\"']", Pattern.DOTALL).matcher(html);
+        JsonObject pic = new JsonObject(); pic.addProperty("large", cover.find() ? cover.group(1).replace("&amp;", "&") : "");
+        JsonObject object = new JsonObject(); object.addProperty("id", id); object.addProperty("title", title);
+        object.addProperty("year", published); object.add("countries", countries); object.add("genres", genres);
+        object.addProperty("intro", intro); object.add("pic", pic); object.addProperty("_xy_endpoint", "mobile-html");
+        return object;
+    }
+
+    private static String pageText(String html, String expression) {
+        Matcher matcher = Pattern.compile(expression, Pattern.DOTALL).matcher(html);
+        return matcher.find() ? Html.fromHtml(matcher.group(1), Html.FROM_HTML_MODE_LEGACY).toString().trim() : "";
     }
 
     private static JsonObject findMatch(JsonArray array, String titleKey, int targetYear) {
@@ -347,6 +432,7 @@ public class Douban {
         private final List<String> actors = new ArrayList<>();
         private final List<String> countries = new ArrayList<>();
         private String year = "";
+        private String endpoint = "";
 
         static Subject parse(String id, JsonObject object) {
             Subject subject = new Subject();
@@ -363,6 +449,24 @@ public class Douban {
             if (subject.actors.isEmpty()) addPeople(subject.actors, object.get("casts"));
             addStrings(subject.countries, object.get("countries"));
             subject.year = getString(object, "year");
+            // Some responses omit the structured lists but retain the same facts in the summary.
+            String[] brief = getString(object, "card_subtitle").split("\\s+/\\s+");
+            if (brief.length >= 3 && brief[0].matches("(?:19|20)[0-9]{2}")) {
+                if (subject.year.isEmpty()) subject.year = brief[0];
+                int genrePart = -1;
+                for (int i = 1; i < brief.length; i++) {
+                    String[] candidates = brief[i].split("[ ,，、]+");
+                    boolean genreList = candidates.length > 0;
+                    for (String candidate : candidates) genreList &= PAGE_GENRE.matcher(candidate).matches();
+                    if (genreList) { genrePart = i; break; }
+                }
+                if (subject.countries.isEmpty()) {
+                    int end = genrePart > 1 ? genrePart : 2;
+                    for (int i = 1; i < end; i++) for (String country : brief[i].split("[、,，]+")) if (!country.trim().isEmpty()) subject.countries.add(country.trim());
+                }
+                if (subject.genres.isEmpty() && genrePart > 1) for (String genre : brief[genrePart].split("[ ,，、]+")) if (!genre.isEmpty()) subject.genres.add(genre);
+            }
+            subject.endpoint = getString(object, "_xy_endpoint");
             return subject;
         }
 
@@ -386,6 +490,20 @@ public class Douban {
         public List<String> getActors() { return new ArrayList<>(actors); }
         public List<String> getCountries() { return new ArrayList<>(countries); }
         public String getYear() { return year; }
+        public String getEndpoint() { return endpoint; }
+        public boolean hasHeaderMetadata() { return year.matches("(?:19|20)[0-9]{2}") && !countries.isEmpty() && !genres.isEmpty(); }
+
+        public Subject retainMissing(Subject previous) {
+            if (previous == null || !id.equals(previous.id)) return this;
+            if (year.isEmpty()) year = previous.year;
+            if (cover.isEmpty()) cover = previous.cover;
+            if (intro.isEmpty()) intro = previous.intro;
+            if (countries.isEmpty()) countries.addAll(previous.countries);
+            if (genres.isEmpty()) genres.addAll(previous.genres);
+            if (directors.isEmpty()) directors.addAll(previous.directors);
+            if (actors.isEmpty()) actors.addAll(previous.actors);
+            return this;
+        }
 
         public List<String> getGenres() {
             return new ArrayList<>(genres);

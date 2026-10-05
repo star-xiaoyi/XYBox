@@ -459,9 +459,13 @@ public class SiteViewModel extends ViewModel {
         App.post(() -> { if (generation == requestGeneration) result.setValue(value); });
     }
 
-    @Override
-    protected void onCleared() {
+    public void cancelPending() {
         ++requestGeneration;
         if (executor != null) executor.shutdownNow();
+    }
+
+    @Override
+    protected void onCleared() {
+        cancelPending();
     }
 }
