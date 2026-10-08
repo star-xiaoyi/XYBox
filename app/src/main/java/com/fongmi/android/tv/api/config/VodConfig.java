@@ -36,7 +36,7 @@ public class VodConfig {
     private volatile Config config;
     private volatile Site home;
     private volatile Context playback;
-    private volatile boolean isLoading, retryAfterNetwork;
+    private volatile boolean isLoading, retryAfterNetwork, initialized;
 
     private static final class Context {
         final Config config;
@@ -87,6 +87,8 @@ public class VodConfig {
     }
 
     private VodConfig() { }
+    private volatile String sourceNetwork = "{}";
+    public String sourceNetwork() { return sourceNetwork; }
     public static VodConfig get() { return Loader.INSTANCE; }
     public static int getCid() { return get().getConfig().getId(); }
     public static String getUrl() { return get().getConfig().getUrl(); }
@@ -123,13 +125,13 @@ public class VodConfig {
     public VodConfig init() { config = Config.vod(); return this; }
     public boolean isLoading() { return isLoading; }
     public VodConfig config(Config value) { config = value; return this; }
-    public VodConfig clear() {
+    public synchronized VodConfig clear() {
         generation.incrementAndGet(); sites = Collections.emptyList(); contexts = Collections.emptyMap();
         doh = Collections.emptyList(); rules = Collections.emptyList(); ads = Collections.emptyList();
-        home = null; playback = null; isLoading = false; return this;
+        home = null; playback = null; isLoading = false; initialized = false; retryAfterNetwork = false; return this;
     }
 
-    public void load(Callback callback) {
+    public synchronized void load(Callback callback) {
         final int token = generation.incrementAndGet();
         isLoading = true;
         App.execute(() -> {
@@ -153,7 +155,7 @@ public class VodConfig {
             }
             App.post(() -> {
                 if (token != generation.get()) return;
-                install(loaded); isLoading = false;
+                install(loaded); initialized = true; isLoading = false;
                 retryAfterNetwork = sites.isEmpty() && !enabled.isEmpty();
                 if (sites.isEmpty() && !enabled.isEmpty()) callback.error("所有点播配置暂时不可用，请检测配置后重试");
                 else callback.success();
@@ -194,15 +196,22 @@ public class VodConfig {
         List<Site> combined = new ArrayList<>();
         List<Rule> allRules = new ArrayList<>(); List<String> allAds = new ArrayList<>();
         List<Doh> allDoh = new ArrayList<>(); List<JsonElement> allHeaders = new ArrayList<>();
+        List<String> allHosts = new ArrayList<>(), allProxy = new ArrayList<>();
         for (Context value : values.values()) {
             for (Site site : value.sites) if (isSiteEnabled(site)) combined.add(site);
             allRules.addAll(value.rules); allAds.addAll(value.ads);
             allDoh.addAll(value.doh); allHeaders.addAll(value.headers);
             setHosts(value.hosts); setProxy(value.proxy);
+            allHosts.addAll(value.hosts); allProxy.addAll(value.proxy);
         }
         contexts = Collections.unmodifiableMap(new LinkedHashMap<>(values));
         sites = Collections.unmodifiableList(combined); rules = allRules; ads = allAds; doh = allDoh;
         setHeaders(allHeaders);
+        // Mirror of SourceService.configure(): every global OkHttp setting added here must also be
+        // synced to the isolated source process, or plugins silently diverge from the app.
+        com.google.gson.JsonObject network = new com.google.gson.JsonObject();
+        network.add("hosts", App.gson().toJsonTree(allHosts)); network.add("proxyHosts", App.gson().toJsonTree(allProxy));
+        network.add("headers", App.gson().toJsonTree(allHeaders)); sourceNetwork = network.toString();
         home = getSite(oldHome);
         if (home.isEmpty()) {
             for (Context value : values.values()) {
@@ -221,8 +230,18 @@ public class VodConfig {
         Logger.i("VodPool: enabled=" + values.size() + " sites=" + combined.size());
     }
 
+    public synchronized void ensureInitialized() {
+        if (com.fongmi.android.tv.search.DetailLoadPolicy.shouldInitializeCatalog(
+                initialized, isLoading, !getSites().isEmpty())) recoverIfNeeded();
+    }
+
     public synchronized void recoverIfNeeded() {
-        if (!retryAfterNetwork || isLoading || !getSites().isEmpty()) return;
+        boolean coldStart = com.fongmi.android.tv.search.DetailLoadPolicy.shouldInitializeCatalog(
+                initialized, isLoading, !getSites().isEmpty());
+        if (!coldStart && (!retryAfterNetwork || isLoading || !getSites().isEmpty())) return;
+        // Android can restore the player directly without creating HomeActivity first.
+        if (coldStart) init();
+        Logger.i("VodPool: action=recover reason=" + (coldStart ? "cold-start" : "network"));
         load(new Callback() {
             @Override public void success() { RefreshEvent.config(); RefreshEvent.video(); }
         });

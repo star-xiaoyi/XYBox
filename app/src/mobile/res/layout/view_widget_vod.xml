@@ -46,16 +46,29 @@
 
         <include layout="@layout/view_progress" />
 
+        <!-- 速率固定贴在转圈下方，解释文字放在速率下面：文字长短变化只影响它自己，
+             不能再把速率的位置顶来顶去；两行都居中，相对转圈的位置保持稳定。 -->
         <TextView
             android:id="@+id/traffic"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:layout_gravity="center_horizontal"
             android:textColor="@color/white"
             android:textSize="12sp"
             android:visibility="gone"
             tools:text="120KB/s"
             tools:visibility="visible" />
+
+        <TextView
+            android:id="@+id/loadingStage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_gravity="center_horizontal"
+            android:gravity="center"
+            android:textColor="@color/white"
+            android:textSize="12sp" />
 
     </LinearLayout>
 

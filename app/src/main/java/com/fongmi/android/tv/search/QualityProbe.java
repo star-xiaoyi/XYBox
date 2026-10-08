@@ -35,7 +35,18 @@ public final class QualityProbe {
         }
         public int shortSide() { return Math.min(width, height); }
     }
+    /** Shared URL results retain the time of the real request, including after a paused probe resumes. */
+    public static final class Measurement {
+        public final List<Size> sizes;
+        public final long measuredAt;
+        public Measurement(List<Size> sizes, long measuredAt) {
+            this.sizes = Collections.unmodifiableList(new ArrayList<>(sizes));
+            this.measuredAt = measuredAt;
+        }
+        public boolean fresh(long now) { return SourceSelection.fresh(measuredAt, now); }
+    }
     private static final int LIMIT = 192 * 1024;
+    private static final int MIN_THROUGHPUT_SAMPLE = 128 * 1024;
     private static final Pattern RESOLUTION = Pattern.compile("RESOLUTION=(\\d+)x(\\d+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern MAP = Pattern.compile("#EXT-X-MAP:.*?URI=\"([^\"]+)\"");
     private QualityProbe() { }
@@ -139,7 +150,7 @@ public final class QualityProbe {
         Payload(SampleBytes sample, HttpUrl base, long elapsed) {
             bytes = sample.bytes; this.base = base; latencyMs = sample.latencyMs;
             // Include first-byte waiting in the average: a short sample must not exaggerate throughput.
-            speed = bytes.length >= 16 * 1024 ? bytes.length * 1000L / Math.max(1, elapsed) : 0;
+            speed = bytes.length >= 64 * 1024 ? bytes.length * 1000L / Math.max(1, elapsed) : 0;
         }
     }
     private static Payload fetch(String url, Map<String, String> headers, long deadline, String range, int limit) throws Exception {
@@ -231,9 +242,9 @@ public final class QualityProbe {
                 if (read <= 0) break;
                 if (latencyMs < 0) latencyMs = (System.nanoTime() - started) / 1_000_000;
                 buffer.write(part, 0, read);
-                // Most containers expose their real format in the first few packets.
-                // Stop reading as soon as it is known instead of always spending 192 KiB.
-                if (buffer.size() >= 32768 && buffer.size() % 32768 < read) {
+                // Dimensions often appear in the first packets, but a 32 KiB CDN burst is
+                // not a sustainable throughput sample. Keep a bounded 128 KiB window.
+                if (buffer.size() >= MIN_THROUGHPUT_SAMPLE && buffer.size() % 32768 < read) {
                     byte[] head = buffer.toByteArray();
                     if (!(head[0] == '#' || head[0] == (byte) 0xef) && !containerSizes(head).isEmpty()) break;
                 }

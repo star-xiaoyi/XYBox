@@ -204,7 +204,17 @@ public class ParseJob implements ParseCallback {
     }
 
     private void startWeb(String key, String from, Map<String, String> headers, String url, String click) {
-        App.post(() -> { if (!stopped) webViews.add(CustomWebView.create(App.get()).start(key, from, headers, url, click, this, !url.contains("player/?url="))); });
+        App.post(() -> {
+            if (stopped) return;
+            try {
+                webViews.add(CustomWebView.create(App.get()).start(key, from, headers, url, click, this, !url.contains("player/?url=")));
+            } catch (Throwable error) {
+                // WebView 初始化失败（例如数据目录被其他进程占用）只表示这条路解析不了，
+                // 交给换源/恢复流程，不能把整个应用带崩。
+                com.github.catvod.utils.Logger.e("ParseJob", "WebView unavailable", error);
+                onParseError();
+            }
+        });
     }
 
     private Map<String, String> getHeader(JsonObject object) {
@@ -231,6 +241,9 @@ public class ParseJob implements ParseCallback {
             stop();
         });
     }
+
+    /** 解析任务是否已结束（成功、失败或取消）；起播宽限期按它决定是否继续等待。 */
+    public boolean isStopped() { return stopped; }
 
     private void stopWeb() {
         for (CustomWebView webView : webViews) webView.stop(false);

@@ -195,6 +195,7 @@
         <provider
             android:name="com.fongmi.quickjs.Provider"
             android:authorities="${applicationId}.quickjs.provider"
+            android:process=":sources"
             android:exported="false" />
 
         <activity
@@ -220,6 +221,11 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
+
+        <service
+            android:name=".service.SourceService"
+            android:process=":sources"
+            android:exported="false" />
 
         <service
             android:name=".service.PlaybackService"

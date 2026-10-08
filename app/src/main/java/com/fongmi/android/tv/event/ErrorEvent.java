@@ -35,6 +35,10 @@ public class ErrorEvent {
         EventBus.getDefault().post(new ErrorEvent(tag, Type.EXTRACT, msg));
     }
 
+    public static void network(String tag, String msg) {
+        EventBus.getDefault().post(new ErrorEvent(tag, Type.NETWORK, msg));
+    }
+
     public ErrorEvent(String tag, Type type) {
         this.type = type;
         this.tag = tag;
@@ -64,6 +68,6 @@ public class ErrorEvent {
     }
 
     public enum Type {
-        URL, DRM, FLAG, PARSE, TIMEOUT, EXTRACT
+        URL, DRM, FLAG, PARSE, TIMEOUT, EXTRACT, NETWORK
     }
 }

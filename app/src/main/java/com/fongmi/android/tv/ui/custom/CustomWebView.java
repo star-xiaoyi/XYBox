@@ -203,7 +203,14 @@ public class CustomWebView extends WebView implements DialogInterface.OnDismissL
     }
 
     private void onParseAdd(Map<String, String> headers, String url) {
-        App.post(() -> CustomWebView.create(App.get()).start(key, from, headers, url, click, callback, false));
+        App.post(() -> {
+            try {
+                CustomWebView.create(App.get()).start(key, from, headers, url, click, callback, false);
+            } catch (Throwable error) {
+                com.github.catvod.utils.Logger.e("CustomWebView", "WebView unavailable", error);
+                stop(true);
+            }
+        });
     }
 
     private void onParseSuccess(Map<String, String> headers, String url) {

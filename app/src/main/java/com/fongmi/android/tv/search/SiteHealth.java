@@ -9,9 +9,15 @@ import java.util.*;
 public final class SiteHealth {
     private static SharedPreferences prefs() { return App.get().getSharedPreferences("site-health", 0); }
     private static String key(Site site) { return site.getKey(); }
+    private static String failureKey(Site site) {
+        return "cooldown:" + key(site) + ":" + com.github.catvod.utils.Util.md5(site.getApi() + "\n" + site.getJar() + "\n" + site.getExt());
+    }
+    public static boolean coolingDown(Site site) { return prefs().getLong(failureKey(site), 0) > System.currentTimeMillis(); }
+    public static void failed(Site site) { prefs().edit().putLong(failureKey(site), System.currentTimeMillis() + 60_000).apply(); }
     public static boolean isPriority(Site site) { return com.fongmi.android.tv.utils.SourcePreferences.isPriority(key(site)); }
     public static void setPriority(Site site, boolean value) { com.fongmi.android.tv.utils.SourcePreferences.setPriority(key(site), value); }
     public static synchronized void search(Site site, String keyword, long elapsed, boolean failed, boolean found) {
+        if (failed) failed(site);
         SharedPreferences p = prefs(); String key = key(site);
         long average = p.getLong("search:" + key, elapsed);
         int failures = p.getInt("failure:" + key, 0);

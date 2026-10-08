@@ -50,6 +50,7 @@ public class App extends Application {
     private final ExecutorService executor;
     private final Handler handler;
     private static App instance;
+    private static volatile Boolean sourceProcess;
     private volatile Activity activity;
     private final Gson gson;
     private final long time;
@@ -88,6 +89,27 @@ public class App extends Application {
 
     public static App get() {
         return instance;
+    }
+
+    public static boolean isSourceProcess() {
+        if (sourceProcess != null) return sourceProcess;
+        String name = null;
+        if (android.os.Build.VERSION.SDK_INT >= 28) name = Application.getProcessName();
+        else {
+            android.app.ActivityManager manager = (android.app.ActivityManager) get().getBaseContext().getSystemService(Context.ACTIVITY_SERVICE);
+            if (manager != null && manager.getRunningAppProcesses() != null)
+                for (android.app.ActivityManager.RunningAppProcessInfo process : manager.getRunningAppProcesses())
+                    if (process.pid == android.os.Process.myPid()) name = process.processName;
+        }
+        if (name == null) {
+            try (java.io.InputStream input = new java.io.FileInputStream("/proc/self/cmdline")) {
+                byte[] bytes = new byte[256]; int length = input.read(bytes), end = 0;
+                while (end < length && bytes[end] != 0) end++;
+                name = new String(bytes, 0, end, java.nio.charset.StandardCharsets.UTF_8);
+            } catch (Exception error) { throw new IllegalStateException("Cannot identify the source process", error); }
+        }
+        sourceProcess = name.endsWith(":sources");
+        return sourceProcess;
     }
 
     @Override
@@ -158,6 +180,23 @@ public class App extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        if (isSourceProcess()) {
+            // No activity recovery, sync, update cleanup, notification or player startup in the worker.
+            // 注意：不要在这里初始化 WebView。部分源插件（*Guard 系列）初始化时会做进程反注入检查，
+            // 源进程里出现 Chromium 的类会让它们悄悄拒绝装载内部爬虫（init 内部对象为空）。
+            AppLog.installSource(this);
+            AppLog.installCrashHandler();
+            ToastFilter.install();
+            OkHttp.get().setProxy(Setting.getProxy());
+            OkHttp.get().setDoh(Doh.objectFrom(Setting.getDoh()));
+            return;
+        }
+        // 给主进程独立的 WebView 数据目录：源进程里的插件保持系统默认目录（与隔离前的环境一致），
+        // 两边不再争抢 Chromium 的目录锁（crbug.com/558377）；升级后主进程 WebView 缓存/登录态会重建一次。
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            try { android.webkit.WebView.setDataDirectorySuffix("main"); }
+            catch (Throwable error) { android.util.Log.w("XYBox", "WebView data directory suffix unavailable", error); }
+        }
         AppLog.install(this);
         com.fongmi.android.tv.utils.PermissionUtil.installAudit();
         // A running version has already been installed successfully. Its source APK and

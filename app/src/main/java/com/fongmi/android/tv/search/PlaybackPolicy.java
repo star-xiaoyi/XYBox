@@ -7,7 +7,7 @@ import java.util.Map;
 
 /** One playback attempt at a time; user pause/seek and healthy playback never cause failover. */
 public final class PlaybackPolicy {
-    public static final long STALL_MS = 8000, STARTUP_MS = 12000, SWITCH_GAP_MS = 15000;
+    public static final long STALL_MS = 8000, STARTUP_MS = 12000, STARTUP_PATIENT_MS = 45000, SWITCH_GAP_MS = 15000;
     private static final long WINDOW_MS = 60000, FAILURE_MS = 120000;
     private final Deque<long[]> stalls = new ArrayDeque<>();
     private final Deque<Long> switches = new ArrayDeque<>();
@@ -16,6 +16,17 @@ public final class PlaybackPolicy {
     private boolean started, confirmed;
     private int attempts, stallCount;
     private long stalledMs, longestStallMs, firstReadyMs = -1;
+
+    /** A refused/expired address needs a new route; transient HTTP failures can reconnect in place. */
+    public static boolean retryHttpStatus(int code) { return code == 408 || code == 429 || code >= 500 && code <= 599; }
+
+    /**
+     * The 127.0.0.1 video proxy is our own hop: a read abort there (a restarted source worker)
+     * can reconnect in place, while the same error on a remote URL needs a new route.
+     */
+    public static boolean isLocalProxyUrl(String url) {
+        return url != null && (url.contains("://127.0.0.1:") || url.contains("://localhost:"));
+    }
 
     public void begin(long now) {
         finishBuffer(now, confirmed);
@@ -47,11 +58,19 @@ public final class PlaybackPolicy {
     public void adjusted(long now) { finishBuffer(now, confirmed); stalls.clear(); ignoreUntil = now + 3000; }
 
     public String reason(long now, boolean requested, boolean excluded, boolean ready, boolean buffering, long bufferMs) {
+        return reason(now, requested, excluded, ready, buffering, bufferMs, false);
+    }
+
+    /**
+     * progressing 表示源确实在干活（还在嗅探，或媒体缓冲持续增长）：慢而活着的源多等一会，
+     * 完全没进展的源仍按基础时限换掉。
+     */
+    public String reason(long now, boolean requested, boolean excluded, boolean ready, boolean buffering, long bufferMs, boolean progressing) {
         prune(now);
         if (!requested || excluded) { suspend(now); return ""; }
         if (!started || now < ignoreUntil) return "";
         if (buffering) buffering(now, true, false);
-        if (!confirmed && now - startedAt >= STARTUP_MS) return "startup-timeout";
+        if (!confirmed && now - startedAt >= STARTUP_MS && (!progressing || now - startedAt >= STARTUP_PATIENT_MS)) return "startup-timeout";
         if (confirmed && bufferingAt >= 0 && now - bufferingAt >= STALL_MS) return "long-buffering";
         long recentWait = 0;
         for (long[] stall : stalls) recentWait += stall[1];

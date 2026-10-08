@@ -36,6 +36,8 @@ public final class ToastFilter {
     private static volatile boolean installed;
     private static final Map<Activity, Boolean> playbackPages = Collections.synchronizedMap(new WeakHashMap<>());
     private static volatile long lastBlockedLogAt;
+    /** Notify 显式标记的自家提示；混淆后栈里的 lambda 类名不可靠，不能只靠类名匹配。 */
+    private static final ThreadLocal<Integer> trustedToast = ThreadLocal.withInitial(() -> 0);
 
     private ToastFilter() {
     }
@@ -110,15 +112,26 @@ public final class ToastFilter {
 
     /** A source may use a text Toast or a custom Toast containing only a progress view. */
     private static boolean isSourceCaller() {
-        return SourceUiOrigin.findCaller() != null;
+        return App.isSourceProcess() || SourceUiOrigin.findCaller() != null;
     }
 
     /** All first-party player feedback is routed through Notify; every other playback Toast is external. */
     private static boolean isTrustedAppToastCaller() {
+        if (trustedToast.get() > 0) return true;
         for (StackTraceElement item : Thread.currentThread().getStackTrace()) {
             if (item.getClassName().startsWith("com.fongmi.android.tv.utils.Notify")) return true;
         }
         return false;
+    }
+
+    /** Notify 包住自己的 Toast 展示，避免把第一方提示误判成外部弹窗拦掉。 */
+    public static void runTrusted(Runnable action) {
+        trustedToast.set(trustedToast.get() + 1);
+        try {
+            action.run();
+        } finally {
+            trustedToast.set(trustedToast.get() - 1);
+        }
     }
 
     private static boolean isTrustedAppNotificationCaller() {

@@ -1,7 +1,5 @@
 package com.fongmi.android.tv.search;
 
-import android.text.TextUtils;
-
 import com.github.catvod.utils.Trans;
 
 import java.util.Locale;
@@ -44,7 +42,7 @@ public final class TitleKey {
 
     /** 规整后的片名，空串表示认不出。 */
     public static String normalize(String name) {
-        if (TextUtils.isEmpty(name)) return "";
+        if (name == null || name.isEmpty()) return "";
         String text = Trans.t2s(name).trim().toLowerCase(Locale.ROOT);
         text = stripBracket(text);
         text = stripTail(text);
@@ -55,7 +53,7 @@ public final class TitleKey {
 
     /** 取第一个像年份的四位数，"2019-01-18" 也能认出 2019。认不出返回 0。 */
     public static int year(String text) {
-        if (TextUtils.isEmpty(text)) return 0;
+        if (text == null || text.isEmpty()) return 0;
         Matcher matcher = YEAR.matcher(text);
         return matcher.find() ? Integer.parseInt(matcher.group()) : 0;
     }
@@ -65,11 +63,13 @@ public final class TitleKey {
      * 分错了会把同一部片拆成两行，比不拆更糟。
      */
     public static int kind(String type) {
-        if (TextUtils.isEmpty(type)) return KIND_UNKNOWN;
+        if (type == null || type.isEmpty()) return KIND_UNKNOWN;
         String text = Trans.t2s(type);
         if (text.contains("动漫") || text.contains("动画") || text.contains("番剧") || text.contains("新番")) return KIND_ANIME;
         if (text.contains("综艺") || text.contains("真人秀") || text.contains("晚会")) return KIND_SHOW;
         if (text.contains("纪录")) return KIND_DOC;
+        // Generic source labels such as 国产//影片 describe no actual media kind.
+        if (text.endsWith("影片") && !text.contains("电影")) return KIND_UNKNOWN;
         if (text.contains("电影") || text.endsWith("片")) return KIND_MOVIE;
         if (text.matches(".*(电视剧|连续剧|短剧|网剧|国产剧|大陆剧|内地剧|陆剧|港剧|台剧|港台剧|日剧|韩剧|日韩剧|美剧|英剧|欧美剧|泰剧|海外剧).*")) return KIND_TV;
         return KIND_UNKNOWN;
@@ -84,9 +84,18 @@ public final class TitleKey {
         return a == KIND_UNKNOWN || b == KIND_UNKNOWN || a == b;
     }
 
+    /** Provider categories are inconsistent: animation/show/documentary are often filed as TV or film. */
+    public static boolean sameSourceKind(int a, int b) {
+        if (sameKind(a, b)) return true;
+        if (a == KIND_ANIME || b == KIND_ANIME) return a == KIND_TV || b == KIND_TV;
+        if (a == KIND_SHOW || b == KIND_SHOW) return a == KIND_TV || b == KIND_TV;
+        if (a == KIND_DOC || b == KIND_DOC) return a == KIND_MOVIE || b == KIND_MOVIE || a == KIND_TV || b == KIND_TV;
+        return false;
+    }
+
     /** 相关度档位：0 同名，1 以关键词开头，2 包含关键词，3 其他（比如按演员搜出来的）。 */
     public static int tier(String key, String keyword) {
-        if (TextUtils.isEmpty(keyword)) return 3;
+        if (keyword == null || keyword.isEmpty()) return 3;
         if (key.equals(keyword)) return 0;
         if (key.startsWith(keyword)) return 1;
         if (key.contains(keyword)) return 2;
@@ -95,7 +104,7 @@ public final class TitleKey {
 
     /** 从"更新至20集""全40集""第12期"里取集数，用来挑最新的更新状态。取不到返回 -1。 */
     public static int episodes(String remarks) {
-        if (TextUtils.isEmpty(remarks)) return -1;
+        if (remarks == null || remarks.isEmpty()) return -1;
         Matcher matcher = EPISODE.matcher(remarks);
         return matcher.find() ? Integer.parseInt(matcher.group(1)) : -1;
     }
@@ -165,12 +174,18 @@ public final class TitleKey {
     }
 
     private static int number(String text) {
-        if (TextUtils.isDigitsOnly(text)) return Integer.parseInt(text);
+        if (digitsOnly(text)) return Integer.parseInt(text);
         String digits = "零一二三四五六七八九";
         int index = text.indexOf('十');
         if (index < 0) return digits.indexOf(text.charAt(0));
         int tens = index == 0 ? 1 : digits.indexOf(text.charAt(0));
         int ones = index == text.length() - 1 ? 0 : digits.indexOf(text.charAt(index + 1));
         return Math.max(0, tens) * 10 + Math.max(0, ones);
+    }
+
+    private static boolean digitsOnly(String text) {
+        if (text == null || text.isEmpty()) return false;
+        for (int i = 0; i < text.length(); i++) if (!Character.isDigit(text.charAt(i))) return false;
+        return true;
     }
 }

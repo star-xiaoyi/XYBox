@@ -320,6 +320,18 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
         return message.length() > 160 ? message.substring(0, 160) : message;
     }
 
+    /**
+     * 彩蛋：新增配置时地址栏填 XY，一次补齐作者自用的五个点播源；已有的跳过，只补缺的。
+     * 地址写法必须和设备上保存的完全一致（含末尾斜杠），站点 key 才能对上已有的历史记录。
+     */
+    private static final String[][] PRESET_SOURCES = {
+            {"饭太硬", "http://www.饭太硬.net/tv"},
+            {"多仓源", "https://gh-proxy.com/raw.githubusercontent.com/yw88075/tvbox/main/yw.json"},
+            {"小盒子", "http://xhztv.top/4k.json"},
+            {"王小二", "http://new.王二小放牛娃.top"},
+            {"肥猫", "http://肥猫.net/"},
+    };
+
     private final class SourceManager {
         private final Map<String, SourceCheck> checks = new HashMap<>();
         private final Map<String, TextView> checkViews = new HashMap<>();
@@ -706,6 +718,7 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
 
         void run(int action) {
             if (busy) return;
+            if (original == null && value(address).equalsIgnoreCase("XY")) { importPresets(); return; }
             String input;
             try { input = VodConfigProbe.normalize(value(address)); }
             catch (Exception error) { address.setError(error.getMessage()); address.requestFocus(); status.setText("未保存：地址格式不正确"); return; }
@@ -724,6 +737,35 @@ public class ProfileFragment extends com.fongmi.android.tv.ui.base.BaseFragment 
                 } catch (Exception error) {
                     App.post(() -> { if (!isAdded() || !dialog.isShowing()) return; tested = null; setBusy(false, false); status.setText("检测失败：" + sourceError(error) + "\n未保存，当前配置保持不变。"); });
                 }
+            });
+        }
+
+        void importPresets() {
+            setBusy(true, true); status.setText("正在导入 XY 内置的 5 个点播源…");
+            App.execute(() -> {
+                int added = 0, skipped = 0, unverified = 0;
+                for (String[] preset : PRESET_SOURCES) {
+                    String url = preset[1];
+                    if (com.fongmi.android.tv.db.AppDatabase.get().getConfigDao().find(url, 0) != null) { skipped++; continue; }
+                    String json = "";
+                    // 读不到配置也照样保存：VodConfig.load 遇到空 json 会在加载时再取一次。
+                    try { json = VodConfigProbe.test(url, tag).json; } catch (Exception error) { unverified++; }
+                    Config target = Config.create(0).url(url).name(preset[0]).json(json);
+                    target.setTime(System.currentTimeMillis());
+                    target.insert();
+                    VodConfig.setEnabled(target, true);
+                    manager.checks.put(url, new SourceCheck(json.isEmpty(), json.isEmpty() ? "暂未读到配置，加载时会再试" : "地址有效"));
+                    added++;
+                }
+                int done = added, existed = skipped, pending = unverified;
+                App.post(() -> {
+                    if (!isAdded() || !dialog.isShowing()) return;
+                    setBusy(false, false);
+                    if (done > 0) WebDAVSyncManager.get().requestSync();
+                    Notify.show(done == 0 ? "五个源都已存在，无需导入" : "已导入 " + done + " 个源"
+                            + (existed > 0 ? "，" + existed + " 个已存在" : "") + (pending > 0 ? "，" + pending + " 个暂未读到配置" : ""));
+                    manager.reload(); dialog.dismiss();
+                });
             });
         }
 

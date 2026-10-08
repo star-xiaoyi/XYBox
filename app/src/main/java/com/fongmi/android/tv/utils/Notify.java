@@ -67,7 +67,7 @@ public class Notify {
     /** 系统默认样式的轻量提示，跟随日夜主题，用于用户主动触发的操作结果。 */
     public static void tip(String text) {
         if (TextUtils.isEmpty(text)) return;
-        App.post(() -> Toast.makeText(App.get(), text, Toast.LENGTH_SHORT).show());
+        App.post(() -> ToastFilter.runTrusted(() -> Toast.makeText(App.get(), text, Toast.LENGTH_SHORT).show()));
     }
 
     public static void showCenter(int resId) {
@@ -107,7 +107,7 @@ public class Notify {
         mToast.setView(view);
         mToast.setDuration(Toast.LENGTH_SHORT);
         mToast.setGravity(Gravity.CENTER, 0, 0);
-        mToast.show();
+        ToastFilter.runTrusted(mToast::show);
         
         // 1秒后取消Toast
         mHandler.removeCallbacksAndMessages(null);

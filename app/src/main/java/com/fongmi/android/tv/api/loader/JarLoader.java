@@ -28,7 +28,11 @@ public class JarLoader {
     private final ConcurrentHashMap<String, DexClassLoader> loaders;
     private final ConcurrentHashMap<String, Method> methods;
     private final ConcurrentHashMap<String, Spider> spiders;
+    private final ConcurrentHashMap<String, Object> jarLocks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Object> spiderLocks = new ConcurrentHashMap<>();
     private String recent;
+    private final ThreadLocal<Throwable> failure = new ThreadLocal<>();
+    public Throwable lastFailure() { return failure.get(); }
 
     public JarLoader() {
         loaders = new ConcurrentHashMap<>();
@@ -50,10 +54,13 @@ public class JarLoader {
     private void load(String key, File file) {
         try {
             if (!file.setReadOnly()) return;
-            loaders.put(key, dex(file));
-            invokeInit(key);
+            DexClassLoader loader = dex(file);
+            invokeInit(loader);
+            // Publish only after Init returns successfully, never a half-initialized native plugin.
+            loaders.put(key, loader);
             putProxy(key);
         } catch (Throwable e) {
+            failure.set(e);
             Logger.e("JarLoader", "Failed to load jar for key: " + key, e);
             Logger.e("Error", e);
         }
@@ -65,13 +72,13 @@ public class JarLoader {
         return loader;
     }
 
-    private void invokeInit(String key) {
+    private void invokeInit(DexClassLoader loader) throws Throwable {
         try {
-            Class<?> clz = loaders.get(key).loadClass("com.github.catvod.spider.Init");
+            Class<?> clz = loader.loadClass("com.github.catvod.spider.Init");
             Method method = clz.getMethod("init", Context.class);
             method.invoke(clz, App.get());
-        } catch (Throwable e) {
-            Logger.e("Error", e);
+        } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            // Init is optional in ordinary Java-only providers, but an actual Init error is not.
         }
     }
 
@@ -86,14 +93,56 @@ public class JarLoader {
     }
 
     private File download(String url) {
+        File target = Path.jar(url);
         try {
-            return Path.write(Path.jar(url), OkHttp.bytes(url));
+            byte[] bytes = OkHttp.bytes(url);
+            // 403/反爬页面、空响应都不是 jar。OkHttp.bytes 不看状态码，这种内容一旦覆盖缓存里原本可用的
+            // jar，这一批站点会一直报 "Expected valid zip or dex file"。缓存也无效时才落盘，让错误可见。
+            if (!isArchive(bytes)) {
+                Logger.w("JarLoader", "non-jar response url=" + url + " bytes=" + (bytes == null ? 0 : bytes.length) + " head=" + head(bytes));
+                if (isArchive(target)) return target;
+            }
+            return Path.write(target, bytes);
         } catch (Exception e) {
-            return Path.jar(url);
+            return target;
         }
     }
 
-    public synchronized void parseJar(String key, String jar) {
+    /** zip（jar）或裸 dex 才是插件；其它都是网页或空响应。 */
+    private static boolean isArchive(byte[] bytes) {
+        if (bytes == null || bytes.length < 4) return false;
+        boolean zip = bytes[0] == 'P' && bytes[1] == 'K' && bytes[2] == 3 && bytes[3] == 4;
+        boolean dex = bytes[0] == 'd' && bytes[1] == 'e' && bytes[2] == 'x' && bytes[3] == 10;
+        return zip || dex;
+    }
+
+    private static boolean isArchive(File file) {
+        try (java.io.FileInputStream input = new java.io.FileInputStream(file)) {
+            byte[] bytes = new byte[4];
+            return input.read(bytes) == 4 && isArchive(bytes);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static String head(byte[] bytes) {
+        int length = Math.min(bytes == null ? 0 : bytes.length, 48);
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < length; i++) result.append(bytes[i] >= 32 && bytes[i] < 127 ? (char) bytes[i] : '.');
+        return result.toString();
+    }
+
+    public void parseJar(String key, String jar) {
+        synchronized (jarLock(key)) {
+            parseJarLocked(key, jar);
+        }
+    }
+
+    private Object jarLock(String key) {
+        return jarLocks.computeIfAbsent(key, ignored -> new Object());
+    }
+
+    private void parseJarLocked(String key, String jar) {
         try {
             if (loaders.containsKey(key)) return;
             String[] texts = jar.split(";md5;");
@@ -110,6 +159,7 @@ public class JarLoader {
                 parseJar(key, UrlUtil.convert(jar));
             }
         } catch (Throwable e) {
+            failure.set(e);
             Logger.e("JarLoader", "Failed to parse jar for key: " + key + ", jar: " + jar, e);
             Logger.e("Error", e);
         }
@@ -127,9 +177,22 @@ public class JarLoader {
     }
 
     public Spider getSpider(String key, String api, String ext, String jar) {
+        if (!SourcePluginPolicy.canInstantiate(api)) {
+            Logger.w("JarLoader", "Skip native-crashing plugin site=" + key + " api=" + api);
+            return new SpiderNull();
+        }
+        String jaKey = Util.md5(jar);
+        // Serialize duplicate requests for one site, not every provider in the same JAR.
+        // A provider stuck inside spider.init must not block otherwise healthy sites.
+        synchronized (spiderLocks.computeIfAbsent(jaKey + key + Util.md5(api + ext), ignored -> new Object())) {
+            failure.remove();
+            return getSpiderLocked(jaKey, key, api, ext, jar);
+        }
+    }
+
+    private Spider getSpiderLocked(String jaKey, String key, String api, String ext, String jar) {
         try {
-            String jaKey = Util.md5(jar);
-            String spKey = jaKey + key;
+            String spKey = jaKey + key + Util.md5(api + ext);
             if (spiders.containsKey(spKey)) return spiders.get(spKey);
             if (!loaders.containsKey(jaKey)) parseJar(jaKey, jar);
             Spider spider = (Spider) loaders.get(jaKey).loadClass("com.github.catvod.spider." + api.split("csp_")[1]).newInstance();
@@ -137,6 +200,7 @@ public class JarLoader {
             spiders.put(spKey, spider);
             return spider;
         } catch (Throwable e) {
+            if (failure.get() == null) failure.set(e);
             Logger.e("Error", e);
             return new SpiderNull();
         }
