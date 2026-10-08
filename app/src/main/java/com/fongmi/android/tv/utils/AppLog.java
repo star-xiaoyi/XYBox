@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
@@ -68,8 +69,16 @@ public final class AppLog {
     }
 
     public static synchronized void install(Context context) {
+        install(context, false);
+    }
+
+    public static synchronized void installSource(Context context) {
+        install(context, true);
+    }
+
+    private static void install(Context context, boolean source) {
         if (installed) return;
-        directory = new File(context.getFilesDir(), "logs");
+        directory = new File(context.getFilesDir(), source ? "source-logs" : "logs");
         if (!directory.exists() && !directory.mkdirs()) return;
         Logger.setSink(AppLog::enqueue);
         installed = true;
@@ -77,7 +86,31 @@ public final class AppLog {
                 + " pid=" + Process.myPid()
                 + " device=" + Build.MANUFACTURER + " " + Build.MODEL
                 + " android=" + Build.VERSION.RELEASE + " sdk=" + Build.VERSION.SDK_INT);
-        if (Build.VERSION.SDK_INT >= 30) WRITER.execute(() -> recordSystemExits(context));
+        if (!source && Build.VERSION.SDK_INT >= 30) WRITER.execute(() -> recordSystemExits(context));
+    }
+
+    public static void refreshSystemExits() {
+        if (installed && Build.VERSION.SDK_INT >= 30) WRITER.execute(() -> recordSystemExits(com.fongmi.android.tv.App.get()));
+    }
+
+    public static void recordSourceFailure(String details) {
+        enqueue(Log.ASSERT, "SourceFailure", details, null);
+    }
+
+    private static List<File> exportLogFiles() {
+        List<File> files = new ArrayList<>(sourceLogFiles());
+        files.addAll(orderedLogFiles());
+        return files;
+    }
+
+    /** 源进程写在 files/source-logs 下；主进程负责展示、导出和清空它们。 */
+    private static List<File> sourceLogFiles() {
+        if (directory == null || !directory.getName().equals("logs")) return Collections.emptyList();
+        File source = new File(directory.getParentFile(), "source-logs");
+        List<File> files = new ArrayList<>();
+        for (int i = BACKUP_COUNT; i >= 1; i--) files.add(new File(source, "xybox." + i + ".log"));
+        files.add(new File(source, ACTIVE_NAME));
+        return files;
     }
 
     /** Native crashes and system kills cannot run a Java uncaught-exception handler. */
@@ -88,8 +121,19 @@ public final class AppLog {
             if (manager == null) return;
             android.content.SharedPreferences prefs = context.getSharedPreferences("log_process_exits", Context.MODE_PRIVATE);
             long previous = prefs.getLong("last", 0), newest = previous;
+            long previousTrace = prefs.getLong("last_native_trace", 0), newestTrace = previousTrace;
             for (android.app.ApplicationExitInfo exit : manager.getHistoricalProcessExitReasons(context.getPackageName(), 0, 5)) {
                 newest = Math.max(newest, exit.getTimestamp());
+                if (Build.VERSION.SDK_INT >= 31 && exit.getReason() == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE
+                        && exit.getTimestamp() > previousTrace) {
+                    String trace = recordNativeTrace(exit);
+                    if (DecodeGuard.isDecoderCrash(exit.getProcessName(), trace)) {
+                        DecodeGuard.recordCrash(exit.getTimestamp());
+                        append(format(Log.WARN, "DecodeGuard", "检测到解码器原生崩溃 pid=" + exit.getPid()
+                                + " process=" + exit.getProcessName() + "，该影片下次播放将临时使用软解", null));
+                    }
+                    newestTrace = Math.max(newestTrace, exit.getTimestamp());
+                }
                 if (exit.getTimestamp() <= previous) continue;
                 String reason;
                 switch (exit.getReason()) {
@@ -105,7 +149,7 @@ public final class AppLog {
                         + " reason=" + reason + " status=" + exit.getStatus() + " importance=" + exit.getImportance()
                         + " description=" + exit.getDescription(), null));
             }
-            prefs.edit().putLong("last", newest).apply();
+            prefs.edit().putLong("last", newest).putLong("last_native_trace", newestTrace).apply();
         } catch (Exception error) { append(format(Log.WARN, "ProcessExit", "无法读取系统退出记录", error)); }
     }
 
@@ -154,10 +198,10 @@ public final class AppLog {
     public static String readAll() {
         return callOnWriter(() -> {
             StringBuilder result = new StringBuilder();
-            for (File file : orderedLogFiles()) {
+            for (File file : exportLogFiles()) {
                 if (!file.isFile() || file.length() == 0) continue;
                 if (result.length() > 0) result.append('\n');
-                result.append("===== ").append(file.getName()).append(" =====\n");
+                result.append("===== ").append(file.getParentFile().getName()).append('/').append(file.getName()).append(" =====\n");
                 result.append(readFile(file));
             }
             return result.toString();
@@ -167,13 +211,33 @@ public final class AppLog {
     public static long size() {
         return callOnWriter(() -> {
             long total = 0L;
-            for (File file : orderedLogFiles()) if (file.isFile()) total += file.length();
+            for (File file : exportLogFiles()) if (file.isFile()) total += file.length();
             return total;
         }, 0L);
     }
 
     public static String exportFileName() {
         return "XY影视-log-" + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date()) + ".txt";
+    }
+
+    @android.annotation.TargetApi(31)
+    /** Writes the native tombstone to the persistent log and returns the trace for classification. */
+    private static String recordNativeTrace(android.app.ApplicationExitInfo exit) {
+        String identity = "pid=" + exit.getPid() + " time=" + exit.getTimestamp();
+        try (InputStream input = exit.getTraceInputStream()) {
+            if (input == null) {
+                append(format(Log.WARN, "NativeCrash", identity + " 系统未保留原生崩溃堆栈", null));
+                return null;
+            }
+            // ASSERT bypasses the ordinary 2048-char message limit: all available frames survive export.
+            String trace = NativeCrashTrace.read(input);
+            // ASSERT bypasses the ordinary 2048-char message limit: all available frames survive export.
+            append(format(Log.ASSERT, "NativeCrash", identity + "\n" + trace, null));
+            return trace;
+        } catch (Exception error) {
+            append(format(Log.WARN, "NativeCrash", identity + " 无法读取原生崩溃堆栈", error));
+            return null;
+        }
     }
 
     public static File createShareFile(Context context) {
@@ -193,9 +257,9 @@ public final class AppLog {
             try (FileOutputStream output = new FileOutputStream(target)) {
                 output.write(header.getBytes(StandardCharsets.UTF_8));
                 output.write(storageReport.getBytes(StandardCharsets.UTF_8));
-                for (File file : orderedLogFiles()) {
+                for (File file : exportLogFiles()) {
                     if (!file.isFile() || file.length() == 0) continue;
-                    output.write(("===== " + file.getName() + " =====\n").getBytes(StandardCharsets.UTF_8));
+                    output.write(("===== " + file.getParentFile().getName() + "/" + file.getName() + " =====\n").getBytes(StandardCharsets.UTF_8));
                     try (FileInputStream input = new FileInputStream(file)) {
                         byte[] buffer = new byte[8192];
                         int count;
@@ -212,7 +276,9 @@ public final class AppLog {
     public static boolean clear() {
         return callOnWriter(() -> {
             boolean success = true;
-            for (File file : orderedLogFiles()) {
+            // 界面大小和导出都合并了源进程日志，只删主进程目录会留下几百 KB 的“残留”。
+            // 源进程每条日志都是独立 open/append/close，文件删掉后它下一条会自动新建。
+            for (File file : exportLogFiles()) {
                 if (file.exists() && !file.delete()) success = false;
             }
             append(format(Log.INFO, "AppLog", "日志已由用户清空", null));
@@ -350,7 +416,10 @@ public final class AppLog {
             if (current instanceof UnknownHostException
                     || current instanceof ConnectException
                     || current instanceof NoRouteToHostException
-                    || current instanceof SocketTimeoutException) {
+                    || current instanceof SocketTimeoutException
+                    // 取消请求引起的中断不是故障：一行摘要就够，不必带十几行框架堆栈。
+                    || current instanceof InterruptedException
+                    || current instanceof java.io.InterruptedIOException) {
                 String message = current.getMessage();
                 String summary = current.getClass().getSimpleName();
                 if (message != null && !message.trim().isEmpty()) summary += ": " + message.trim();

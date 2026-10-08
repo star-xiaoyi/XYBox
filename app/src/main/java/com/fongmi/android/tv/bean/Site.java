@@ -13,6 +13,7 @@ import androidx.room.PrimaryKey;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.api.loader.BaseLoader;
+import com.fongmi.android.tv.api.loader.SourcePluginPolicy;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.gson.ExtAdapter;
 import com.github.catvod.crawler.Spider;
@@ -309,7 +310,7 @@ public class Site implements Parcelable {
     }
 
     public boolean isSearchable() {
-        return getSearchable() == 1;
+        return getSearchable() == 1 && SourcePluginPolicy.canInstantiate(getApi());
     }
 
     public Site setSearchable(boolean searchable) {
@@ -318,7 +319,7 @@ public class Site implements Parcelable {
     }
 
     public boolean isChangeable() {
-        return getChangeable() == 1;
+        return getChangeable() == 1 && SourcePluginPolicy.canInstantiate(getApi());
     }
 
     public Site setChangeable(boolean changeable) {

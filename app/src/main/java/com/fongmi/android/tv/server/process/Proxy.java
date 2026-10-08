@@ -34,7 +34,14 @@ public class Proxy implements Process {
             InputStream stream = (InputStream) rs[2];
             if ("m3u8".equalsIgnoreCase(action)) stream = inspectManifest(stream, params.get("range"));
             Logger.i("ProxyLocal: do=" + action + ", status=" + rs[0] + ", mime=" + rs[1] + ", range=" + params.get("range"));
-            NanoHTTPD.Response response = NanoHTTPD.newChunkedResponse(NanoHTTPD.Response.Status.lookup((Integer) rs[0]), (String) rs[1], stream);
+            long length = rs.length > 4 && rs[4] instanceof Long ? (Long) rs[4] : -1;
+            if (length < 0 && rs.length > 3 && rs[3] instanceof Map) {
+                for (Map.Entry<String, String> entry : ((Map<String, String>) rs[3]).entrySet())
+                    if (entry.getKey().equalsIgnoreCase("content-length")) try { length = Long.parseLong(entry.getValue()); } catch (NumberFormatException ignored) { }
+            }
+            NanoHTTPD.Response response = length < 0
+                    ? NanoHTTPD.newChunkedResponse(NanoHTTPD.Response.Status.lookup((Integer) rs[0]), (String) rs[1], stream)
+                    : NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.lookup((Integer) rs[0]), (String) rs[1], stream, length);
             if (rs.length > 3 && rs[3] != null) for (Map.Entry<String, String> entry : ((Map<String, String>) rs[3]).entrySet()) response.addHeader(entry.getKey(), entry.getValue());
             return response;
         } catch (Throwable e) {

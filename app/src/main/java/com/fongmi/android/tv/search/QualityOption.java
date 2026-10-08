@@ -17,6 +17,7 @@ public final class QualityOption {
     public final long speed;
     public final int bitrate;
     public long latencyMs = -1, measuredAt;
+    public int episodeCount;
     public QualityOption(VodSource source, Vod detail, Flag flag, Episode episode, String valueName, int valueIndex, int width, int height, boolean verified) {
         this(source, detail, flag, episode, valueName, valueIndex, width, height, verified, 0, 0);
     }
@@ -24,13 +25,15 @@ public final class QualityOption {
                          int width, int height, boolean verified, long speed, int bitrate) {
         this.speed = speed; this.bitrate = bitrate;
         this.source = source; this.detail = detail; this.flag = flag; this.episode = episode;
+        this.episodeCount = flag == null ? 0 : EpisodeCoverage.count(flag);
         this.valueName = valueName; this.valueIndex = valueIndex; this.width = width; this.height = height; this.verified = verified;
     }
     public int rank() { return verified && width > 0 && height > 0 ? Math.min(width, height) : 0; }
     public boolean isAvailable() { return !PlaybackRoutePolicy.isRestricted(this) && !source.isBroken()
             && com.fongmi.android.tv.api.config.VodConfig.isSiteEnabled(source.getSite())
             && !com.fongmi.android.tv.api.config.VodConfig.get().getSite(source.getSiteKey()).isEmpty(); }
-    public boolean canAuto() { return isAvailable() && !source.getSite().isCloudDrive() && !flag.isCloudDrive(); }
+    public boolean canAuto() { return isAvailable() && source.getSite().isChangeable()
+            && !source.getSite().isCloudDrive() && !flag.isCloudDrive(); }
     public String identity() { return source.getSiteKey() + "\n" + source.getVodId() + "\n" + flag.getFlag() + "\n" + valueIndex + "\n" + width + "x" + height; }
     /** A playback node can offer multiple resolutions; source menus group by node, not resolution. */
     public String route() { return source.getSiteKey() + "\n" + source.getVodId() + "\n" + flag.getFlag() + "\n" + valueIndex; }

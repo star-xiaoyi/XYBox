@@ -431,6 +431,9 @@ public class Douban {
         private final List<String> directors = new ArrayList<>();
         private final List<String> actors = new ArrayList<>();
         private final List<String> countries = new ArrayList<>();
+        private final List<String> aliases = new ArrayList<>();
+        private String title = "";
+        private String originalTitle = "";
         private String year = "";
         private String endpoint = "";
 
@@ -448,6 +451,11 @@ public class Douban {
             addPeople(subject.actors, object.get("actors"));
             if (subject.actors.isEmpty()) addPeople(subject.actors, object.get("casts"));
             addStrings(subject.countries, object.get("countries"));
+            subject.title = getString(object, "title");
+            subject.originalTitle = getString(object, "original_title");
+            if (subject.originalTitle.isEmpty()) subject.originalTitle = getString(object, "original_name");
+            addStrings(subject.aliases, object.get("aka"));
+            addStrings(subject.aliases, object.get("aliases"));
             subject.year = getString(object, "year");
             // Some responses omit the structured lists but retain the same facts in the summary.
             String[] brief = getString(object, "card_subtitle").split("\\s+/\\s+");
@@ -489,6 +497,13 @@ public class Douban {
         public List<String> getDirectors() { return new ArrayList<>(directors); }
         public List<String> getActors() { return new ArrayList<>(actors); }
         public List<String> getCountries() { return new ArrayList<>(countries); }
+        public List<String> getTitles() {
+            List<String> values = new ArrayList<>();
+            if (!title.isEmpty()) values.add(title);
+            if (!originalTitle.isEmpty() && !values.contains(originalTitle)) values.add(originalTitle);
+            for (String alias : aliases) if (!values.contains(alias)) values.add(alias);
+            return values;
+        }
         public String getYear() { return year; }
         public String getEndpoint() { return endpoint; }
         public boolean hasHeaderMetadata() { return year.matches("(?:19|20)[0-9]{2}") && !countries.isEmpty() && !genres.isEmpty(); }
@@ -502,6 +517,9 @@ public class Douban {
             if (genres.isEmpty()) genres.addAll(previous.genres);
             if (directors.isEmpty()) directors.addAll(previous.directors);
             if (actors.isEmpty()) actors.addAll(previous.actors);
+            if (title.isEmpty()) title = previous.title;
+            if (originalTitle.isEmpty()) originalTitle = previous.originalTitle;
+            if (aliases.isEmpty()) aliases.addAll(previous.aliases);
             return this;
         }
 

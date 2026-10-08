@@ -358,16 +358,33 @@ public class SiteViewModel extends ViewModel {
 
     /** 阻塞式搜索单个站点，返回的每一条都已绑定站点。聚合搜索在自己的线程池里直接调它。 */
     public static Result search(Site site, String keyword, boolean quick) throws Throwable {
+        return search(site, keyword, quick, 1);
+    }
+
+    /** Validate a replacement without changing the active source or stopping its player. */
+    public void candidateContent(String key, String id) {
+        execute(result, "候选详情", () -> {
+            Result loaded = detail(VodConfig.get().getSite(key), id, false);
+            if (!loaded.getList().isEmpty()) Source.get().parse(loaded.getList().get(0).getVodFlags());
+            return loaded;
+        });
+    }
+
+    /** Player recovery may inspect a bounded second page when page one has no matching film. */
+    public static Result search(Site site, String keyword, boolean quick, int page) throws Throwable {
         if (quick && !site.isQuickSearch()) return Result.empty();
         Result result;
         if (site.getType() == 3) {
-            String searchContent = site.spider().searchContent(Trans.t2s(keyword), quick);
+            String searchContent = page <= 1
+                    ? site.spider().searchContent(Trans.t2s(keyword), quick)
+                    : site.spider().searchContent(Trans.t2s(keyword), false, String.valueOf(page));
             SpiderDebug.log(site.getName() + "," + searchContent);
             result = Result.fromJson(searchContent);
         } else {
             ArrayMap<String, String> params = new ArrayMap<>();
             params.put("wd", Trans.t2s(keyword));
             params.put("quick", String.valueOf(quick));
+            if (page > 1) params.put("pg", String.valueOf(page));
             String searchContent = call(site, params);
             SpiderDebug.log(site.getName() + "," + searchContent);
             result = fetchPic(site, Result.fromType(site.getType(), searchContent));
@@ -411,10 +428,11 @@ public class SiteViewModel extends ViewModel {
         if (!site.getExt().isEmpty()) params.put("extend", site.getExt());
         Call get = OkHttp.newCall(site.getApi(), site.getHeaders(), params);
         Call post = OkHttp.newCall(site.getApi(), site.getHeaders(), OkHttp.toBody(params));
-        Response response = (site.getExt().length() <= 1000 ? get : post).execute();
-        String result = response.body().string();
-        response.close();
-        return result;
+        try (Response response = (site.getExt().length() <= 1000 ? get : post).execute()) {
+            if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
+            if (response.body() == null) throw new IOException("HTTP " + response.code() + " empty body");
+            return response.body().string();
+        }
     }
 
     private static Result fetchPic(Site site, Result result) throws Exception {
@@ -426,9 +444,11 @@ public class SiteViewModel extends ViewModel {
         ArrayMap<String, String> params = new ArrayMap<>();
         params.put("ac", site.getType() == 0 ? "videolist" : "detail");
         params.put("ids", TextUtils.join(",", ids));
-        Response response = OkHttp.newCall(site.getApi(), site.getHeaders(), params).execute();
-        result.setList(Result.fromType(site.getType(), response.body().string()).getList());
-        response.close();
+        try (Response response = OkHttp.newCall(site.getApi(), site.getHeaders(), params).execute()) {
+            if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
+            if (response.body() == null) throw new IOException("HTTP " + response.code() + " empty body");
+            result.setList(Result.fromType(site.getType(), response.body().string()).getList());
+        }
         return result;
     }
 

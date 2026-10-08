@@ -63,13 +63,18 @@ public final class QualityCache {
     private static QualityMemory read(File file) throws Exception {
         if (file.length() <= 0 || file.length() > MAX_FILE) return null;
         QualityMemory value = App.gson().fromJson(Files.readString(file.toPath(), StandardCharsets.UTF_8), QualityMemory.class);
-        return value != null && value.version == 1 && value.candidates != null && value.verified != null && value.checked != null ? value : null;
+        if (value == null || value.version < 1 || value.version > 3 || value.candidates == null
+                || value.verified == null || value.checked == null) return null;
+        // Keep old candidates and measurements, but migrate permanent exclusions and long retry delays.
+        value.upgrade(System.currentTimeMillis());
+        return value;
     }
     public static void save(String key, QualityMemory value) {
         while (value.candidates.size() > 400) dropCandidate(value);
 
         while (value.verified.size() > 1024) dropEpisode(value);
         while (value.checked.size() > 2048) value.checked.remove(value.checked.keySet().iterator().next());
+        while (value.cooldowns.size() > 1024) value.cooldowns.remove(value.cooldowns.keySet().iterator().next());
         String targetKey = value.key.isEmpty() ? key : value.key;
         String snapshot = App.gson().toJson(value);
         while (snapshot.getBytes(StandardCharsets.UTF_8).length > MAX_FILE && !value.verified.isEmpty()) {
@@ -103,15 +108,19 @@ public final class QualityCache {
         String episode = value.verified.get(0).episodeKey;
         value.verified.removeIf(item -> item.episodeKey.equals(episode));
         value.checked.keySet().removeIf(key -> !key.startsWith("search\n") && key.contains("\n" + episode + "\n"));
+        value.cooldowns.keySet().removeIf(key -> key.contains("\n" + episode + "\n"));
     }
     private static void dropCandidate(QualityMemory value) {
         QualityMemory.Candidate old = value.candidates.remove(0);
         value.verified.removeIf(item -> item.site.equals(old.site) && item.id.equals(old.id));
         value.checked.keySet().removeIf(key -> key.startsWith(old.site + "\n") || key.startsWith("search\n" + old.site + "\n"));
+        value.cooldowns.keySet().removeIf(key -> key.startsWith(old.site + "\n"));
     }
     static VodSource source(QualityMemory.Candidate item) {
         Site site = VodConfig.get().getSite(item.site);
-        if (site.isEmpty() || !VodConfig.isSiteEnabled(site) || !revision(site).equals(item.revision)) return null;
+        // A changed resolver invalidates its measurements, not the identity of a known candidate.
+        // restoreItems still requires the matching revision before reusing verified measurements.
+        if (site.isEmpty() || !VodConfig.isSiteEnabled(site)) return null;
         Vod vod = new Vod(); vod.setSite(site); vod.setVodId(item.id); vod.setVodName(item.name); vod.setVodYear(item.year);
         vod.setTypeName(item.type); vod.setVodPic(item.pic); vod.setVodRemarks(item.remarks);
         return new VodSource(vod, item.cost);

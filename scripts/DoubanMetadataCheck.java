@@ -53,11 +53,12 @@ class DoubanMetadataCheck {
             Method jsonParse = loader.loadClass("com.google.gson.JsonParser").getMethod("parseString", String.class);
             Method asObject = loader.loadClass("com.google.gson.JsonElement").getMethod("getAsJsonObject");
             Method parse = subjectType.getDeclaredMethod("parse", String.class, json); parse.setAccessible(true);
-            String details = "{\"year\":\"2020\",\"countries\":[\"中国大陆\"],\"genres\":[\"喜剧\",\"科幻\",\"动画\"],\"rating\":{\"value\":0}}";
+            String details = "{\"title\":\"测试动画\",\"original_title\":\"Test Animation\",\"aka\":[\"测试动画 第一季\"],\"year\":\"2020\",\"countries\":[\"中国大陆\"],\"genres\":[\"喜剧\",\"科幻\",\"动画\"],\"rating\":{\"value\":0}}";
             Object subject = parse.invoke(null, "34822765", asObject.invoke(jsonParse.invoke(null, details)));
             equal(0.0, get(subject, "getRating"), "Unrated subject stays unrated");
             equal(List.of("喜剧", "科幻", "动画"), get(subject, "getGenres"), "Unrated subject retains genres");
             equal("2020", get(subject, "getYear"), "Unrated subject retains year");
+            equal(List.of("测试动画", "Test Animation", "测试动画 第一季"), get(subject, "getTitles"), "Structured title aliases are retained for source discovery");
             equal(true, get(subject, "hasHeaderMetadata"), "Rating is not a requirement for complete metadata");
             ((List<?>) get(subject, "getGenres")).clear();
             equal(3, ((List<?>) get(subject, "getGenres")).size(), "Returned genres do not mutate cached data");
@@ -66,6 +67,7 @@ class DoubanMetadataCheck {
             Object known = parse.invoke(null, "34822765", asObject.invoke(jsonParse.invoke(null, details)));
             subjectType.getMethod("retainMissing", subjectType).invoke(subject, known);
             equal(List.of("喜剧", "科幻", "动画"), get(subject, "getGenres"), "A partial retry preserves previously displayed genres");
+            equal(List.of("测试动画", "Test Animation", "测试动画 第一季"), get(subject, "getTitles"), "A partial retry preserves title aliases");
             equal(true, get(subject, "hasHeaderMetadata"), "Retry retains known year and countries");
             Object different = parse.invoke(null, "999", asObject.invoke(jsonParse.invoke(null, "{}")));
             subjectType.getMethod("retainMissing", subjectType).invoke(different, known);

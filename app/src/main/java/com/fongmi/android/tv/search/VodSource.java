@@ -40,6 +40,7 @@ public class VodSource {
     private final long playbackPenalty;
     private final boolean priority;
     private boolean broken;
+    private long brokenUntil;
     private long speed;
     private int state;
 
@@ -55,6 +56,8 @@ public class VodSource {
     }
 
     public Site getSite() {
+        Site live = VodConfig.get().getSite(vod.getSiteKey());
+        if (!live.isEmpty()) return live;
         Site site = vod.getSite();
         return site != null ? site : VodConfig.get().getSite(vod.getSiteKey());
     }
@@ -93,11 +96,13 @@ public class VodSource {
     }
 
     public boolean isBroken() {
+        if (broken && !CandidateRefreshPolicy.checked(brokenUntil, System.currentTimeMillis())) broken = false;
         return broken;
     }
 
     public void setBroken(boolean broken) {
         this.broken = broken;
+        brokenUntil = broken ? System.currentTimeMillis() + CandidateRefreshPolicy.FAILURE_MS : 0;
     }
 
     public boolean isFailed() {

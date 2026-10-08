@@ -7,6 +7,7 @@ public class PlayerEvent {
     public static final int PREPARE = 0;
     public static final int TRACK = 21;
     public static final int SIZE = 11;
+    public static final int FIRST_FRAME = 22;
 
     private final String tag;
     private final int state;
@@ -21,6 +22,10 @@ public class PlayerEvent {
 
     public static void size(String tag) {
         EventBus.getDefault().post(new PlayerEvent(tag, SIZE));
+    }
+
+    public static void firstFrame(String tag) {
+        EventBus.getDefault().post(new PlayerEvent(tag, FIRST_FRAME));
     }
 
     public static void state(String tag, int state) {

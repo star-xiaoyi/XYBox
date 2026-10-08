@@ -31,6 +31,7 @@ import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm;
 import androidx.media3.exoplayer.util.EventLogger;
 import androidx.media3.ui.PlayerView;
@@ -103,6 +104,8 @@ public class Players implements Player.Listener, ParseCallback {
     private int decode;
     private int retry;
     private int networkRetry;
+    /** 原地重连的延迟任务；换源/停止时必须撤掉，否则会在新会话里对旧媒体项补报一次失败。 */
+    private final Runnable prepareRetry = this::prepare;
 
     public static Players create(Activity activity) {
         Players player = new Players(activity);
@@ -133,6 +136,14 @@ public class Players implements Player.Listener, ParseCallback {
         releasePlayer();
         setPlayer(view);
         setMediaItem();
+    }
+
+    /** One-shot soft decode for this session after a decoder-class native crash; the setting stays untouched. */
+    public void sessionSoftDecode() {
+        if (decode == HARD || decode == AUTO) {
+            Logger.i("DecodeGuard: action=session-soft previous=" + decode);
+            decode = SOFT;
+        }
     }
 
     private void setPlayer(PlayerView view) {
@@ -227,6 +238,7 @@ public class Players implements Player.Listener, ParseCallback {
 
     public void reset() {
         removeTimeoutCheck();
+        App.removeCallbacks(prepareRetry);
         retry = 0;
         networkRetry = 0;
     }
@@ -236,6 +248,7 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     public void clear() {
+        App.removeCallbacks(prepareRetry);
         danmakus = null;
         headers = null;
         format = null;
@@ -483,6 +496,7 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     public void stop() {
+        App.removeCallbacks(prepareRetry);
         if (exoPlayer != null) exoPlayer.stop();
         updateDanmakuPlayerSnapshot();
         if (danPlayer != null) danPlayer.stop();
@@ -490,6 +504,7 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     public void release() {
+        App.removeCallbacks(prepareRetry);
         stopParse();
         releasePlayer();
         session.release();
@@ -537,6 +552,11 @@ public class Players implements Player.Listener, ParseCallback {
         parseJob = null;
     }
 
+    /** 正在嗅探（解析）播放地址：起播宽限应等它出结果，而不是按固定秒数换源。 */
+    public boolean isParsing() {
+        return parseJob != null && !parseJob.isStopped();
+    }
+
     private Map<String, String> checkUa(Map<String, String> headers) {
         for (Map.Entry<String, String> header : headers.entrySet()) if (HttpHeaders.USER_AGENT.equalsIgnoreCase(header.getKey())) return headers;
         headers.put(HttpHeaders.USER_AGENT, Setting.getUa().isEmpty() ? ExoUtil.getUa() : Setting.getUa());
@@ -567,6 +587,7 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     private void setMediaItem(Map<String, String> headers, String url, String format, Drm drm, List<Sub> subs, List<Danmaku> danmakus, long timeout) {
+        App.removeCallbacks(prepareRetry);
         String resolvedFormat = ExoUtil.resolveMediaMimeType(url, format);
         if (exoPlayer != null) exoPlayer.setMediaItem(ExoUtil.getMediaItem(this.headers = checkUa(headers), UrlUtil.uri(this.url = url), this.format = resolvedFormat, this.drm = drm, checkSub(this.subs = subs), decode));
         if (danPlayer != null) setDanmaku(this.danmakus = danmakus);
@@ -772,6 +793,11 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     @Override
+    public void onRenderedFirstFrame() {
+        PlayerEvent.firstFrame(tag);
+    }
+
+    @Override
     public void onTracksChanged(@NonNull Tracks tracks) {
         if (tracks.isEmpty()) return;
         setTrack(Track.find(getKey()));
@@ -781,20 +807,35 @@ public class Players implements Player.Listener, ParseCallback {
     @Override
     public void onPlayerError(@NonNull PlaybackException error) {
         Logger.e(error.errorCode + "," + url);
+        // 没有当前媒体地址（已清场/切源）时的错误来自上一个作废的媒体项，不能当作本次播放失败去换源。
+        if (url == null || url.isEmpty()) { Logger.i("PlayerRetry: action=ignore reason=no-media code=" + error.errorCode); return; }
         // 使用友好的错误提示
         String friendlyMsg = new com.fongmi.android.tv.player.exo.ErrorMsgProvider().get(error);
         Logger.e("Error: " + friendlyMsg);
+        int responseCode = httpResponseCode(error);
+        if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+                && !com.fongmi.android.tv.search.PlaybackPolicy.retryHttpStatus(responseCode)) {
+            networkRetry = 0;
+            Logger.i("PlayerRetry: action=failover reason=http-status status=" + responseCode);
+            ErrorEvent.extract(tag, friendlyMsg);
+            return;
+        }
         
         boolean manifestError = isManifestError(error.errorCode);
-        if (isNetworkError(error.errorCode) || manifestError) {
+        // 源进程重启会掐断正在转发的 127.0.0.1 代理流；这是本地一跳的读取中断，
+        // 保留当前播放位置原地重连，而不是直接换源。
+        boolean localProxyRead = error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                && com.fongmi.android.tv.search.PlaybackPolicy.isLocalProxyUrl(url);
+        if (isNetworkError(error.errorCode) || localProxyRead || manifestError) {
             // VPN 路由切换时连接可能连续失败几次。先保留当前 MediaItem 和播放位置原地重连，
             // 不要一两次缓冲失败就重新解析、换源甚至重建详情页。
             int attempt = ++networkRetry;
-            Logger.i("PlayerRetry: reason=" + (manifestError ? "manifest" : "network") + " attempt=" + attempt);
-            if (attempt <= 5) App.post(this::prepare, Math.min(attempt * 700L, 2800L));
+            Logger.i("PlayerRetry: reason=" + (localProxyRead ? "local-proxy" : manifestError ? "manifest" : "network") + " attempt=" + attempt);
+            if (attempt <= 5) App.post(prepareRetry, Math.min(attempt * 700L, 2800L));
             else {
                 networkRetry = 0;
-                ErrorEvent.extract(tag, friendlyMsg);
+                if (isConnectionError(error.errorCode)) ErrorEvent.network(tag, friendlyMsg);
+                else ErrorEvent.extract(tag, friendlyMsg);
             }
             return;
         }
@@ -826,9 +867,20 @@ public class Players implements Player.Listener, ParseCallback {
     }
 
     private boolean isNetworkError(int errorCode) {
-        return errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
-                || errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+        return isConnectionError(errorCode)
                 || errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS;
+    }
+
+    private boolean isConnectionError(int errorCode) {
+        return errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+                || errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT;
+    }
+
+    private int httpResponseCode(Throwable error) {
+        for (int depth = 0; error != null && depth < 12; depth++, error = error.getCause())
+            if (error instanceof HttpDataSource.InvalidResponseCodeException)
+                return ((HttpDataSource.InvalidResponseCodeException) error).responseCode;
+        return -1;
     }
 
     private boolean isManifestError(int errorCode) {
