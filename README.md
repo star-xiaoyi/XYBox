@@ -29,11 +29,11 @@
     <th align="center">设置</th>
   </tr>
   <tr>
-    <td align="center"><a href="docs/images/screenshots/discover.jpg"><img src="docs/images/screenshots/discover.jpg" width="160" alt="发现首页：影片推荐、分类与榜单"></a></td>
-    <td align="center"><a href="docs/images/screenshots/ai-search.jpg"><img src="docs/images/screenshots/ai-search.jpg" width="160" alt="AI 找片：文字与语音输入入口"></a></td>
-    <td align="center"><a href="docs/images/screenshots/player.jpg"><img src="docs/images/screenshots/player.jpg" width="160" alt="播放详情：播放器、影片资料、选集与相关推荐"></a></td>
-    <td align="center"><a href="docs/images/screenshots/profile.jpg"><img src="docs/images/screenshots/profile.jpg" width="160" alt="我的：收藏、观看历史、离线下载与最近在看"></a></td>
-    <td align="center"><a href="docs/images/screenshots/settings.jpg"><img src="docs/images/screenshots/settings.jpg" width="160" alt="设置：播放、手势、AI、外观与网络选项"></a></td>
+    <td align="center"><a href=".github/screenshots/discover.jpg"><img src=".github/screenshots/discover.jpg" width="160" alt="发现首页：影片推荐、分类与榜单"></a></td>
+    <td align="center"><a href=".github/screenshots/ai-search.jpg"><img src=".github/screenshots/ai-search.jpg" width="160" alt="AI 找片：文字与语音输入入口"></a></td>
+    <td align="center"><a href=".github/screenshots/player.jpg"><img src=".github/screenshots/player.jpg" width="160" alt="播放详情：播放器、影片资料、选集与相关推荐"></a></td>
+    <td align="center"><a href=".github/screenshots/profile.jpg"><img src=".github/screenshots/profile.jpg" width="160" alt="我的：收藏、观看历史、离线下载与最近在看"></a></td>
+    <td align="center"><a href=".github/screenshots/settings.jpg"><img src=".github/screenshots/settings.jpg" width="160" alt="设置：播放、手势、AI、外观与网络选项"></a></td>
   </tr>
 </table>
 
@@ -61,7 +61,7 @@
 
 应用内**点击版本号**检查正式版，**长按版本号**检查包含 beta 的测试通道。请仅从本仓库 Releases 获取安装包。
 
-## 构建与文档
+## 自行构建
 
 需要 **JDK 17** 与 **Android SDK**，在仓库根目录通过 Git Bash 执行项目脚本：
 
@@ -71,11 +71,6 @@
 ```
 
 安装包位于 `app/build/outputs/apk/release/`。构建与发布统一使用 `build.sh`，不使用 debug 包作为验收产物。
-
-- [编译与发布操作手册](docs/操作手册.md)：环境、版本号、签名、更新与发布流程。
-- [代码地图](docs/代码地图.md)：源码结构及主要模块。
-- [踩坑记录](docs/踩坑记录.md)：混淆、布局资源与手势等已知注意事项。
-- [播放验收清单](docs/自动播放测试.md)：多源失效、历史续播与异常恢复测试。
 
 ## 致谢与协议
 
