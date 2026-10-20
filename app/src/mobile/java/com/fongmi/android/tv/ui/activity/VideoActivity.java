@@ -202,6 +202,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private static final int MORE_EXIT = 1014;
     private static final int MORE_EPISODES = 1015;
     private static final int MORE_ENDING = 1016;
+    /** 手动选的网盘源要等用户去 UC/夸克扫码，取地址给足 3 分钟。 */
+    private static final long CLOUD_LOGIN_TIMEOUT_MS = 180000;
 
     private ActivityVideoBinding mBinding;
     private ViewGroup.LayoutParams mFrameParams;
@@ -254,6 +256,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private long mLastHealthLog;
     private long mSourceProbeUntil, mCurrentStartupMs = -1;
     private long mLastBufferedSeen = -1, mBufferGrowthAt;
+    private boolean mCloudLoginShown;
+    private final com.fongmi.android.tv.search.CloudDrive.Login mCloudLoginState = new com.fongmi.android.tv.search.CloudDrive.Login();
+    private java.util.concurrent.FutureTask<Void> mCloudLoginTask;
+    private Runnable mCloudLoginTimeout;
+    private volatile boolean mCloudLoginWorkerRunning;
+    /** 最近一次登录成功后切到网盘线路的时刻；这段时间内取地址慢不算失败。 */
+    private long mCloudManualAt = -CLOUD_LOGIN_TIMEOUT_MS;
     private long mExpectedDurationAtStart;
     private long mNextProbeReview, mNextSearchReview, mLastSourceRetest;
     private int mMinimumEpisodes;
@@ -1561,6 +1570,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     }
 
     private void getPlayer(Flag flag, Episode episode, boolean replay) {
+        cancelCloudLogin();
         if (flag == null || episode == null) return;
         if (mSelectedQuality != null && !isQualityMovie()
                 && !com.fongmi.android.tv.search.EpisodeKey.key(mSelectedQuality.episode.getName()).equals(com.fongmi.android.tv.search.EpisodeKey.key(episode.getName())))
@@ -1569,7 +1579,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (mQualityCatalog != null) mQualityCatalog.budget(0);
         mPlaybackRequestedAt = SystemClock.elapsedRealtime();
         mCurrentStartupMs = -1;
-        mLastBufferedSeen = -1; mBufferGrowthAt = 0;
+        mLastBufferedSeen = -1; mBufferGrowthAt = 0; mCloudLoginShown = false;
+        if (mQualityCatalog != null) mQualityCatalog.playing(getKey(), getId(), flag.getFlag());
         mExpectedDurationAtStart = mHistory == null ? 0 : Math.max(0, mHistory.getDuration());
         mPlaybackHealth.begin(mHistory == null ? 0 : mHistory.getPosition());
         mPlaybackHealthReason = "";
@@ -1627,7 +1638,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             mResumeAfterCloudSync = false;
             mClock.start();
             mViewModel.localPlayer(mPlayingDownload == null ? episode.getUrl() : OfflinePlayback.localUrl(mPlayingDownload));
-        } else mViewModel.playerContent(getKey(), flag.getFlag(), episode.getUrl());
+        } else mViewModel.playerContent(getKey(), flag.getFlag(), episode.getUrl(),
+                isCloudPlayback() && SystemClock.elapsedRealtime() - mCloudManualAt < CLOUD_LOGIN_TIMEOUT_MS ? CLOUD_LOGIN_TIMEOUT_MS : Constant.TIMEOUT_VOD);
     }
 
     private void setPlayer(Result result) { setPlayer(result, false); }
@@ -2678,7 +2690,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private boolean isQualityMovie() {
         if (minimumEpisodeCount() > 1 || mFilmIdentity != null && mFilmIdentity.getEpisodeCount() > 1) return false;
         if (mHistory != null && mHistory.getEpisodeCount() > 1) return false;
-        if (mCurrentVod != null) for (Flag flag : mCurrentVod.getVodFlags()) if (flag.getEpisodes().size() > 1) return false;
+        // 网盘目录一个文件夹里有多个文件，不能据此把电影当成多集剧。
+        if (mCurrentVod != null) for (Flag flag : mCurrentVod.getVodFlags()) if (!flag.isCloudDrive() && flag.getEpisodes().size() > 1) return false;
         if (mTargetKind == TitleKey.KIND_UNKNOWN && mCurrentVod != null)
             for (Flag flag : mCurrentVod.getVodFlags()) if (flag.getEpisodes().size() == 1
                     && com.fongmi.android.tv.search.EpisodeKey.movieLabel(flag.getEpisodes().get(0).getName())) return true;
@@ -2877,7 +2890,7 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         mRecoveryPending = false;
         if (mSourceTask != null && !mSourceTask.isBackground()) stopSourceSearch();
         mSourceBackground = true;
-        mManualSourceSelection = true; setInitAuto(false);
+        mManualSourceSelection = mPendingSwitchManual; setInitAuto(false);
         getDetail(item.source.getVod());
     }
 
@@ -2955,6 +2968,13 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
     private void confirmHealthyPlayback() {
         if (mLoggedPlaybackReady || mHistory == null || mPlayers == null) return;
         mLoggedPlaybackReady = true;
+        if (isCloudPlayback()) {
+            // 网盘线路真的播出来了，说明这类网盘已经扫过码；面板从此标“已登录”。
+            String drive = com.fongmi.android.tv.search.CloudDrive.type(getFlag() == null ? "" : getFlag().getFlag(),
+                    mEpisodeAdapter.isEmpty() ? "" : getEpisode().getUrl(), getSite().getName());
+            com.fongmi.android.tv.search.CloudDrive.remember(drive, true);
+            Logger.i("PlayDecision: action=cloud-login-remembered session=" + mSessionId + " drive=" + drive);
+        }
         mPlaybackHealthReason = "";
         mPlaybackInterruptedByNetwork = false;
         mCurrentStartupMs = SystemClock.elapsedRealtime() - mPlaybackRequestedAt;
@@ -3001,6 +3021,11 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         }
         if (mPlayers != null && mHistory != null && !mInitialSelection && !mDetailLoading) {
             long now = SystemClock.elapsedRealtime();
+            // 插件一弹“扫码登录”就停，不等 30 秒的取地址超时；顺便把这个站记成网盘站。
+            String popup = com.fongmi.android.tv.utils.ToastFilter.recentSourcePopup(3000);
+            if (isCloudPlayback() && !mCloudLoginState.pending() && !mCloudLoginWorkerRunning
+                    && !mPlayers.isReady() && !mCloudLoginShown && now - mCloudManualAt >= CLOUD_LOGIN_TIMEOUT_MS && (popup.contains("扫码") || popup.contains("网盘"))
+                    && now - mPlaybackRequestedAt < 40000) handleCloudLoginRequired("login-popup");
             boolean local = mPlayingDownload != null || OfflinePlayback.isLocal(mPlayers.getUrl());
             boolean excluded = isCasting() || local || mAwaitingCloudSync || mCloudChoicePending
                     || mScrubbing || mGestureSeeking || !Util.isNetworkAvailable();
@@ -3065,8 +3090,37 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         return true;
     }
 
+    private boolean isCloudPlayback() {
+        return getFlag() != null && getFlag().isCloudDrive() || getSite().isCloudDrive();
+    }
+
+    /**
+     * 网盘插件取播放地址时要弹二维码登录，源进程里没有 Activity 会直接失败或一直等扫码。
+     * 这里停下来把插件自己的提示（被拦下的那条弹窗）告诉用户，不再去几百个站点里自动找源。
+     */
+    private boolean handleCloudLoginRequired(String reason) {
+        String popup = com.fongmi.android.tv.utils.ToastFilter.recentSourcePopup(60000);
+        boolean login = popup.contains("扫码") || popup.contains("网盘");
+        if (login || isCloudPlayback()) getSite().markCloudDrive();
+        if (login) com.fongmi.android.tv.search.CloudDrive.remember(
+                com.fongmi.android.tv.search.CloudDrive.type(popup, getFlag() == null ? "" : getFlag().getFlag(), getSite().getName()), false);
+        if (mCloudLoginShown) return true;
+        mCloudLoginShown = true;
+        String hint = login ? popup : "该网盘线路暂未取得可播放地址，请重试扫码登录或手动选择其他来源";
+        Logger.i("PlayDecision: action=cloud-login-required session=" + mSessionId + " source=" + getKey() + " reason=" + reason + " hint=" + hint);
+        cancelBufferingProgress(); mPlayers.stop(); hideProgress();
+        showError(hint);
+        return true;
+    }
+
     private boolean recoverPlayback(String reason, boolean manual, boolean hardFailure) {
         if (!manual && !mPlaybackWanted) return false;
+        // 网盘线路只允许手动选：失败多半是要扫码登录，自动恢复去翻几百个站点只会一直“找源”。
+        if (!manual && isCloudPlayback()) {
+            // 刚登录成功切过来的网盘线路：地址还没回来前不打断，由取地址的长超时兜底。
+            if (mPlayers.isEmpty() && SystemClock.elapsedRealtime() - mCloudManualAt < CLOUD_LOGIN_TIMEOUT_MS) return true;
+            return handleCloudLoginRequired(reason);
+        }
         if (mHistory == null || mCurrentVod == null || isFinishing() || isDestroyed() || isStop() || isCasting()
                 || mAwaitingCloudSync || mCloudChoicePending || !Util.isNetworkAvailable() || mPlayingDownload != null
                 || OfflinePlayback.isLocal(mPlayers.getUrl())) return false;
@@ -3201,9 +3255,19 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
             if (!mAutomaticQuality && (mSelectedQuality != null && mSelectedQuality.tierHeight() == item.tierHeight()
                     || mSelectedQuality == null && current != null && current.tierHeight() == item.tierHeight())) selected.add(labels.size()-1);
         }
-        int[] ids = new int[labels.size()]; for (int i=0;i<ids.length;i++) ids[i]=i;
+        // 网盘线路单独列在后面：没登录前测不了速，靠文件名里的 4K/1080p 标清晰度，点了才走扫码登录。
+        List<VodSource> clouds = cloudSources();
+        List<Integer> idList = new ArrayList<>(); for (int i = 0; i < labels.size(); i++) idList.add(i);
+        for (int i = 0; i < clouds.size(); i++) { labels.add(cloudQualityLabel(clouds.get(i))); idList.add(1000 + i); }
+        int[] ids = toIntArray(idList);
+        requestCloudDetails(clouds, anchor);
         com.fongmi.android.tv.ui.custom.PlaybackGlassPanelView.OnItemClickListener listener = id -> {
             mQualityAnchor = null; mBinding.playbackPanel.dismiss();
+            if (id >= 1000) {
+                startCloudLogin(clouds.get(id - 1000));
+                setR1Callback();
+                return;
+            }
             if (id == 0) {
                 rememberQualityPreference(0);
                 mSelectedQuality = null; mAutoWidth = 0; mAutoHeight = 0;
@@ -3225,6 +3289,150 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
         if (update) mBinding.playbackPanel.updateItems(title, ids, labels.toArray(new String[0]), toIntArray(selected), listener);
         else mBinding.playbackPanel.show(anchor, title, ids, labels.toArray(new String[0]), null, toIntArray(selected), 248, PLAYER_PANEL_MAX_HEIGHT_DP, listener);
         refreshBackHandling(); App.removeCallbacks(mR1);
+    }
+
+    private final java.util.Map<String, Vod> mCloudDetails = new java.util.HashMap<>();
+    private final java.util.Set<String> mCloudDetailPending = new java.util.HashSet<>();
+    private final java.util.Map<String, Long> mCloudDetailRetryAt = new java.util.HashMap<>();
+    private int mCloudDetailGeneration;
+
+    private List<VodSource> cloudSources() {
+        List<VodSource> result = new ArrayList<>();
+        if (mHistory == null) return result;
+        for (VodSource source : mSourceAdapter.getRanked()) {
+            if (source.same(getKey(), getId()) || !VodConfig.isSiteEnabled(source.getSite())) continue;
+            if (source.getSite().isCloudDrive()) result.add(source);
+        }
+        return result;
+    }
+
+    private String cloudKey(VodSource source) { return source.getSiteKey() + "\n" + source.getVodId(); }
+
+    private String cloudType(VodSource source) {
+        Vod detail = mCloudDetails.get(cloudKey(source));
+        StringBuilder text = new StringBuilder(source.getSiteName());
+        if (detail != null) for (Flag flag : detail.getVodFlags()) {
+            text.append('\n').append(flag.getFlag());
+            if (!flag.getEpisodes().isEmpty()) text.append('\n').append(flag.getEpisodes().get(0).getUrl());
+        }
+        return com.fongmi.android.tv.search.CloudDrive.type(text.toString());
+    }
+
+    private String cloudQualityLabel(VodSource source) {
+        Vod detail = mCloudDetails.get(cloudKey(source));
+        int height = 0;
+        if (detail != null) for (Flag flag : detail.getVodFlags()) for (Episode episode : flag.getEpisodes())
+            height = Math.max(height, com.fongmi.android.tv.search.QualityOption.taggedHeight(episode.getName() + " " + flag.getFlag()));
+        String type = cloudType(source);
+        String quality = detail == null ? (mCloudDetailPending.contains(cloudKey(source)) ? "读取中" : "画质未知")
+                : com.fongmi.android.tv.search.QualityOption.tier(height);
+        return com.fongmi.android.tv.search.CloudDrive.label(type) + " · " + quality + " · " + source.getSiteName()
+                + (com.fongmi.android.tv.search.CloudDrive.loggedIn(type) ? " · 已登录" : " · 需扫码登录");
+    }
+
+    /**
+     * 先登录再换源：在后台向网盘插件要一次播放地址，插件会在播放页上弹出自己的二维码；
+     * 取得同集地址才尝试切换，实际播出后再记登录成功；扫码取消或失败就留在当前来源。
+     */
+    private void startCloudLogin(VodSource source) {
+        if (mCloudLoginState.pending() || mHistory == null) return;
+        if (mCloudLoginWorkerRunning) { Notify.show("上次网盘请求仍在结束中，请稍后重试"); return; }
+        int request = mCloudLoginState.begin(SystemClock.elapsedRealtime(), CLOUD_LOGIN_TIMEOUT_MS);
+        String session = mSessionId, profile = com.fongmi.android.tv.utils.LocalProfile.id();
+        String originalSite = getKey(), originalId = getId();
+        Vod cachedDetail = mCloudDetails.get(cloudKey(source));
+        String type = cloudType(source);
+        boolean loggedIn = com.fongmi.android.tv.search.CloudDrive.loggedIn(type);
+        Logger.i("SourceChoice: action=cloud-login session=" + mSessionId + " source=" + source.getSiteKey() + " drive=" + type + " loggedIn=" + loggedIn);
+        Notify.show(loggedIn ? "正在连接网盘线路…" : "请在弹出的二维码上用" + com.fongmi.android.tv.search.CloudDrive.label(type).replace("网盘", "").replace("云盘", "").trim() + "扫码登录");
+        String episodeName = candidateEpisode(); boolean movie = isQualityMovie();
+        mCloudLoginTimeout = () -> {
+            if (!mCloudLoginState.expire(request, SystemClock.elapsedRealtime())) return;
+            if (mCloudLoginTask != null) mCloudLoginTask.cancel(true);
+            Notify.show("网盘登录超时，继续使用当前来源");
+        };
+        App.post(mCloudLoginTimeout, CLOUD_LOGIN_TIMEOUT_MS);
+        mCloudLoginTask = new java.util.concurrent.FutureTask<>(() -> {
+            mCloudLoginWorkerRunning = true;
+            String outcome;
+            try {
+                Vod detail = cachedDetail;
+                if (detail == null) {
+                    Result result = SiteViewModel.detail(source.getSite(), source.getVodId(), false);
+                    detail = result.getList().isEmpty() ? null : result.getList().get(0);
+                }
+                Flag flag = null; Episode episode = null;
+                if (detail != null) for (Flag item : detail.getVodFlags()) {
+                    if (item.getEpisodes().isEmpty() || PlaybackRoutePolicy.isRestricted(item)) continue;
+                    Episode matched = com.fongmi.android.tv.search.EpisodeSelection.match(item, episodeName, movie);
+                    if (matched == null || matched.getUrl().trim().isEmpty()) continue;
+                    if (flag == null || item.isCloudDrive() && !flag.isCloudDrive()) { flag = item; episode = matched; }
+                }
+                if (flag == null) outcome = "no-episodes";
+                else {
+                    Result player = SiteViewModel.getPlayer(source.getSiteKey(), flag.getFlag(), episode.getUrl());
+                    outcome = player.hasMsg() || player.getUrl().isEmpty() ? "empty-address" : "ok";
+                }
+            } catch (Exception error) {
+                outcome = "error:" + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
+                Logger.e("CloudLogin", "Failed to obtain cloud playback address", error);
+            } finally { mCloudLoginWorkerRunning = false; }
+            String result = outcome;
+            App.post(() -> {
+                if (!mCloudLoginState.complete(request, SystemClock.elapsedRealtime())) return;
+                App.removeCallbacks(mCloudLoginTimeout); mCloudLoginTask = null;
+                if (isFinishing() || isDestroyed() || !session.equals(mSessionId)
+                        || !profile.equals(com.fongmi.android.tv.utils.LocalProfile.id())
+                        || !originalSite.equals(getKey()) || !originalId.equals(getId())
+                        || !java.util.Objects.equals(episodeName, candidateEpisode())) return;
+                Logger.i("SourceChoice: action=cloud-login-result session=" + mSessionId + " source=" + source.getSiteKey() + " outcome=" + result);
+                if (!"ok".equals(result)) {
+                    com.fongmi.android.tv.search.CloudDrive.remember(type, false);
+                    Notify.show("未完成网盘登录，继续使用当前来源");
+                    return;
+                }
+                mCloudManualAt = SystemClock.elapsedRealtime();
+                Notify.show("已获取网盘地址，正在切换…");
+                switchSource(source, false);
+                updateQualityLabel();
+            });
+            return null;
+        });
+        App.execute(mCloudLoginTask);
+    }
+
+    private void cancelCloudLogin() {
+        mCloudLoginState.cancel();
+        if (mCloudLoginTimeout != null) App.removeCallbacks(mCloudLoginTimeout);
+        if (mCloudLoginTask != null) mCloudLoginTask.cancel(true);
+        mCloudLoginTask = null;
+    }
+
+    /** 网盘站取详情不需要登录，先把文件名拿回来标清晰度；拿到后面板还开着就刷新一次。 */
+    private void requestCloudDetails(List<VodSource> sources, View anchor) {
+        for (VodSource source : sources) {
+            String key = cloudKey(source);
+            if (mCloudDetails.containsKey(key) || mCloudDetailRetryAt.getOrDefault(key, 0L) > SystemClock.elapsedRealtime()
+                    || !mCloudDetailPending.add(key)) continue;
+            int generation = mCloudDetailGeneration;
+            App.execute(() -> {
+                Vod loaded = null;
+                try {
+                    Result result = SiteViewModel.detail(source.getSite(), source.getVodId(), false);
+                    if (!result.getList().isEmpty()) loaded = result.getList().get(0);
+                } catch (Exception error) {
+                    Logger.i("SourceChoice: action=cloud-detail-failed source=" + source.getSiteKey() + " error=" + error.getMessage());
+                }
+                Vod detail = loaded;
+                App.post(() -> {
+                    if (isFinishing() || isDestroyed() || generation != mCloudDetailGeneration) return;
+                    mCloudDetailPending.remove(key);
+                    if (detail != null) mCloudDetails.put(key, detail);
+                    else mCloudDetailRetryAt.put(key, SystemClock.elapsedRealtime() + 60_000);
+                    if (mQualityAnchor == anchor && mBinding.playbackPanel.isPanelVisible()) showQualityPanel(anchor, true);
+                });
+            });
+        }
     }
 
     private void rememberQualityPreference(int height) {
@@ -4032,6 +4240,9 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
                 if (mAwaitingCloudSync || mCloudChoicePending || !mPlaybackWanted) mPlayers.pause();
                 cancelBufferingProgress();
                 mPlayers.reset();
+                // 把播放器解析好的地址交给测速目录：当前线路不用再嗅一遍分享页。
+                if (mQualityCatalog != null && getFlag() != null && !mEpisodeAdapter.isEmpty() && !mPlayers.isEmpty())
+                    mQualityCatalog.knownAddress(getKey(), getId(), getFlag().getFlag(), getEpisode().getUrl(), mPlayers.getUrl(), mPlayers.getHeaders());
                 // 先登记片源；预热由 showControl 根据主播放器的缓冲余量决定。
                 if (!isCasting()) mPreview.setSource(mPlayers.getUrl(), mPlayers.getPreviewItem(), mPlayers.getPlaybackCacheTrackParameters());
                 schedulePlaybackCache();
@@ -4295,6 +4506,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     /** 换了一部片（通知栏、投屏接收等从外部再次打开详情页）：清掉上一部片的片源。 */
     private void resetSources() {
+        cancelCloudLogin();
+        mCloudDetailGeneration++; mCloudDetails.clear(); mCloudDetailPending.clear(); mCloudDetailRetryAt.clear();
         if (mCandidateModel != null) mCandidateModel.cancelPending();
         mPendingSource = null; mPendingQuality = null;
         App.removeCallbacks(mFinishCandidate); mDeferredCandidateResult = null;
@@ -6101,6 +6314,8 @@ public class VideoActivity extends BaseActivity implements Clock.Callback, Custo
 
     @Override
     protected void onDestroy() {
+        cancelCloudLogin();
+        mCloudDetailGeneration++;
         if (mCandidateModel != null) mCandidateModel.cancelPending();
         mPendingSource = null; mPendingQuality = null;
         App.removeCallbacks(mFinishCandidate); mDeferredCandidateResult = null;

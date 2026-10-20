@@ -82,9 +82,25 @@ public class Flag implements Parcelable {
     public boolean isCloudDrive() {
         if (hasCloudHint(getFlag()) || hasCloudHint(getShow())) return true;
         for (Episode episode : getEpisodes()) {
-            if (hasCloudHint(episode.getName()) || hasCloudHint(episode.getDesc()) || hasCloudHint(episode.getUrl())) return true;
+            if (hasCloudHint(episode.getName()) || hasCloudHint(episode.getDesc()) || hasCloudHint(episode.getUrl())
+                    || looksLikeDriveFile(episode.getName())) return true;
         }
         return false;
+    }
+
+    /** 网盘目录列出来的是文件名：带 [604.43MB] 这类体积前缀，或直接以视频扩展名结尾。 */
+    private static boolean looksLikeDriveFile(String name) {
+        if (TextUtils.isEmpty(name)) return false;
+        String value = name.trim().toLowerCase(Locale.ROOT);
+        for (String extension : new String[]{".mp4", ".mkv", ".avi", ".rmvb", ".flv", ".iso", ".wmv", ".mov"}) if (value.endsWith(extension)) return true;
+        int open = value.indexOf("["), close = value.indexOf("]");
+        if (open < 0 || close <= open + 1) return false;
+        String size = value.substring(open + 1, close).trim();
+        if (!(size.endsWith("mb") || size.endsWith("gb") || size.endsWith("kb"))) return false;
+        String digits = size.substring(0, size.length() - 2).trim();
+        if (digits.isEmpty()) return false;
+        for (int i = 0; i < digits.length(); i++) if ("0123456789.".indexOf(digits.charAt(i)) < 0) return false;
+        return true;
     }
 
     private static boolean hasCloudHint(String text) {

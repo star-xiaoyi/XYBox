@@ -163,6 +163,7 @@ public final class SourceService extends Service {
         if (next < generation) throw new IllegalStateException("Obsolete source request");
         if (next > generation) { BaseLoader.get().clear(); generation = next; }
         com.github.catvod.Proxy.set(request.getInt("port"));
+        com.github.catvod.Proxy.setSourceProcess(true);
         String nextProxy = request.optString("proxy"), nextDoh = request.optString("doh");
         if (!nextProxy.equals(proxy)) { OkHttp.get().setProxy(nextProxy); proxy = nextProxy; }
         if (!nextDoh.equals(doh)) { OkHttp.get().setDoh(Doh.objectFrom(nextDoh)); doh = nextDoh; }

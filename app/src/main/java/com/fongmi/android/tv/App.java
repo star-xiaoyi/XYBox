@@ -125,7 +125,12 @@ public class App extends Application {
         return get().time;
     }
 
+    /** 插件（FongMi 系 Pan/WoGG 等）反射这个方法拿 Activity 弹二维码登录；网盘插件在主进程加载，这里给的就是当前页面。 */
     public static Activity activity() {
+        return get().activity;
+    }
+
+    public static Activity currentActivity() {
         return get().activity;
     }
 
@@ -181,6 +186,7 @@ public class App extends Application {
     public void onCreate() {
         super.onCreate();
         if (isSourceProcess()) {
+            com.github.catvod.Proxy.setSourceProcess(true);
             // No activity recovery, sync, update cleanup, notification or player startup in the worker.
             // 注意：不要在这里初始化 WebView。部分源插件（*Guard 系列）初始化时会做进程反注入检查，
             // 源进程里出现 Chromium 的类会让它们悄悄拒绝装载内部爬虫（init 内部对象为空）。

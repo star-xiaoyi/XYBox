@@ -9,15 +9,23 @@ public final class EpisodeKey {
     private static final Pattern LABELED = Pattern.compile("(?:第\\s*)?([0-9零〇一二三四五六七八九十百千两]+)\\s*[集话話期回]");
     private static final Pattern ENGLISH = Pattern.compile("(?:s(\\d+))?e(?:p)?\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern SEASON = Pattern.compile("第\\s*([0-9零〇一二三四五六七八九十百两]+)\\s*季");
+    /** 网盘文件名：去掉 [604.43MB] 体积前缀后，再认 [01]、E01、S01E01 这类标记。 */
+    private static final Pattern SIZE_PREFIX = Pattern.compile("^\\s*\\[\\s*\\d+(?:\\.\\d+)?\\s*[kmgKMG][bB]\\s*\\]\\s*");
+    private static final Pattern BRACKET = Pattern.compile("\\[\\s*(\\d{1,3})\\s*\\]");
+    private static final Pattern ENGLISH_ANY = Pattern.compile("(?<![a-z0-9])(?:s(\\d+))?e(?:p)?\\s*(\\d{1,3})(?![0-9])", Pattern.CASE_INSENSITIVE);
     private EpisodeKey() { }
     public static int number(String name) {
         if (name == null) return -1;
-        String text = narrow(name).trim();
+        String text = SIZE_PREFIX.matcher(narrow(name).trim()).replaceFirst("").trim();
         if (text.matches("(?i).*(?:预告|預告|花絮|特辑|特輯|特别|特別|番外|彩蛋|special).*")) return -1;
         Matcher labeled = LABELED.matcher(text), english = ENGLISH.matcher(text);
         if (labeled.find()) return parse(labeled.group(1));
         if (english.matches()) return parse(english.group(2));
-        return text.matches("[0-9]{1,3}") ? parse(text) : -1;
+        if (text.matches("[0-9]{1,3}")) return parse(text);
+        Matcher bracket = BRACKET.matcher(text), any = ENGLISH_ANY.matcher(text);
+        if (any.find()) return parse(any.group(2));
+        if (bracket.find()) return parse(bracket.group(1));
+        return -1;
     }
     private static int parse(String text) {
         if (text.matches("[0-9]+")) try { int value = Integer.parseInt(text); return value > 0 ? value : -1; } catch (NumberFormatException ignored) { return -1; }
@@ -34,8 +42,8 @@ public final class EpisodeKey {
     public static String key(String name) {
         int number = number(name);
         if (number > 0) {
-            Matcher english = ENGLISH.matcher(narrow(name).trim()), season = SEASON.matcher(narrow(name));
-            int series = english.matches() && english.group(1) != null ? parse(english.group(1))
+            Matcher english = ENGLISH_ANY.matcher(SIZE_PREFIX.matcher(narrow(name).trim()).replaceFirst("")), season = SEASON.matcher(narrow(name));
+            int series = english.find() && english.group(1) != null ? parse(english.group(1))
                     : season.find() ? parse(season.group(1)) : 1;
             if (series > 1) return "s" + series + "e" + number;
         }

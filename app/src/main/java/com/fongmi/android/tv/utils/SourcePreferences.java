@@ -16,11 +16,15 @@ public final class SourcePreferences {
     private static final String SOURCE = "vod_disabled_";
     private static final String SITE = "vod_site_disabled_";
     private static final String PRIORITY = "vod_site_priority_";
+    private static final String CLOUD = "vod_site_cloud_";
+    private static final String DRIVE = "vod_drive_login_";
     private static final String TIME = "_modified_at";
 
     private SourcePreferences() { }
 
     private static String preference(String key) {
+        if (key.startsWith("drive:")) return DRIVE + key.substring(6);
+        if (key.startsWith("cloud:")) return CLOUD + key.substring(6);
         if (key.startsWith("priority:")) return PRIORITY + key.substring(9);
         return key.startsWith("source:") ? SOURCE + key.substring(7) : SITE + key.substring(5);
     }
@@ -63,6 +67,22 @@ public final class SourcePreferences {
     }
 
     public static void setPriority(String site, boolean priority) { setValue("priority:" + site, priority); }
+
+    /** 运行期确认过“要扫码登录的网盘站”：名字和 api 都认不出来时，靠第一次失败记住它。 */
+    public static synchronized boolean isCloud(String site) {
+        String profile = LocalProfile.id(); migrate(profile);
+        return Prefers.getPrefers().getBoolean(LocalProfile.keyFor(profile, CLOUD + site), false);
+    }
+
+    public static void setCloud(String site, boolean cloud) { setValue("cloud:" + site, cloud); }
+
+    /** 用户已为哪类网盘（夸克/UC/阿里…）扫过码：登录本身在插件里，这里只记“扫过”。 */
+    public static synchronized boolean isDriveLoggedIn(String type) {
+        String profile = LocalProfile.id(); migrate(profile);
+        return Prefers.getPrefers().getBoolean(LocalProfile.keyFor(profile, DRIVE + type), false);
+    }
+
+    public static void setDriveLoggedIn(String type, boolean loggedIn) { setValue("drive:" + type, loggedIn); }
 
     private static void setValue(String key, boolean value) {
         String profile = LocalProfile.id();

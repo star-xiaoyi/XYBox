@@ -92,6 +92,10 @@ class PlaybackPolicyCheck {
         equal("18", EpisodeKey.key("EP18"), "English numbered episode");
         equal("s2e18", EpisodeKey.key("S02E18"), "Keep season identity");
         equal("s2e18", EpisodeKey.key("第二季第十八集"), "Chinese season identity");
+        equal("s2e18", EpisodeKey.key("[604.43MB] Series.S02E18.1080p.mkv"), "Cloud filenames retain the English season");
+        equal("18", EpisodeKey.key("Series.S01E18.1080p.mkv"), "First-season filenames retain the episode");
+        equal(18, EpisodeKey.number("[02] Series.S02E18.mkv"), "An explicit episode wins over a numeric filename prefix");
+        equal(1, EpisodeKey.number("[604.43MB] [01] Series.mp4"), "Size prefixes do not become episode numbers");
         equal(-1, EpisodeKey.number("2026-10-04"), "Do not treat dates as episodes");
         equal(-1, EpisodeKey.number("1080p"), "Do not treat resolution as episode");
         equal(-1, EpisodeKey.number("预告第18集"), "Do not confuse trailers with episodes");
@@ -376,7 +380,35 @@ class PlaybackPolicyCheck {
         checkDetailExhaustion();
         checkNativeCrashTrace();
         checkSourceOrigin();
+        checkCloudLogin();
         System.out.println("Playback and source UI checks passed: " + checks);
+    }
+
+    private static void checkCloudLogin() throws Exception {
+        var login = new com.fongmi.android.tv.search.CloudDrive.Login();
+        int first = login.begin(100, 180000);
+        equal(true, login.accepts(first, 180099), "A QR request has its full login window");
+        equal(false, login.complete(first, 180100), "A result at the timeout boundary cannot switch playback");
+        equal(true, login.expire(first, 180100), "The actual QR preflight has a bounded timeout");
+        equal(false, login.pending(), "Timeout releases the login busy state");
+        equal(false, login.complete(first, 180101), "A timed-out worker cannot switch later");
+        int second = login.begin(200000, 180000);
+        equal(false, login.complete(first, 200001), "An old QR result cannot complete a newer request");
+        equal(true, login.complete(second, 200001), "An on-time request completes once");
+        equal(false, login.complete(second, 200002), "Duplicate callbacks cannot switch again");
+        int third = login.begin(300000, 180000); login.cancel();
+        equal(false, login.complete(third, 300001), "Changing film or episode invalidates a pending QR request");
+        String activity = Files.readString(Path.of("app/src/mobile/java/com/fongmi/android/tv/ui/activity/VideoActivity.java"));
+        String cloud = activity.substring(activity.indexOf("private void startCloudLogin("), activity.indexOf("private void rememberQualityPreference("));
+        equal(true, cloud.contains("App.post(mCloudLoginTimeout, CLOUD_LOGIN_TIMEOUT_MS)"), "QR preflight schedules its real deadline");
+        equal(true, cloud.contains("!originalSite.equals(getKey())") && cloud.contains("candidateEpisode()"), "QR callbacks keep the source and semantic episode pinned");
+        equal(true, cloud.contains("mCloudDetailRetryAt.put(key, SystemClock.elapsedRealtime() + 60_000)"), "Failed cloud detail refreshes back off instead of spinning");
+        equal(false, cloud.contains("matched != null ? matched : item.getEpisodes().get(0)"), "QR preflight never logs in the wrong episode as a fallback");
+        equal(false, cloud.contains("CloudDrive.remember(type, true)"), "Only confirmed playback remembers successful login");
+        equal(true, activity.contains("if (isCloudPlayback() && !mCloudLoginState.pending() && !mCloudLoginWorkerRunning"), "A background QR popup cannot stop the ordinary source being kept alive");
+        String catalog = Files.readString(Path.of("app/src/main/java/com/fongmi/android/tv/search/QualityCatalog.java"));
+        equal(true, catalog.indexOf("else if (playing(state, flag))") < catalog.indexOf("SiteViewModel.probePlayer"), "The active route waits for playback before invoking the source again");
+        equal(true, catalog.contains("work.state.done = !knownAddresses.containsKey"), "An address arriving before completion is not a lost wake-up");
     }
 
     private static void checkPreviewRestored() throws Exception {

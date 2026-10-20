@@ -36,6 +36,9 @@ public final class ToastFilter {
     private static volatile boolean installed;
     private static final Map<Activity, Boolean> playbackPages = Collections.synchronizedMap(new WeakHashMap<>());
     private static volatile long lastBlockedLogAt;
+    /** 最近一条被拦下的插件弹窗：网盘插件要求扫码登录时只会弹这一句，播放页靠它及时停下来。 */
+    private static volatile String lastSourcePopup = "";
+    private static volatile long lastSourcePopupAt;
     /** Notify 显式标记的自家提示；混淆后栈里的 lambda 类名不可靠，不能只靠类名匹配。 */
     private static final ThreadLocal<Integer> trustedToast = ThreadLocal.withInitial(() -> 0);
 
@@ -50,7 +53,7 @@ public final class ToastFilter {
         Logger.d("ToastFilter: installed toast=" + toast + " notification=" + notification);
     }
 
-    /** Activity 生命周期切换时 App.activity() 会短暂为空，播放页主动声明状态才能封住这个窗口。 */
+    /** Activity 生命周期切换时 App.currentActivity() 会短暂为空，播放页主动声明状态才能封住这个窗口。 */
     public static void enterPlayback(Activity activity) {
         playbackPages.put(activity, true);
         Logger.d("ToastFilter: playbackPages=" + playbackPages.size());
@@ -106,7 +109,7 @@ public final class ToastFilter {
     }
 
     private static boolean isPlaybackPage() {
-        Activity activity = App.activity();
+        Activity activity = App.currentActivity();
         return !playbackPages.isEmpty() || activity != null && "com.fongmi.android.tv.ui.activity.VideoActivity".equals(activity.getClass().getName());
     }
 
@@ -122,6 +125,11 @@ public final class ToastFilter {
             if (item.getClassName().startsWith("com.fongmi.android.tv.utils.Notify")) return true;
         }
         return false;
+    }
+
+    /** 最近 withinMs 内被拦下的插件弹窗文字，没有则为空串。 */
+    public static String recentSourcePopup(long withinMs) {
+        return android.os.SystemClock.elapsedRealtime() - lastSourcePopupAt <= withinMs ? lastSourcePopup : "";
     }
 
     /** Notify 包住自己的 Toast 展示，避免把第一方提示误判成外部弹窗拦掉。 */
@@ -254,6 +262,7 @@ public final class ToastFilter {
                 boolean source = isSourceCaller();
                 boolean externalPlayback = isPlaybackPage() && !isTrustedAppToastCaller();
                 if (source || externalPlayback || shouldSuppress(text)) {
+                    if (source && !TextUtils.isEmpty(text)) { lastSourcePopup = text; lastSourcePopupAt = android.os.SystemClock.elapsedRealtime(); }
                     long now = android.os.SystemClock.elapsedRealtime();
                     if (now - lastBlockedLogAt >= 1000) {
                         lastBlockedLogAt = now;

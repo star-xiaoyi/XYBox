@@ -40,7 +40,7 @@ public class BaseLoader {
     }
 
     public void clear() {
-        if (!App.isSourceProcess()) { SourceBridge.get().clear(); return; }
+        if (!App.isSourceProcess()) { localSites.clear(); this.jarLoader.clear(); SourceBridge.get().clear(); return; }
         localSites.clear();
         this.jarLoader.clear();
         this.pyLoader.clear();
@@ -51,7 +51,17 @@ public class BaseLoader {
         boolean js = api.contains(".js");
         boolean py = api.contains(".py");
         boolean csp = api.startsWith("csp_");
-        if (!App.isSourceProcess()) return js || py || csp ? new RemoteSpider(key, api, ext, jar) : new SpiderNull();
+        if (!App.isSourceProcess()) {
+            // 网盘站的插件要在播放页上弹二维码登录，隔离进程里没有页面给它用；按用户的决定，
+            // 这类 JAR 插件保留主进程扫码兼容；自动选源仍排除网盘站点。
+            if (csp && hostedInMain(key)) {
+                Spider spider = jarLoader.getSpider(key, api, ext, jar);
+                if (spider instanceof SpiderNull) throw new IllegalStateException("Source initialization failed: " + api, jarLoader.lastFailure());
+                localSites.put(key, spider);
+                return spider;
+            }
+            return js || py || csp ? new RemoteSpider(key, api, ext, jar) : new SpiderNull();
+        }
         Spider spider;
         if (py) spider = pyLoader.getSpider(key, api, ext);
         else if (js) spider = jsLoader.getSpider(key, api, ext, jar);
@@ -63,6 +73,12 @@ public class BaseLoader {
         return spider;
     }
 
+    /** 主进程托管的站点：名字、插件特征或运行期标记认出来的网盘站。 */
+    private boolean hostedInMain(String key) {
+        Site site = VodConfig.get().getSite(key);
+        return !site.isEmpty() && site.isCloudDrive();
+    }
+
     public Spider getSpider(Map<String, String> params) {
         if (!params.containsKey("siteKey")) return new SpiderNull();
         if (App.isSourceProcess()) return localSites.getOrDefault(params.get("siteKey"), new SpiderNull());
@@ -72,7 +88,10 @@ public class BaseLoader {
     }
 
     public void setRecent(String key, String api, String jar) {
-        if (!App.isSourceProcess()) { SourceBridge.get().setRecent(key, api, jar); return; }
+        if (!App.isSourceProcess()) {
+            if (api.startsWith("csp_") && localSites.containsKey(key)) jarLoader.setRecent(Util.md5(jar));
+            SourceBridge.get().setRecent(key, api, jar); return;
+        }
         boolean js = api.contains(".js");
         boolean py = api.contains(".py");
         boolean csp = api.startsWith("csp_");
@@ -83,6 +102,11 @@ public class BaseLoader {
 
     public Object[] proxyLocal(Map<String, String> params) {
         if (!App.isSourceProcess()) {
+            // Process ownership is independent of JAR ownership: cloud and ordinary sites can share a JAR.
+            // The HTTP handler sets this from the URL path, not from user-supplied headers/query data.
+            String owner = params.get(com.github.catvod.Proxy.OWNER), siteKey = params.get("siteKey");
+            if (com.github.catvod.Proxy.MAIN.equals(owner) || !com.github.catvod.Proxy.SOURCES.equals(owner)
+                    && siteKey != null && localSites.containsKey(siteKey)) return jarLoader.proxyInvoke(params);
             try { return SourceBridge.get().proxy(params); }
             catch (Exception error) { throw new IllegalStateException("Isolated source proxy failed", error); }
         }

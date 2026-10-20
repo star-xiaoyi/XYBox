@@ -37,7 +37,12 @@ public class Site implements Parcelable {
     /** 自动搜源时需避开的网盘站点；只按完整提示词判断，避免误伤普通资源站。 */
     private static final String[] CLOUD_DRIVE_HINTS = {
             "网盘", "云盘", "盘搜", "盘她", "盘他", "四盘", "夸父", "夸克",
-            "阿里云", "阿里盘", "百度盘", "天翼盘", "迅雷盘", "115盘", "uc盘", "cloud drive"
+            "阿里云", "阿里盘", "百度盘", "天翼盘", "迅雷盘", "115盘", "uc盘", "cloud drive",
+            "玩偶", "木偶"
+    };
+    /** 插件类名里的网盘特征：玩偶/木偶系列聚合盘、盘搜、各家网盘直连插件。 */
+    private static final String[] CLOUD_DRIVE_API_HINTS = {
+            "wogg", "muou", "pansearch", "pansou", "alipan", "aliyun", "quark", "tianyi", "xunlei", "baidupan", "115pan", "ucpan"
     };
 
     @NonNull
@@ -335,7 +340,14 @@ public class Site implements Parcelable {
     public boolean isCloudDrive() {
         String value = Trans.t2s(getName()).toLowerCase(java.util.Locale.ROOT);
         for (String hint : CLOUD_DRIVE_HINTS) if (value.contains(hint)) return true;
-        return false;
+        String api = getApi() == null ? "" : getApi().toLowerCase(java.util.Locale.ROOT);
+        for (String hint : CLOUD_DRIVE_API_HINTS) if (api.contains(hint)) return true;
+        return com.fongmi.android.tv.utils.SourcePreferences.isCloud(getKey());
+    }
+
+    /** 取播放地址时被要求扫码登录：记住这是网盘站，自动选源以后不再碰它，手动换源仍能选。 */
+    public void markCloudDrive() {
+        if (!isCloudDrive()) com.fongmi.android.tv.utils.SourcePreferences.setCloud(getKey(), true);
     }
 
     public boolean isEmpty() {

@@ -25,6 +25,8 @@ public class Proxy implements Process {
             Map<String, String> params = session.getParms();
             params.putAll(session.getHeaders());
             params.putAll(files);
+            // Namespace wins over all request parameters, including a forged owner header.
+            params.put(com.github.catvod.Proxy.OWNER, com.github.catvod.Proxy.owner(url));
             Object[] rs = BaseLoader.get().proxyLocal(params);
             if (rs[0] instanceof NanoHTTPD.Response) {
                 Logger.i("ProxyLocal: do=" + params.get("do") + ", response=direct");

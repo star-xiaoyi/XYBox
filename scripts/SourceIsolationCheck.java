@@ -26,9 +26,10 @@ class SourceIsolationCheck {
         String classpath = json + java.io.File.pathSeparator + nano;
         List<javax.tools.JavaFileObject> sources = new ArrayList<>();
         for (String type : List.of("api.loader.SourceWire", "api.loader.SourceUnavailableException", "api.loader.SourceBridge", "api.loader.RemoteSpider", "api.loader.BaseLoader",
-                "service.SourceService", "search.SourceDetailPolicy", "search.EpisodeSelection", "search.EpisodeKey", "search.PlaybackRoutePolicy"))
+                "service.SourceService", "server.process.Proxy", "search.SourceDetailPolicy", "search.EpisodeSelection", "search.EpisodeKey", "search.PlaybackRoutePolicy"))
             sources.add(source("com.fongmi.android.tv." + type, Files.readString(Path.of("app/src/main/java/com/fongmi/android/tv/" + type.replace('.', '/') + ".java"))));
         sources.add(source("com.github.catvod.crawler.Spider", Files.readString(Path.of("catvod/src/main/java/com/github/catvod/crawler/Spider.java"))));
+        sources.add(source("com.github.catvod.Proxy", Files.readString(Path.of("catvod/src/main/java/com/github/catvod/Proxy.java"))));
         Map<String, String> fixtures = Map.ofEntries(
             Map.entry("android.content.ComponentName", "public class ComponentName { }"),
             Map.entry("android.content.Intent", "public class Intent { public Intent() { } public Intent(Context ctx, Class<?> service) { } }"),
@@ -93,8 +94,10 @@ class SourceIsolationCheck {
             Map.entry("com.fongmi.android.tv.Setting", "public class Setting { public static String getProxy() { return \"\"; } public static String getDoh() { return \"\"; } }"),
             Map.entry("com.fongmi.android.tv.utils.AppLog", "public class AppLog { public static void event(String tag,String text) { } public static void refreshSystemExits() { } public static void recordSourceFailure(String trace) { test.Scenario.trace=trace; } }"),
             Map.entry("com.fongmi.android.tv.server.Server", "public class Server { private static final Server INSTANCE=new Server(); public static Server get() { return INSTANCE; } public void start() { com.github.catvod.Proxy.set(9978); } }"),
-            Map.entry("com.github.catvod.Proxy", "public class Proxy { private static int port=-1; public static int getPort() { return port; } public static void set(int value) { port=value; } }"),
-            Map.entry("com.github.catvod.utils.Util", "public class Util { public static String md5(String text) { return Integer.toHexString(text.hashCode()); } }"),
+            Map.entry("com.fongmi.android.tv.server.impl.Process", "public interface Process { boolean isRequest(fi.iki.elonen.NanoHTTPD.IHTTPSession session,String url); fi.iki.elonen.NanoHTTPD.Response doResponse(fi.iki.elonen.NanoHTTPD.IHTTPSession session,String url,java.util.Map<String,String> files); }"),
+            Map.entry("com.fongmi.android.tv.server.Nano", "public class Nano { public static fi.iki.elonen.NanoHTTPD.Response error(String message) { return fi.iki.elonen.NanoHTTPD.newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.INTERNAL_ERROR,\"text/plain\",message); } }"),
+            Map.entry("com.github.catvod.utils.Logger", "public class Logger { public static void i(String message) { } public static void e(String tag,String message,Throwable error) { throw new AssertionError(message,error); } }"),
+            Map.entry("com.github.catvod.utils.Util", "public class Util { public static String md5(String text) { return Integer.toHexString(text.hashCode()); } public static String getIp() { return \"192.0.2.1\"; } }"),
             Map.entry("com.github.catvod.utils.Trans", "public class Trans { public static String t2s(String text) { return text; } }"),
             Map.entry("com.google.gson.JsonElement", "public class JsonElement { }"),
             Map.entry("com.github.catvod.utils.Json", "public class Json { public static com.google.gson.JsonElement parse(String text) { return new com.google.gson.JsonElement(); } }"),
@@ -109,20 +112,21 @@ class SourceIsolationCheck {
                     public static Net dns() { return NET; } public static Net selector() { return NET; } public static Net responseInterceptor() { return NET; } public static okhttp3.OkHttpClient client() { return new okhttp3.OkHttpClient(); }
                 }
                 """),
-            Map.entry("com.fongmi.android.tv.bean.Site", "public class Site { public boolean isEmpty() { return false; } public com.github.catvod.crawler.Spider spider() { return new com.github.catvod.crawler.SpiderNull(); } }"),
-            Map.entry("com.fongmi.android.tv.api.config.VodConfig", "public class VodConfig { public static VodConfig get() { return new VodConfig(); } public com.fongmi.android.tv.bean.Site getSite(String key) { return new com.fongmi.android.tv.bean.Site(); } public String sourceNetwork() { return \"{\\\"hosts\\\":[\\\"a=b\\\"],\\\"proxyHosts\\\":[\\\"a\\\"],\\\"headers\\\":[{}]}\"; } }"),
+            Map.entry("com.fongmi.android.tv.bean.Site", "public class Site { private String key=\"\"; public Site() { } public Site(String key) { this.key=key; } public boolean isEmpty() { return false; } public boolean isCloudDrive() { return key.equals(\"cloud\"); } public com.github.catvod.crawler.Spider spider() { return new com.github.catvod.crawler.SpiderNull(); } }"),
+            Map.entry("com.fongmi.android.tv.api.config.VodConfig", "public class VodConfig { public static VodConfig get() { return new VodConfig(); } public com.fongmi.android.tv.bean.Site getSite(String key) { return new com.fongmi.android.tv.bean.Site(key); } public String sourceNetwork() { return \"{\\\"hosts\\\":[\\\"a=b\\\"],\\\"proxyHosts\\\":[\\\"a\\\"],\\\"headers\\\":[{}]}\"; } }"),
             Map.entry("com.fongmi.android.tv.search.SiteHealth", "public class SiteHealth { public static int failures; public static void failed(com.fongmi.android.tv.bean.Site site) { failures++; } }"),
             Map.entry("com.github.catvod.crawler.SpiderNull", "public class SpiderNull extends Spider { }"),
             Map.entry("dalvik.system.DexClassLoader", "public class DexClassLoader extends ClassLoader { }"),
             Map.entry("com.fongmi.android.tv.api.loader.JarLoader", """
                 public class JarLoader {
                     private String recent="";
-                    public void clear() { } public void setRecent(String value) { recent=value; }
+                    private final java.util.Set<String> mainJars=java.util.concurrent.ConcurrentHashMap.newKeySet();
+                    public void clear() { mainJars.clear(); } public void setRecent(String value) { recent=value; } public boolean hasJar(String jarKey) { return mainJars.contains(jarKey); }
                     public void parseJar(String key,String jar) { test.Scenario.assertChild(); }
                     public dalvik.system.DexClassLoader dex(String jar) { test.Scenario.assertChild(); return new dalvik.system.DexClassLoader(); }
                     public Throwable lastFailure() { return new IllegalStateException("native-init-inner"); }
-                    public com.github.catvod.crawler.Spider getSpider(String key,String api,String ext,String jar) { test.Scenario.assertChild(); if(key.equals("null")) return new com.github.catvod.crawler.SpiderNull(); return new test.Scenario.Provider(key,ext); }
-                    public Object[] proxyInvoke(java.util.Map<String,String> args) { test.Scenario.assertChild(); byte[] body=test.Scenario.body(); if("direct".equals(args.get("do"))) { var response=fi.iki.elonen.NanoHTTPD.newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.PARTIAL_CONTENT,"video/mp2t",new java.io.ByteArrayInputStream(body),body.length); response.addHeader("Content-Range","bytes 10-20/30"); return new Object[]{response}; } return new Object[]{206,"video/mp2t",new java.io.ByteArrayInputStream(body),java.util.Map.of("Content-Range","bytes 10-20/30","X-Jar",recent)}; }
+                    public com.github.catvod.crawler.Spider getSpider(String key,String api,String ext,String jar) { if(!com.fongmi.android.tv.App.isSourceProcess() && key.equals("cloud")) mainJars.add(com.github.catvod.utils.Util.md5(jar)); else test.Scenario.assertChild(); if(key.equals("null")) return new com.github.catvod.crawler.SpiderNull(); return new test.Scenario.Provider(key,ext); }
+                    public Object[] proxyInvoke(java.util.Map<String,String> args) { if(!com.fongmi.android.tv.App.isSourceProcess() && mainJars.isEmpty()) throw new AssertionError("Unexpected main proxy"); byte[] body=test.Scenario.body(); if("direct".equals(args.get("do"))) { var response=fi.iki.elonen.NanoHTTPD.newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.PARTIAL_CONTENT,"video/mp2t",new java.io.ByteArrayInputStream(body),body.length); response.addHeader("Content-Range","bytes 10-20/30"); return new Object[]{response}; } return new Object[]{206,"video/mp2t",new java.io.ByteArrayInputStream(body),java.util.Map.of("Content-Range","bytes 10-20/30","X-Jar",recent,"X-Owner",com.fongmi.android.tv.App.isSourceProcess()?"sources":"main")}; }
                     public org.json.JSONObject jsonExt(String jar,String key,java.util.LinkedHashMap<String,String> parsers,String url) { return new org.json.JSONObject(java.util.Map.of("order",String.join(",",parsers.keySet()))); }
                     public org.json.JSONObject jsonExtMix(String jar,String flag,String key,String name,java.util.LinkedHashMap<String,java.util.HashMap<String,String>> parsers,String url) { return new org.json.JSONObject(java.util.Map.of("order",String.join(",",parsers.keySet()),"flag",flag)); }
                 }
@@ -184,6 +188,10 @@ class SourceIsolationCheck {
                 var pool=java.util.concurrent.Executors.newFixedThreadPool(4);
                 try {
                     var base=com.fongmi.android.tv.api.loader.BaseLoader.get();
+                    com.github.catvod.Proxy.set(9978); com.github.catvod.Proxy.setSourceProcess(false);
+                    check(com.github.catvod.Proxy.getUrl(true).endsWith("/proxy/main"),"Main plugins generate origin-bound proxy URLs, including nested URLs");
+                    com.github.catvod.Proxy.setSourceProcess(true);
+                    check(com.github.catvod.Proxy.getUrl(true).endsWith("/proxy/sources"),"Isolated plugins generate source-process proxy URLs");
                     check(base.getSpider("http","https://a","","") instanceof com.github.catvod.crawler.SpiderNull,"Ordinary HTTP sources never create source RPCs");
                     var spider=base.getSpider("a","csp_Test","","jar-a");
                     check(spider instanceof com.fongmi.android.tv.api.loader.RemoteSpider,"Main process owns only a facade");
@@ -233,6 +241,8 @@ class SourceIsolationCheck {
                     check((Long)direct[4]==body().length,"Direct Nano response retains fixed content length");
                     check(((java.util.Map<?,?>)direct[3]).get("Content-Range").equals("bytes 10-20/30"),"Direct Nano response retains custom headers");
                     try(var input=(java.io.InputStream)direct[2]) { check(java.util.Arrays.equals(body(),input.readAllBytes()),"Direct Nano response streams too"); }
+                    base.getSpider("cloud","csp_Test","","jar-a");
+                    checkProxyOwners(base,pool);
                     base.setRecent("js","https://a/rule.js","jar-a"); base.getSpider("js","https://a/rule.js","","jar-a");
                     Object[] js=pool.submit(() -> base.proxyLocal(java.util.Map.of("do","js","siteKey","js"))).get();
                     try(var input=(java.io.InputStream)js[2]) { check(new String(input.readAllBytes()).equals("js"),"JS siteKey uses registered worker spider without child VodConfig initialization"); }
@@ -251,6 +261,23 @@ class SourceIsolationCheck {
                     System.out.println("Actual source isolation and preflight checks passed: "+checks);
                 } finally { if(service!=null) service.onDestroy(); pool.shutdownNow(); }
             }
+            private static void checkProxyOwners(com.fongmi.android.tv.api.loader.BaseLoader base,java.util.concurrent.ExecutorService pool) throws Exception {
+                var handler=new com.fongmi.android.tv.server.process.Proxy();
+                for(String owner:java.util.List.of("sources","main","")) {
+                    java.util.Map<String,String> params=new java.util.HashMap<>(java.util.Map.of("jarKey",com.github.catvod.utils.Util.md5("jar-a"),"do","m3u8"));
+                    var session=(fi.iki.elonen.NanoHTTPD.IHTTPSession)java.lang.reflect.Proxy.newProxyInstance(Scenario.class.getClassLoader(),new Class[]{fi.iki.elonen.NanoHTTPD.IHTTPSession.class},(proxy,method,args)-> {
+                        if(method.getName().equals("getParms")) return params;
+                        if(method.getName().equals("getHeaders")) return java.util.Map.of(com.github.catvod.Proxy.OWNER,owner.equals("main")?"sources":"main");
+                        return null;
+                    });
+                    String path=owner.isEmpty()?"/proxy":"/proxy/"+owner;
+                    var response=pool.submit(() -> handler.doResponse(session,path,java.util.Map.of())).get();
+                    String expected=owner.equals("main")?"main":"sources";
+                    check(expected.equals(response.getHeader("X-Owner")),"Proxy ownership follows URL namespace, not shared JAR presence or forged headers: "+path);
+                    check(response.getStatus().getRequestStatus()==206,"Origin-bound proxy retains HTTP range status: "+path);
+                    try(var input=response.getData()) { check(java.util.Arrays.equals(body(),input.readAllBytes()),"Origin-bound proxy streams the complete body: "+path); }
+                }
+            }
             private static void checkPolicies() {
                 var vod=new com.fongmi.android.tv.bean.Vod();
                 check(!com.fongmi.android.tv.search.SourceDetailPolicy.playable(vod,false,"第26集",false),"Metadata without flags cannot replace playback");
@@ -267,6 +294,12 @@ class SourceIsolationCheck {
                 vod.getVodFlags().clear(); var cloud=new com.fongmi.android.tv.bean.Flag("网盘"); cloud.getEpisodes().add(new com.fongmi.android.tv.bean.Episode("HD","https://a/movie")); vod.getVodFlags().add(cloud);
                 check(!com.fongmi.android.tv.search.SourceDetailPolicy.playable(vod,false,"HD",true),"Automatic fallback cannot stall on a cloud-only provider");
                 check(com.fongmi.android.tv.search.SourceDetailPolicy.playable(vod,true,"HD",true),"Explicit cloud selection remains allowed");
+                vod.getVodFlags().clear();
+                var season=new com.fongmi.android.tv.bean.Flag("普通线路");
+                season.getEpisodes().add(new com.fongmi.android.tv.bean.Episode("[604.43MB] Series.S02E18.1080p.mkv","https://a/season2"));
+                vod.getVodFlags().add(season);
+                check(com.fongmi.android.tv.search.SourceDetailPolicy.playable(vod,true,"S02E18",false),"Filename season and episode match the requested season");
+                check(!com.fongmi.android.tv.search.SourceDetailPolicy.playable(vod,true,"S01E18",false),"A second-season filename cannot replace first-season playback");
             }
             private static void checkWire(String classpath) throws Exception {
                 var bytes=new java.io.ByteArrayOutputStream(); com.fongmi.android.tv.api.loader.SourceWire.write(bytes,"电影\\n".repeat(400000));

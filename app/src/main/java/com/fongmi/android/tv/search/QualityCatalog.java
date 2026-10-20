@@ -32,6 +32,9 @@ public final class QualityCatalog {
     private String prioritySite = "", priorityVod = "", priorityFlag = "";
     private QualityMemory memory = new QualityMemory();
     private final Map<String, QualityProbe.Measurement> media = new ConcurrentHashMap<>();
+    /** 播放器已经解析好的地址（按站点/条目/线路/集），正在播放的线路靠它测速，不再重复嗅探分享页。 */
+    private final Map<String, QualityResolver.Address> knownAddresses = new ConcurrentHashMap<>();
+    private volatile String playingRoute = "";
 
     public QualityCatalog(Runnable changed) { this(changed, values -> {}); }
     public QualityCatalog(Runnable changed, Consumer<List<VodSource>> restored) { this.changed = changed; this.restored = restored; }
@@ -57,7 +60,7 @@ public final class QualityCatalog {
             return;
         }
         App.removeCallbacks(saveLater); save();
-        stop(); sources.clear(); items.clear(); served.clear(); media.clear(); clearPriority(); ready = false;
+        stop(); sources.clear(); items.clear(); served.clear(); media.clear(); knownAddresses.clear(); clearPriority(); ready = false;
         film = key; title = name; year = date; type = kind; aliases = knownAliases;
         this.identity = nextIdentity;
         minimumEpisodes = 0;
@@ -135,7 +138,7 @@ public final class QualityCatalog {
     public void episode(String name) {
         movie = "movie".equals(name);
         if (Objects.equals(name, episode)) return;
-        boolean resume = active; stop(); episode = name; sources.clear(); items.clear(); served.clear(); media.clear(); clearPriority();
+        boolean resume = active; stop(); episode = name; sources.clear(); items.clear(); served.clear(); media.clear(); knownAddresses.clear(); clearPriority();
         if (ready) restoreItems();
         if (resume) setActive(true);
     }
@@ -343,11 +346,15 @@ public final class QualityCatalog {
                 } else {
                     Episode selected = match(flag, state.name, state.isMovie());
                     stage = "player";
-                    Result player = SiteViewModel.probePlayer(state.source.getSite(), flag.getFlag(), selected.getUrl());
-                    for (int i = 0; i < player.getUrl().getValues().size() && valid(); i++) {
+                    QualityResolver.Address known = knownAddresses.get(addressKey(state.source, flag, selected));
+                    Result player = null;
+                    if (known != null) { player = new Result(); player.setUrl(Url.create().add(known.url)); }
+                    else if (playing(state, flag)) reason = "await-playback";
+                    else player = SiteViewModel.probePlayer(state.source.getSite(), flag.getFlag(), selected.getUrl());
+                    if (player != null) for (int i = 0; i < player.getUrl().getValues().size() && valid(); i++) {
                         try {
                             stage = "resolve";
-                            QualityResolver.Address address = QualityResolver.resolve(player, player.getUrl().v(i));
+                            QualityResolver.Address address = known != null ? known : QualityResolver.resolve(player, player.getUrl().v(i));
                             if (!address.url.startsWith("http")) { reason = "non-http"; continue; }
                             stage = "media";
                             String addressKey = address.url + "\n" + new TreeMap<>(address.headers);
@@ -420,8 +427,33 @@ public final class QualityCatalog {
             work.future = worker.submit(work::run);
         }
     }
+    public void playing(String siteKey, String vodId, String flagName) {
+        knownAddresses.clear();
+        playingRoute = (siteKey == null ? "" : siteKey) + "\n" + (vodId == null ? "" : vodId) + "\n" + (flagName == null ? "" : flagName);
+    }
+
+    private boolean playing(SourceState state, Flag flag) {
+        return (state.source.getSiteKey() + "\n" + state.source.getVodId() + "\n" + flag.getFlag()).equals(playingRoute);
+    }
+
+    private String addressKey(VodSource source, Flag flag, Episode selected) {
+        return source.getSiteKey() + "\n" + source.getVodId() + "\n" + flag.getFlag() + "\n" + (selected == null ? "" : selected.getUrl());
+    }
+
+    /** 播放器拿到地址后登记进来；之前因为等地址而停下的那个站点重新排队，用这个地址直接测媒体。 */
+    public void knownAddress(String siteKey, String vodId, String flagName, String episodeUrl, String url, Map<String, String> headers) {
+        if (url == null || url.isEmpty() || released) return;
+        knownAddresses.put(siteKey + "\n" + vodId + "\n" + flagName + "\n" + episodeUrl, new QualityResolver.Address(url, headers == null ? Collections.emptyMap() : headers));
+        SourceState state = sources.get(siteKey + "\n" + vodId);
+        if (state == null || running.containsKey(state) || queue.contains(state)) return;
+        if (checked(state.key("source"))) return;
+        state.done = false; state.index = 0;
+        queue.add(state); App.post(dispatchLater);
+    }
+
     private void complete(Work work, Vod fetched, List<QualityOption> values, String reason) {
         if (released || !active || work.token != generation || running.get(work.state) != work) return;
+        boolean awaiting = "await-playback".equals(reason);
         running.remove(work.state); App.removeCallbacks(work.timeout);
         if (reason.endsWith("-timeout") && work.future != null) {
             work.future.cancel(true);
@@ -438,8 +470,13 @@ public final class QualityCatalog {
                 + " verified=" + values.size() + " requiredEpisodes=" + minimumEpisodes()
                 + " actualEpisodes=" + (work.flag == null ? work.detailCount : EpisodeCoverage.count(work.flag))
                 + (reason.isEmpty() ? "" : " reason=" + reason));
-        if (!reason.isEmpty()) work.state.failed = true;
-        if (work.flag == null) {
+        if (!reason.isEmpty() && !awaiting) work.state.failed = true;
+        if (awaiting) {
+            // 地址可能在工作线程结束前已经送到；回退本线路的游标，不能丢掉那次唤醒。
+            work.state.index = Math.max(0, work.state.index - 1);
+            work.state.done = !knownAddresses.containsKey(addressKey(work.state.source, work.flag,
+                    match(work.flag, work.state.name, work.state.isMovie())));
+        } else if (work.flag == null) {
             if (fetched == null) {
                 work.state.done = true;
                 long until = CandidateRefreshPolicy.until(System.currentTimeMillis(), false, true);

@@ -189,7 +189,12 @@ public class SiteViewModel extends ViewModel {
     }
 
     public void playerContent(String key, String flag, String id) {
-        execute(player, "播放地址", () -> {
+        playerContent(key, flag, id, Constant.TIMEOUT_VOD);
+    }
+
+    /** 手动选的网盘源要等用户扫码登录，播放页会传一个更长的超时。 */
+    public void playerContent(String key, String flag, String id, long timeoutMs) {
+        execute(player, "播放地址", timeoutMs, () -> {
             Source.get().stop();
             return getPlayer(key, flag, id);
         });
@@ -291,8 +296,14 @@ public class SiteViewModel extends ViewModel {
             try {
                 Uri uri = Uri.parse(value.getV());
                 if (!("127.0.0.1".equals(uri.getHost()) || "localhost".equalsIgnoreCase(uri.getHost()))) continue;
-                if (!"/proxy".equals(uri.getPath()) || uri.getQueryParameter("jarKey") != null) continue;
-                value.setV(uri.buildUpon().appendQueryParameter("jarKey", jarKey).build().toString());
+                String path = uri.getPath();
+                if (!"/proxy".equals(path) && com.github.catvod.Proxy.owner(path).isEmpty()) continue;
+                Uri.Builder builder = uri.buildUpon();
+                if ("/proxy".equals(path)) builder.path(com.github.catvod.Proxy.getPath(
+                        !(site.getApi().startsWith("csp_") && site.isCloudDrive())));
+                if (uri.getQueryParameter("jarKey") == null) builder.appendQueryParameter("jarKey", jarKey);
+                if (uri.getQueryParameter("siteKey") == null) builder.appendQueryParameter("siteKey", site.getKey());
+                value.setV(builder.build().toString());
             } catch (Exception e) {
                 Logger.e("Error", e);
             }
@@ -453,13 +464,17 @@ public class SiteViewModel extends ViewModel {
     }
 
     private void execute(MutableLiveData<Result> result, String tag, Callable<Result> callable) {
+        execute(result, tag, Constant.TIMEOUT_VOD, callable);
+    }
+
+    private void execute(MutableLiveData<Result> result, String tag, long timeoutMs, Callable<Result> callable) {
         final int generation = ++requestGeneration;
         if (executor != null) executor.shutdownNow();
         ExecutorService active = executor = Executors.newFixedThreadPool(2);
         active.execute(() -> {
             try {
                 if (Thread.interrupted()) return;
-                deliver(result, active.submit(callable).get(Constant.TIMEOUT_VOD, TimeUnit.MILLISECONDS), generation);
+                deliver(result, active.submit(callable).get(timeoutMs, TimeUnit.MILLISECONDS), generation);
             } catch (Throwable e) {
                 if (e instanceof InterruptedException || Thread.interrupted()) return;
                 // 确保在发生任何异常时都返回结果，避免界面一直显示加载中

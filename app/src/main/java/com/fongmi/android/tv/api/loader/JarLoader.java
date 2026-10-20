@@ -33,6 +33,7 @@ public class JarLoader {
     private String recent;
     private final ThreadLocal<Throwable> failure = new ThreadLocal<>();
     public Throwable lastFailure() { return failure.get(); }
+    public boolean hasJar(String jarKey) { return loaders.containsKey(jarKey); }
 
     public JarLoader() {
         loaders = new ConcurrentHashMap<>();
